@@ -1,4 +1,5 @@
 flask>=3.0.0
+gunicorn>=21.2.0
 anthropic>=0.40.0
 playwright>=1.40.0
 beautifulsoup4>=4.12.0
