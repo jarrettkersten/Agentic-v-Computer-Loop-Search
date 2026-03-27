@@ -47,10 +47,10 @@ ADO_SEARCH_URL    = (
     f"/_apis/search/codesearchresults?api-version=7.0"
 )
 
-MAX_AGENTIC_ITERATIONS = 6
-MAX_SEARCH_RESULTS     = 8     # files returned per ADO search
-MAX_FILE_CHARS         = 8000  # characters read per file
-MAX_FILES_TO_READ      = 5     # max files read per loop run
+MAX_AGENTIC_ITERATIONS = 12    # more headroom for complex multi-file questions
+MAX_SEARCH_RESULTS     = 12    # broader initial candidate pool per search term
+MAX_FILE_CHARS         = 15000 # read more of each file — key methods are often deep
+MAX_FILES_TO_READ      = 10    # read more files before synthesising
 
 # ---------------------------------------------------------------------------
 # SharePoint config
@@ -196,38 +196,43 @@ def get_client():
 
 
 def extract_search_terms(query: str, client) -> list[str]:
-    """Ask Claude to derive 2-4 short, ADO-Code-Search-friendly terms from a natural
-    language question.  Returns a list of strings like ["EACSubmit", "Forecasting"].
+    """Ask Claude to derive 4-7 ADO-Code-Search-friendly terms from a natural language
+    question. Returns terms like ["TimesheetGrid", "Timesheet", "ITimesheetService"].
+
+    More terms = broader coverage of related files (page, service, controller, helper).
     Falls back to the first 40 chars of the original query if parsing fails.
     """
     resp = client.messages.create(
         model=MODEL,
-        max_tokens=200,
+        max_tokens=350,
         system=(
-            "You are a search-term extractor for a C#/.NET codebase stored in Azure DevOps. "
-            "Azure DevOps Code Search works best with short, precise terms — class names, "
-            "method names, feature names, or UI element identifiers. "
-            "Long natural-language phrases return zero results. "
-            "Always think about PascalCase class/method names (e.g. 'EACSubmit', "
-            "'ProjectForecasting', 'ForecastApproval') as well as short keyword variants."
+            "You are a search-term extractor for a large C#/VB.NET/ASP.NET WebForms codebase "
+            "stored in Azure DevOps (Cora PPM). ADO Code Search works on exact token matches — "
+            "long natural-language phrases return zero results.\n\n"
+            "Think in layers:\n"
+            "  1. The PRIMARY feature name as it appears in file names (e.g. 'TimesheetGrid', 'EACSubmit')\n"
+            "  2. The SHORT keyword — just the core noun (e.g. 'Timesheet', 'EAC', 'Forecast')\n"
+            "  3. Related SERVICE / REPOSITORY class names (e.g. 'ITimesheetService', 'TimesheetRepository')\n"
+            "  4. Related CONTROLLER or CODEBEHIND patterns (e.g. 'TimesheetController', 'Timesheet.aspx')\n"
+            "  5. Any ENUM, CONSTANT, or SQL stored-proc name likely involved (e.g. 'sp_GetTimesheets')\n"
+            "  6. Alternative naming variants used in older parts of the codebase (e.g. 'TimeSheet' vs 'Timesheet')\n\n"
+            "Rules:\n"
+            "  - Each term must be 1-3 tokens, no spaces longer than one word, no punctuation except underscores\n"
+            "  - Never use the full user question as a term\n"
+            "  - Include BOTH PascalCase compound AND short standalone variants"
         ),
         messages=[{
             "role":    "user",
             "content": (
-                "Extract 2-4 short search terms (1-3 words each, no punctuation) that are "
-                "most likely to appear as class names, method names, or keywords in a "
-                "C#/.NET codebase for the following question.\n\n"
-                "Rules:\n"
-                "- Prefer PascalCase or camelCase compound forms (e.g. EACSubmit, ProjectForecasting)\n"
-                "- Each term must be 1-3 words / tokens — never a full sentence\n"
-                "- Include both the compound form AND a short standalone keyword where relevant\n"
-                "- Return ONLY a JSON array of strings, nothing else\n\n"
+                "Extract 4-7 search terms that together will find ALL files relevant to this question "
+                "in the Cora PPM ADO repository. Cover the page/control, the business logic, "
+                "the service/repository layer, and any helpers.\n\n"
+                "Return ONLY a JSON array of strings, nothing else.\n\n"
                 f"Question: {query}"
             ),
         }],
     )
     raw = resp.content[0].text.strip()
-    # Strip markdown code fences if Claude wrapped it
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
@@ -235,10 +240,9 @@ def extract_search_terms(query: str, client) -> list[str]:
     try:
         terms = json.loads(raw)
         if isinstance(terms, list) and terms:
-            return [str(t).strip() for t in terms[:4] if str(t).strip()]
+            return [str(t).strip() for t in terms[:7] if str(t).strip()]
     except Exception:
         pass
-    # Fallback: return the first meaningful words of the question
     return [query[:40]]
 
 
@@ -297,6 +301,36 @@ def select_relevant_files(query: str, candidates: list, client, max_files: int =
     except Exception:
         pass
     return candidates[:max_files]  # Fallback to original order
+
+
+def _clean_answer(text: str) -> str:
+    """Strip internal MISSING_FILE: directives from the user-facing answer.
+
+    These tags are used as signals between synthesis passes and should never
+    appear in the final response shown to the user. If unfound files are noted,
+    a clean plain-language footnote replaces the raw tags.
+    """
+    import re
+    missing_files = [
+        line.replace("MISSING_FILE:", "").strip()
+        for line in text.splitlines()
+        if "MISSING_FILE:" in line
+    ]
+    # Remove every MISSING_FILE: line (with or without trailing newline)
+    cleaned = re.sub(r"^MISSING_FILE:.*$\n?", "", text, flags=re.MULTILINE).strip()
+    # Also collapse any section heading that only exists to introduce the list
+    cleaned = re.sub(
+        r"(?m)^(#+\s*Missing Files.*|What You Actually Need.*)\n+$", "", cleaned
+    ).strip()
+
+    if missing_files:
+        names = ", ".join(f"`{p.rsplit('/', 1)[-1]}`" for p in missing_files[:5])
+        suffix = "…" if len(missing_files) > 5 else ""
+        cleaned += (
+            f"\n\n---\n> **Note:** A more complete answer may require additional "
+            f"files that could not be located in the searched branch: {names}{suffix}"
+        )
+    return cleaned
 
 
 def extract_file_paths_from_text(text: str) -> list:
@@ -378,32 +412,44 @@ def run_agentic_loop(query, branch):
     ]
 
     system_prompt = (
-        f"You are a Cora PPM code analyst searching a C#/.NET/VB.NET codebase in Azure DevOps.\n\n"
+        f"You are a senior Cora PPM code analyst. Your job is to give COMPLETE, thorough answers "
+        f"about the Cora PPM codebase — matching the quality of a developer who has read every file.\n\n"
         f"REPOSITORY: org={ADO_ORG}, project={ADO_PROJECT}, repo={ADO_REPO}, branch={branch}\n\n"
-        "═══ SEARCHING ═══\n"
+        "═══ SEARCHING STRATEGY ═══\n"
         "ADO Code Search does NOT understand natural language — long phrases return ZERO results.\n"
-        "Always use SHORT (1-3 word) technical terms:\n"
-        "  • PascalCase class/method names: EACSubmit, ProjectForecasting, ForecastApproval\n"
-        "  • Short feature keywords: Forecasting, EAC, Submit, Approval\n"
-        "  • File name fragments: EAC_Confirmation, HoneywellForecast\n"
-        "NEVER pass the user's full question as a search_query.\n"
-        "If a term returns 0 results, try a shorter variant or alternate casing.\n\n"
-        "═══ READING ═══\n"
-        "Read the most relevant files thoroughly. Prioritize:\n"
-        "  1. Files whose name directly matches the feature/button/page in question\n"
-        "  2. Controller or service files that handle the business logic\n"
-        "  3. Helper or utility files referenced by the above\n\n"
-        "═══ ANSWERING ═══\n"
-        "Your answer must:\n"
-        "  1. Explain in plain language what the feature/button/function DOES and WHY\n"
-        "  2. Walk through the actual logic step by step (e.g. 'When clicked, it calls X which then does Y')\n"
-        "  3. Include short, relevant code snippets (methods, key lines) with their file path\n"
-        "     Format: `FileName.cs` → `MethodName()` — brief explanation\n"
-        "  4. Cite every file path you reference, e.g. /code/inetpub/wwwroot/...\n"
-        "  5. If multiple files are involved, describe how they interact\n"
-        "  6. Translate implementation details into plain English a non-developer can follow\n\n"
-        "NEVER use general knowledge or external sources. "
-        "If the answer cannot be found after thorough searching, say so and suggest what to look for."
+        "Use SHORT (1-3 word) technical terms. Search in LAYERS:\n"
+        "  Layer 1 — The UI/page file: e.g. 'TimesheetGrid', 'EACSubmit', 'ForecastApproval'\n"
+        "  Layer 2 — The short keyword: e.g. 'Timesheet', 'EAC', 'Forecast'\n"
+        "  Layer 3 — The service/repo: e.g. 'ITimesheetService', 'TimesheetRepository'\n"
+        "  Layer 4 — The controller/codebehind: e.g. 'TimesheetController', 'Timesheet.aspx'\n"
+        "  Layer 5 — Alternate casing or legacy name: e.g. 'TimeSheet' if 'Timesheet' returned nothing\n"
+        "Run AT LEAST 4 different search terms before concluding you have enough files.\n"
+        "If a search returns 0 results, immediately try a shorter or differently-cased variant.\n\n"
+        "═══ READING STRATEGY ═══\n"
+        "Read files in this priority order and DO NOT stop after 2-3 files:\n"
+        "  1. The .aspx / .ascx page or control file that renders the UI\n"
+        "  2. The .aspx.vb or .aspx.cs code-behind that handles events\n"
+        "  3. The service or business logic class (IXxxService, XxxService)\n"
+        "  4. The repository or data-access class (XxxRepository, XxxDA)\n"
+        "  5. Any helpers, utilities, or shared controls it calls\n"
+        "  6. Any SQL stored procedures or queries referenced\n"
+        "Read ALL layers — an answer that only covers the UI without the business logic is incomplete.\n\n"
+        "═══ ANSWER REQUIREMENTS ═══\n"
+        "Your final answer MUST include ALL of the following sections:\n\n"
+        "## Overview\n"
+        "Plain-language summary of what the feature/function does and why it exists.\n\n"
+        "## How It Works — Step by Step\n"
+        "Walk through the COMPLETE execution flow: user action → page event → service call → "
+        "data access → database → return path. Name each method and file at every step.\n"
+        "Format: 'When X happens, `FileName.vb` calls `MethodName()` which does Y, then passes to...'\n\n"
+        "## Key Code\n"
+        "Show the most important method(s) with file path and brief explanation.\n"
+        "Use: `FileName.vb` → `MethodName()` — what it does\n\n"
+        "## Files Involved\n"
+        "List every file you read, with its role: UI / CodeBehind / Service / Repository / Helper.\n\n"
+        "NEVER use general knowledge. Only answer from files you have read. "
+        "If you cannot find a file you need, say which file and why it matters, then continue "
+        "with what you have rather than stopping early."
     )
 
     messages = [{"role": "user", "content": (
@@ -420,7 +466,7 @@ def run_agentic_loop(query, branch):
 
         response = client.messages.create(
             model=MODEL,
-            max_tokens=2000,
+            max_tokens=4000,
             system=system_prompt,
             tools=tools,
             messages=messages,
@@ -429,9 +475,9 @@ def run_agentic_loop(query, branch):
         tool_uses = [b for b in response.content if b.type == "tool_use"]
 
         if not tool_uses:
-            final_answer = " ".join(
+            final_answer = _clean_answer(" ".join(
                 b.text for b in response.content if hasattr(b, "text")
-            ).strip()
+            ).strip())
             iterations_log.append({
                 "iteration":  iteration,
                 "action":     "Claude concluded — generating answer from gathered ADO context.",
@@ -493,7 +539,7 @@ def run_agentic_loop(query, branch):
         if response.stop_reason == "end_turn":
             text = " ".join(b.text for b in response.content if hasattr(b, "text")).strip()
             if text:
-                final_answer = text
+                final_answer = _clean_answer(text)
             break
 
     # Fallback synthesis if iteration cap hit without final text
@@ -505,17 +551,21 @@ def run_agentic_loop(query, branch):
         )
         fallback = client.messages.create(
             model=MODEL,
-            max_tokens=3000,
+            max_tokens=5000,
             system=(
-                "You are a Cora PPM code analyst. Answer ONLY from the ADO repository "
-                "context provided. Do NOT use general knowledge.\n\n"
-                "Your answer MUST:\n"
-                "1. Explain in plain language what the feature/button/function does and why\n"
-                "2. Walk through the actual logic step by step\n"
-                "3. Include short, relevant code snippets with their file path\n"
-                "4. Cite every file path you reference\n"
-                "5. Translate implementation details into plain English\n"
-                "If the context is insufficient, state that clearly."
+                "You are a senior Cora PPM code analyst. Answer ONLY from the ADO repository "
+                "context provided — never from general knowledge.\n\n"
+                "Your answer MUST follow this structure:\n\n"
+                "## Overview\n"
+                "Plain-language summary of what the feature/function does.\n\n"
+                "## How It Works — Step by Step\n"
+                "Trace the COMPLETE execution flow naming every method and file at each step.\n\n"
+                "## Key Code\n"
+                "Show the most important method bodies with file paths in fenced code blocks.\n\n"
+                "## Files Involved\n"
+                "List every file referenced with its role (UI / CodeBehind / Service / Repository).\n\n"
+                "If context is insufficient to cover all layers, state clearly which layer is missing "
+                "and what additional files would be needed."
             ),
             messages=[{
                 "role":    "user",
@@ -526,7 +576,7 @@ def run_agentic_loop(query, branch):
                 ),
             }],
         )
-        final_answer = fallback.content[0].text
+        final_answer = _clean_answer(fallback.content[0].text)
 
     total_searches   = sum(1 for it in iterations_log for tc in it.get("tool_calls", []) if tc.get("type") == "search")
     total_files_read = sum(1 for it in iterations_log for tc in it.get("tool_calls", []) if tc.get("type") == "read_file")
@@ -633,22 +683,28 @@ def run_computer_loop(query, branch):
     steps_log.append({"step": 5, "action": "First synthesis pass — checking if all needed files are present"})
 
     SYNTH_SYSTEM = (
-        "You are a Cora PPM code analyst. Your answer must come EXCLUSIVELY from "
-        "the Cora PPM ADO repository files provided. "
-        "Do NOT use general knowledge or external sources.\n\n"
-        "Your answer MUST:\n"
-        "1. Explain in plain language what the feature/button/function does and why\n"
-        "2. Walk through the actual logic step by step\n"
-        "   (e.g. 'When clicked, it calls X which validates Y then updates Z')\n"
-        "3. Include short, relevant code snippets with their file path —\n"
-        "   format each as: `FileName` → `MethodName()` — what it does\n"
-        "4. Cite every file path you reference\n"
-        "5. If multiple files interact, describe how they work together\n"
-        "6. Translate implementation details into plain English\n\n"
-        "IMPORTANT: If you cannot give a complete answer because specific files are missing, "
-        "list each missing file on its own line starting with 'MISSING_FILE: ' followed by "
-        "the full repository path (e.g. MISSING_FILE: /code/inetpub/wwwroot/ProjectVision8/Helpers/Foo.cs). "
-        "This allows the system to automatically fetch those files for you."
+        "You are a senior Cora PPM code analyst. Answer EXCLUSIVELY from the repository files "
+        "provided — never from general knowledge.\n\n"
+        "Your answer MUST follow this structure:\n\n"
+        "## Overview\n"
+        "1-2 sentence plain-language summary of what the feature/function does and why it exists.\n\n"
+        "## How It Works — Step by Step\n"
+        "Trace the COMPLETE execution flow from user action to database and back:\n"
+        "  - Name EVERY method called, in order, with the file it lives in\n"
+        "  - Describe what each step does, not just what it's named\n"
+        "  - Example: 'Clicking Save triggers `btnSave_Click` in `Timesheet.aspx.vb`, which calls "
+        "`TimesheetService.SaveTimesheet()`, which validates hours via `ValidateHours()` then "
+        "calls `TimesheetRepository.Insert()` which executes `sp_InsertTimesheetRow`'\n\n"
+        "## Key Code\n"
+        "Quote the most important method bodies (the actual code, not paraphrases), each preceded by "
+        "its file path. Use fenced code blocks.\n\n"
+        "## Files Involved\n"
+        "List every file you read with its role: UI / CodeBehind / Service / Repository / Helper / SQL.\n\n"
+        "DEPTH REQUIREMENT: A shallow answer that only covers the UI layer without the business logic "
+        "and data layer is NOT acceptable. Cover all layers you have files for.\n\n"
+        "MISSING FILES: If key files are absent, list each on its own line as:\n"
+        "MISSING_FILE: /full/repo/path/FileName.ext\n"
+        "The system will automatically fetch them so you can give a complete answer."
     )
 
     def _build_context(fc_list):
@@ -665,7 +721,7 @@ def run_computer_loop(query, branch):
 
     first_pass = client.messages.create(
         model=MODEL,
-        max_tokens=3000,
+        max_tokens=5000,
         system=SYNTH_SYSTEM,
         messages=[{
             "role":    "user",
@@ -694,14 +750,14 @@ def run_computer_loop(query, branch):
             "action": "Fetching " + str(len(missing_paths)) + " additional file(s) identified as needed: "
                       + ", ".join(p.rsplit("/", 1)[-1] for p in missing_paths),
         })
-        for j, fp in enumerate(missing_paths[:4], start=1):   # cap at 4 extra files
+        for j, fp in enumerate(missing_paths[:8], start=1):   # fetch up to 8 extra files
             _read_and_log(fp, f"6.{j}")
 
         # Re-synthesise with the full context
         steps_log.append({"step": "6.final", "action": "Re-synthesising with complete file set"})
         final_pass = client.messages.create(
             model=MODEL,
-            max_tokens=3000,
+            max_tokens=5000,
             system=SYNTH_SYSTEM,
             messages=[{
                 "role":    "user",
@@ -713,10 +769,10 @@ def run_computer_loop(query, branch):
                 ),
             }],
         )
-        final_answer = final_pass.content[0].text
+        final_answer = _clean_answer(final_pass.content[0].text)
     else:
         # No missing files flagged — first pass is the answer
-        final_answer = first_text
+        final_answer = _clean_answer(first_text)
 
     return {
         "answer":        final_answer,
@@ -1252,7 +1308,7 @@ def run_sharepoint_loop(query: str) -> dict:
     )
 
     return {
-        "answer":        synthesis.content[0].text,
+        "answer":        _clean_answer(synthesis.content[0].text),
         "steps":         steps_log,
         "total_steps":   len(steps_log),
         "results_found": len(all_results),
