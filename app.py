@@ -52,10 +52,10 @@ ADO_SEARCH_URL    = (
     f"/_apis/search/codesearchresults?api-version=7.0"
 )
 
-MAX_AGENTIC_ITERATIONS = 999   # effectively uncapped — time limits govern instead
+MAX_AGENTIC_ITERATIONS = 12    # more headroom for complex multi-file questions
 MAX_SEARCH_RESULTS     = 12    # broader initial candidate pool per search term
-MAX_FILE_CHARS         = 40000 # Cora PPM VB.NET files are large — need full method bodies
-MAX_FILES_TO_READ      = 12    # read more files before synthesising
+MAX_FILE_CHARS         = 15000 # read more of each file — key methods are often deep
+MAX_FILES_TO_READ      = 10    # read more files before synthesising
 
 # Time-based search control ─────────────────────────────────────────────────
 # Agentic loop pauses at these elapsed-second marks and asks the user whether
@@ -668,31 +668,20 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         "  6. Any SQL stored procedures or queries referenced\n"
         "Read ALL layers — an answer that only covers the UI without the business logic is incomplete.\n\n"
         "═══ ANSWER REQUIREMENTS ═══\n"
-        "Your final answer MUST use EXACTLY this two-section structure:\n\n"
-        "## Answer\n"
-        "Write a complete, professional, concise response for the end user who asked the question. "
-        "Use plain language — no file paths, no code snippets, no method names. "
-        "Explain WHAT the feature does, HOW it works conceptually, and any important business rules. "
-        "A non-technical stakeholder should fully understand this section.\n\n"
-        "---\n\n"
-        "## Technical Reference\n"
-        "*For dev/product team review*\n\n"
-        "Provide full technical depth for developers to verify and confirm the answer:\n"
-        "  - Complete execution flow naming every method, file, and layer in order.\n"
-        "    After EACH step, add an inline annotation showing which Answer claim it explains:\n"
-        "    e.g. `btnSave_Click` in `Timesheet.aspx.vb` (line 142) → *Supports: \"timesheet data is validated before saving\"*\n"
-        "  - Key code snippets (actual method bodies in fenced code blocks). Each snippet MUST be\n"
-        "    preceded by a header line: `File: path/to/File.ext, lines N–M` and followed by a note\n"
-        "    on which Answer claim this code directly supports.\n"
-        "  - File inventory: list every file read with its role (UI / CodeBehind / Service / Repository / Helper / SQL)\n"
-        "    and which Answer statement(s) it backs.\n"
-        "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: Explicitly call out ANY conditional branches,\n"
-        "    feature flags, config-driven paths, or permission checks that affect the behaviour described\n"
-        "    in the Answer. Format each one as:\n"
-        "    > ⚠️ **Conditional:** `If SomeFlag = True` in `File.ext` (line N) — affects: \"[Answer claim]\"\n"
-        "  - Any architecture notes, edge cases, or gaps in coverage\n\n"
+        "Your final answer MUST include ALL of the following sections:\n\n"
+        "## Overview\n"
+        "Plain-language summary of what the feature/function does and why it exists.\n\n"
+        "## How It Works — Step by Step\n"
+        "Walk through the COMPLETE execution flow: user action → page event → service call → "
+        "data access → database → return path. Name each method and file at every step.\n"
+        "Format: 'When X happens, `FileName.vb` calls `MethodName()` which does Y, then passes to...'\n\n"
+        "## Key Code\n"
+        "Show the most important method(s) with file path and brief explanation.\n"
+        "Use: `FileName.vb` → `MethodName()` — what it does\n\n"
+        "## Files Involved\n"
+        "List every file you read, with its role: UI / CodeBehind / Service / Repository / Helper.\n\n"
         "NEVER use general knowledge. Only answer from files you have read. "
-        "If you cannot find a file you need, note it in the Technical Reference section, then continue "
+        "If you cannot find a file you need, say which file and why it matters, then continue "
         "with what you have rather than stopping early."
     )
 
@@ -868,36 +857,24 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
             system=(
                 "You are a senior Cora PPM code analyst. Answer ONLY from the ADO repository "
                 "context provided — never from general knowledge.\n\n"
-                "Your answer MUST use EXACTLY this two-section structure:\n\n"
-                "## Answer\n"
-                "Write a complete, professional, concise response for the end user who asked the question. "
-                "Use plain language — no file paths, no code snippets, no method names. "
-                "Explain WHAT the feature does, HOW it works conceptually, and any important business rules. "
-                "A non-technical stakeholder should fully understand this section.\n\n"
-                "---\n\n"
-                "## Technical Reference\n"
-                "*For dev/product team review*\n\n"
-                "Provide full technical depth for developers to verify and confirm the answer:\n"
-                "  - Complete execution flow naming every method and file at each step.\n"
-                "    After EACH step, add an inline annotation: `MethodName` in `File.ext` (line N) → *Supports: \"[Answer claim]\"*\n"
-                "  - Key code snippets (actual method bodies in fenced code blocks). Each snippet MUST be\n"
-                "    preceded by: `File: path/to/File.ext, lines N–M` and followed by a note on which Answer claim it supports.\n"
-                "  - File inventory: every file read with its role (UI / CodeBehind / Service / Repository)\n"
-                "    and which Answer statement(s) it backs.\n"
-                "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: Explicitly call out ANY conditional branches,\n"
-                "    feature flags, config-driven paths, or permission checks that affect the behaviour described\n"
-                "    in the Answer. Format each one as:\n"
-                "    > ⚠️ **Conditional:** `If SomeFlag = True` in `File.ext` (line N) — affects: \"[Answer claim]\"\n\n"
+                "Your answer MUST follow this structure:\n\n"
+                "## Overview\n"
+                "Plain-language summary of what the feature/function does.\n\n"
+                "## How It Works — Step by Step\n"
+                "Trace the COMPLETE execution flow naming every method and file at each step.\n\n"
+                "## Key Code\n"
+                "Show the most important method bodies with file paths in fenced code blocks.\n\n"
+                "## Files Involved\n"
+                "List every file referenced with its role (UI / CodeBehind / Service / Repository).\n\n"
                 "If context is insufficient to cover all layers, state clearly which layer is missing "
                 "and what additional files would be needed."
             ),
             messages=[{
                 "role":    "user",
                 "content": (
-                    "Using ONLY the following files read from the Cora PPM ADO repository "
-                    "(branch: " + branch + "), answer this question with full detail:\n\n"
+                    "Based ONLY on the following ADO repository context, answer in full detail:\n\n"
                     "Question: " + query + "\n\n"
-                    "Repository files:\n" + context
+                    "ADO context gathered:\n" + context
                 ),
             }],
         )
@@ -1022,28 +999,21 @@ def run_computer_loop(query, branch):
     SYNTH_SYSTEM = (
         "You are a senior Cora PPM code analyst. Answer EXCLUSIVELY from the repository files "
         "provided — never from general knowledge.\n\n"
-        "Your answer MUST use EXACTLY this two-section structure:\n\n"
-        "## Answer\n"
-        "Write a complete, professional, concise response for the end user who asked the question. "
-        "Use plain language — no file paths, no code snippets, no method names. "
-        "Explain WHAT the feature does, HOW it works conceptually, and any important business rules. "
-        "A non-technical stakeholder should fully understand this section.\n\n"
-        "---\n\n"
-        "## Technical Reference\n"
-        "*For dev/product team review*\n\n"
-        "Provide full technical depth for developers to verify and confirm the answer:\n"
-        "  - Complete execution flow: name every method, file, and layer in order.\n"
-        "    After EACH step, add an inline annotation showing which Answer claim it explains:\n"
-        "    e.g. `btnSave_Click` in `Timesheet.aspx.vb` (line 142) → *Supports: \"timesheet data is validated before saving\"*\n"
-        "  - Key code snippets: quote the most important method bodies (actual code) in fenced code blocks.\n"
-        "    Each snippet MUST be preceded by: `File: path/to/File.ext, lines N–M`\n"
-        "    and followed by a note on which Answer claim the snippet directly supports.\n"
-        "  - File inventory: every file read with its role (UI / CodeBehind / Service / Repository / Helper / SQL)\n"
-        "    and which Answer statement(s) it backs.\n"
-        "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: Explicitly call out ANY conditional branches,\n"
-        "    feature flags, config-driven paths, or permission checks that affect the behaviour described\n"
-        "    in the Answer. Format each one as:\n"
-        "    > ⚠️ **Conditional:** `If SomeFlag = True` in `File.ext` (line N) — affects: \"[Answer claim]\"\n\n"
+        "Your answer MUST follow this structure:\n\n"
+        "## Overview\n"
+        "1-2 sentence plain-language summary of what the feature/function does and why it exists.\n\n"
+        "## How It Works — Step by Step\n"
+        "Trace the COMPLETE execution flow from user action to database and back:\n"
+        "  - Name EVERY method called, in order, with the file it lives in\n"
+        "  - Describe what each step does, not just what it's named\n"
+        "  - Example: 'Clicking Save triggers `btnSave_Click` in `Timesheet.aspx.vb`, which calls "
+        "`TimesheetService.SaveTimesheet()`, which validates hours via `ValidateHours()` then "
+        "calls `TimesheetRepository.Insert()` which executes `sp_InsertTimesheetRow`'\n\n"
+        "## Key Code\n"
+        "Quote the most important method bodies (the actual code, not paraphrases), each preceded by "
+        "its file path. Use fenced code blocks.\n\n"
+        "## Files Involved\n"
+        "List every file you read with its role: UI / CodeBehind / Service / Repository / Helper / SQL.\n\n"
         "DEPTH REQUIREMENT: A shallow answer that only covers the UI layer without the business logic "
         "and data layer is NOT acceptable. Cover all layers you have files for.\n\n"
         "MISSING FILES: If key files are absent, list each on its own line as:\n"
@@ -1674,33 +1644,19 @@ def run_sharepoint_loop(query: str) -> dict:
 
     synthesis = client.messages.create(
         model=MODEL,
-        max_tokens=4000,
+        max_tokens=3000,
         system=(
             "You are a Cora PPM documentation analyst. "
             "Answer EXCLUSIVELY from the SharePoint documents provided below. "
             "Do NOT use general knowledge or external sources.\n\n"
-            "Your answer MUST use EXACTLY this two-section structure:\n\n"
-            "## Answer\n"
-            "Write a complete, professional, concise response for the end user who asked the question. "
-            "Use plain language — no technical jargon unless necessary. "
-            "Explain WHAT the feature does, HOW it works, and any important details from the documentation. "
-            "A non-technical stakeholder should fully understand this section.\n\n"
-            "---\n\n"
-            "## Technical Reference\n"
-            "*For dev/product team review*\n\n"
-            "Provide detailed source references for the team to verify and confirm the answer:\n"
-            "  - For EACH detail cited, include an inline annotation showing which Answer claim it supports:\n"
-            "    e.g. Document Title, page 3 → *Supports: \"approvals require manager sign-off\"*\n"
-            "  - Specific quotes from source documents (document title + page number where available),\n"
-            "    each annotated with which Answer claim the quote backs.\n"
-            "  - Step-by-step procedures or technical processes described in the documentation,\n"
-            "    each annotated with which Answer claim it explains.\n"
-            "  - Any configuration details, field names, or system behaviour noted in the documents.\n"
-            "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: If any document describes behaviour that is\n"
-            "    conditional on settings, roles, permissions, or feature flags, call these out explicitly:\n"
-            "    > ⚠️ **Conditional:** [Description of condition from doc] (Document Title, page N) — affects: \"[Answer claim]\"\n"
-            "  - Sources section: list each document title as a markdown link using its Source URL\n\n"
-            "If the documents do not contain enough information, say so explicitly in both sections."
+            "Your answer MUST:\n"
+            "1. Explain the topic clearly in plain language — write like a help article\n"
+            "2. Use markdown headers (##), bullet points, and clear sections\n"
+            "3. Include relevant quotes or specific details from the source documents\n"
+            "4. After each key claim, note the document title it came from in parentheses\n"
+            "5. End with a '## Sources' section listing each document title as a "
+            "   markdown link using its Source URL\n\n"
+            "If the documents do not contain enough information, say so explicitly."
         ),
         messages=[{
             "role":    "user",
