@@ -1038,18 +1038,55 @@ def run_computer_loop(query, branch):
     })
 
     # Step 2 — Run ADO Code Search for each term, deduplicate results
+    # When a term returns 0 hits, automatically try shorter fallback variants
+    # (split camelCase, strip suffix) before giving up on that term.
     all_results = []
     seen_paths  = set()
     search_log  = []
 
+    def _camel_split(s):
+        """Split a PascalCase/camelCase string into its component words."""
+        import re
+        parts = re.sub(r'([A-Z][a-z]+)', r' \1', re.sub(r'([A-Z]+)(?=[A-Z][a-z])', r' \1', s)).split()
+        return [p for p in parts if len(p) >= 3]
+
+    def _search_and_add(term, label=None):
+        """Run one search term, add new hits to all_results, return log entry."""
+        hits = ado_code_search(term, branch, top=MAX_SEARCH_RESULTS)
+        new_hits = [r for r in hits if r.get("file_path") not in seen_paths]
+        for r in new_hits:
+            seen_paths.add(r.get("file_path"))
+            all_results.append(r)
+        return {"term": label or term, "hits": len(hits), "new_unique": len(new_hits)}
+
     for term in search_terms:
         try:
-            hits = ado_code_search(term, branch, top=MAX_SEARCH_RESULTS)
-            new_hits = [r for r in hits if r.get("file_path") not in seen_paths]
-            for r in new_hits:
-                seen_paths.add(r.get("file_path"))
-                all_results.append(r)
-            search_log.append({"term": term, "hits": len(hits), "new_unique": len(new_hits)})
+            entry = _search_and_add(term)
+            search_log.append(entry)
+
+            # If this term returned nothing, try shorter fallbacks before moving on
+            if entry["hits"] == 0:
+                fallbacks_tried = []
+                # 1. Split camelCase and try each component word
+                for part in _camel_split(term):
+                    if part not in search_terms and part not in fallbacks_tried:
+                        fallbacks_tried.append(part)
+                        try:
+                            fb = _search_and_add(part, label=f"{term}→{part}")
+                            search_log.append(fb)
+                            if fb["hits"] > 0:
+                                break   # found something — stop trying fallbacks for this term
+                        except Exception:
+                            pass
+                # 2. If still nothing, try just the first 4+ chars (catches naming variants)
+                if entry["hits"] == 0 and not any(s.get("hits", 0) > 0 for s in search_log[-len(fallbacks_tried):]):
+                    stem = term[:max(4, len(term) - 3)]
+                    if len(stem) >= 4 and stem not in search_terms and stem not in fallbacks_tried:
+                        try:
+                            fb = _search_and_add(stem, label=f"{term}→{stem}(stem)")
+                            search_log.append(fb)
+                        except Exception:
+                            pass
         except Exception as e:
             search_log.append({"term": term, "error": str(e)})
 
@@ -1071,10 +1108,54 @@ def run_computer_loop(query, branch):
 
     # Step 3 — Claude selects the most relevant files from all search results
     prioritised = select_relevant_files(query, search_results, client, max_files=MAX_FILES_TO_READ)
+
+    # Step 3b — Layer coverage enforcement
+    # Check that all four key layers of a WebForms feature are represented.
+    # If a layer is entirely absent from the selected set, run a targeted ADO
+    # search for it so the synthesis has the full picture.
+    _LAYER_SIGNALS = {
+        "UI":         lambda p: any(p.endswith(e) for e in (".aspx", ".ascx", ".html", ".htm")),
+        "CodeBehind": lambda p: any(p.endswith(e) for e in (".aspx.vb", ".aspx.cs", ".ascx.vb", ".ascx.cs")),
+        "Service":    lambda p: "service" in p.lower() or "Service" in p,
+        "Repository": lambda p: any(x in p for x in ("Repository", "Repo", "DataAccess", "DA.", "_DA")),
+    }
+    covered = {layer: any(fn(r.get("file_path", "")) for r in prioritised)
+               for layer, fn in _LAYER_SIGNALS.items()}
+
+    # For any missing layer, try a focused search using the first search term + layer suffix
+    if not all(covered.values()):
+        base_term = search_terms[0] if search_terms else ""
+        missing_layers = [l for l, ok in covered.items() if not ok]
+        layer_suffix_map = {
+            "Service":    ["Service"],
+            "Repository": ["Repository", "Repo"],
+        }
+        for layer in missing_layers:
+            if layer not in layer_suffix_map:
+                continue   # UI / CodeBehind gaps are less actionable programmatically
+            for suffix in layer_suffix_map[layer]:
+                try:
+                    extra = _search_and_add(base_term + suffix, label=f"layer:{layer}")
+                    search_log.append(extra)
+                    if extra["hits"] > 0:
+                        break
+                except Exception:
+                    pass
+        # Re-rank the now-expanded candidate pool so coverage picks go in order
+        if any(covered[l] is False for l in layer_suffix_map):
+            prioritised = select_relevant_files(query, all_results, client,
+                                                max_files=MAX_FILES_TO_READ + 2)
+        layer_note = "all layers present" if all(covered.values()) else (
+            "missing layers: " + ", ".join(l for l, ok in covered.items() if not ok)
+            + " — ran targeted layer searches"
+        )
+    else:
+        layer_note = "all layers present"
+
     selected_paths = [r.get("file_path", "") for r in prioritised]
     steps_log.append({
         "step":    3,
-        "action":  "Claude ranked candidates — reading: " + ", ".join(
+        "action":  "Claude ranked candidates (" + layer_note + ") — reading: " + ", ".join(
             p.rsplit("/", 1)[-1] for p in selected_paths if p
         ),
         "results": prioritised,
@@ -1128,9 +1209,10 @@ def run_computer_loop(query, branch):
         "List every file you read with its role: UI / CodeBehind / Service / Repository / Helper / SQL.\n\n"
         "DEPTH REQUIREMENT: A shallow answer that only covers the UI layer without the business logic "
         "and data layer is NOT acceptable. Cover all layers you have files for.\n\n"
-        "MISSING FILES: If key files are absent, list each on its own line as:\n"
-        "MISSING_FILE: /full/repo/path/FileName.ext\n"
-        "The system will automatically fetch them so you can give a complete answer."
+        "MISSING FILES: Only declare a file missing if (a) you are certain it exists because "
+        "you saw its exact path or filename cited in code you have already read, AND (b) it is "
+        "critical to answering the question. Do NOT speculatively list files that might exist. "
+        "Maximum 3 missing files. Format: MISSING_FILE: /full/repo/path/FileName.ext"
     )
 
     def _build_context(fc_list):
@@ -1140,10 +1222,55 @@ def run_computer_loop(query, branch):
                 + ", ".join(f'"{t}"' for t in search_terms)
                 + "] returned no readable files."
             )
-        return "\n\n".join(
-            "### File: " + fc["file_path"] + "\n" + fc["content"]
-            for fc in fc_list
-        )
+        parts = []
+        for fc in fc_list:
+            parts.append("### File: " + fc["file_path"] + "\n" + fc["content"])
+
+        # Append ADO search snippets for files that were NOT fully read.
+        # This gives the synthesis pass visibility into content that would have
+        # been missed by the top-N file read cutoff or by file truncation.
+        # Each snippet shows the actual matching lines at their char offset,
+        # so Claude can reference real code even from files it didn't fully read.
+        already_read = {fc["file_path"] for fc in fc_list}
+        snippet_sections = []
+        for r in search_results:
+            fp = r.get("file_path", "")
+            snips = r.get("snippets", [])
+            if not snips:
+                continue
+            if fp in already_read:
+                # For a file that WAS fully read but might be truncated, include
+                # snippets that fall beyond the truncation point (offset > MAX_FILE_CHARS).
+                deep_snips = [s for s in snips if s.get("offset", 0) > MAX_FILE_CHARS]
+                if not deep_snips:
+                    continue
+                section = (
+                    f"### Search Snippets (deep in truncated file): {fp}\n"
+                    + "\n---\n".join(
+                        f"[offset ~{s['offset']:,}]\n{s['content']}"
+                        for s in deep_snips
+                    )
+                )
+            else:
+                section = (
+                    f"### Search Snippet (not fully read): {fp}\n"
+                    + "\n---\n".join(
+                        f"[offset ~{s.get('offset',0):,}]\n{s['content']}"
+                        for s in snips
+                    )
+                )
+            snippet_sections.append(section)
+
+        if snippet_sections:
+            parts.append(
+                "---\n"
+                "## Additional Code Snippets from ADO Search\n"
+                "(These are matching excerpts from files not fully read above. "
+                "Reference them when constructing your answer.)\n\n"
+                + "\n\n".join(snippet_sections)
+            )
+
+        return "\n\n".join(parts)
 
     comp_input_tokens  = 0
     comp_output_tokens = 0
@@ -1178,11 +1305,43 @@ def run_computer_loop(query, branch):
     if missing_paths:
         steps_log.append({
             "step":   6,
-            "action": "Fetching " + str(len(missing_paths)) + " additional file(s) identified as needed: "
+            "action": "Resolving " + str(len(missing_paths)) + " missing file(s) via ADO search: "
                       + ", ".join(p.rsplit("/", 1)[-1] for p in missing_paths),
         })
-        for j, fp in enumerate(missing_paths[:8], start=1):   # fetch up to 8 extra files
-            _read_and_log(fp, f"6.{j}")
+        for j, fp in enumerate(missing_paths[:4], start=1):   # resolve up to 4 extra files
+            filename  = fp.rsplit("/", 1)[-1]          # e.g. "Popup_ProjectForecasting.aspx.vb"
+            classname = filename.rsplit(".", 1)[0] if "." in filename else filename
+            # Build a cascade of search terms to maximise the chance of finding the file.
+            # ADO Code Search tokenises on word boundaries, so a full dotted filename like
+            # "IProjectForecastUiBuilder.vb" often returns 0 hits while "ProjectForecast"
+            # or "ForecastUiBuilder" reliably finds it.
+            search_cascade = [filename, classname] + _camel_split(classname)
+            resolved_path = None   # only set if we find an exact filename match
+            for s_term in search_cascade:
+                if len(s_term) < 4:
+                    continue
+                try:
+                    hits = ado_code_search(s_term, branch, top=5)
+                    if hits:
+                        # Only accept hits where the filename actually matches — never
+                        # fall through to a generic hit which could be a completely wrong file.
+                        exact = [h for h in hits if h.get("file_path", "").endswith(filename)]
+                        if exact:
+                            resolved_path = exact[0]["file_path"]
+                            steps_log.append({
+                                "step":   f"6.{j}.resolve",
+                                "action": f"Resolved '{filename}' via '{s_term}' → {resolved_path}",
+                            })
+                            break
+                except Exception:
+                    pass
+            if resolved_path is None:
+                steps_log.append({
+                    "step":   f"6.{j}.resolve",
+                    "action": f"'{filename}' not found in repository — skipping (no exact match found)",
+                })
+                continue   # don't read a wrong file
+            _read_and_log(resolved_path, f"6.{j}")
 
         # Re-synthesise with the full context
         steps_log.append({"step": "6.final", "action": "Re-synthesising with complete file set"})
@@ -1219,6 +1378,313 @@ def run_computer_loop(query, branch):
         "branch":        branch,
         "input_tokens":  comp_input_tokens,
         "output_tokens": comp_output_tokens,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 2b. HYBRID LOOP  (structured search  +  adaptive iterative reading)
+# ---------------------------------------------------------------------------
+
+def run_hybrid_loop(query, branch):
+    """Phase 1 — Computer-loop-style structured search (multi-term, layer coverage).
+    Phase 2 — Agentic-loop-style adaptive reading: Claude reads one file at a time,
+               follows the reference chain, stops when it has all layers.
+    Phase 3 — Single structured synthesis pass.
+    """
+    steps_log = []
+    client    = get_client()
+    h_input_tokens  = 0
+    h_output_tokens = 0
+
+    # ── Phase 1: Structured broad search ─────────────────────────────────────
+
+    # Step 1 — Extract ADO-friendly search terms
+    search_terms = extract_search_terms(query, client)
+    steps_log.append({
+        "step":         1,
+        "action":       "Extracted search terms: " + ", ".join(f'"{t}"' for t in search_terms),
+        "search_terms": search_terms,
+        "url":          "https://dev.azure.com/" + ADO_ORG + "/" + ADO_PROJECT
+                        + "/_search?type=code&text=" + requests.utils.quote(search_terms[0]),
+    })
+
+    # Step 2 — Multi-term ADO search with camelCase fallbacks + layer coverage
+    all_results = []
+    seen_paths  = set()
+    search_log  = []
+
+    def _camel_split(s):
+        import re
+        parts = re.sub(r'([A-Z][a-z]+)', r' \1',
+                       re.sub(r'([A-Z]+)(?=[A-Z][a-z])', r' \1', s)).split()
+        return [p for p in parts if len(p) >= 3]
+
+    def _search_and_add(term, label=None):
+        hits     = ado_code_search(term, branch, top=MAX_SEARCH_RESULTS)
+        new_hits = [r for r in hits if r.get("file_path") not in seen_paths]
+        for r in new_hits:
+            seen_paths.add(r.get("file_path"))
+            all_results.append(r)
+        return {"term": label or term, "hits": len(hits), "new_unique": len(new_hits)}
+
+    for term in search_terms:
+        try:
+            entry = _search_and_add(term)
+            search_log.append(entry)
+            if entry["hits"] == 0:
+                for part in _camel_split(term):
+                    if part not in search_terms:
+                        try:
+                            fb = _search_and_add(part, label=f"{term}→{part}")
+                            search_log.append(fb)
+                            if fb["hits"] > 0:
+                                break
+                        except Exception:
+                            pass
+        except Exception as e:
+            search_log.append({"term": term, "error": str(e)})
+
+    # Layer coverage: targeted Service/Repository searches if missing
+    _LAYER_SIGNALS = {
+        "Service":    lambda p: "service" in p.lower(),
+        "Repository": lambda p: any(x in p for x in ("Repository", "Repo", "DataAccess")),
+    }
+    base_term = search_terms[0] if search_terms else ""
+    for layer, fn in _LAYER_SIGNALS.items():
+        if not any(fn(r.get("file_path", "")) for r in all_results):
+            for suffix in ([layer] if layer == "Service" else ["Repository", "Repo"]):
+                try:
+                    extra = _search_and_add(base_term + suffix, label=f"layer:{layer}")
+                    search_log.append(extra)
+                    if extra["hits"] > 0:
+                        break
+                except Exception:
+                    pass
+
+    search_summary = ", ".join(
+        f'"{sl["term"]}": {sl.get("hits", 0)} hit(s)' for sl in search_log
+    )
+    steps_log.append({
+        "step":     2,
+        "action":   (
+            f"Searched {len(search_terms)} term(s) — {search_summary}"
+            f" — {len(all_results)} unique file(s) in pool"
+        ),
+        "searches": search_log,
+        "results":  all_results,
+    })
+
+    # ── Phase 2: Adaptive iterative reading ──────────────────────────────────
+
+    # Pre-rank the candidate pool once so Claude has a priority-ordered list
+    candidates  = select_relevant_files(query, all_results, client, max_files=20)
+    file_contents = []
+    read_paths    = set()
+
+    def _read_and_log(fp, step_label):
+        if not fp or fp in read_paths:
+            return False
+        read_paths.add(fp)
+        try:
+            content = ado_read_file(fp, branch)
+            file_contents.append({"file_path": fp, "content": content})
+            steps_log.append({
+                "step":            step_label,
+                "action":          "Read file: " + fp,
+                "url":             "https://dev.azure.com/" + ADO_ORG + "/" + ADO_PROJECT
+                                   + "/_git/" + ADO_REPO + "?path=" + fp + "&version=GB" + branch,
+                "content_preview": content[:250] + "..." if len(content) > 250 else content,
+                "chars_read":      len(content),
+            })
+            return True
+        except Exception as e:
+            steps_log.append({"step": step_label, "action": f"Could not read {fp}: {e}"})
+            return False
+
+    MAX_READS       = 10   # max files to read in the adaptive phase
+    MAX_TOTAL_ITERS = 16   # hard ceiling to prevent infinite SEARCH loops
+    reads_done      = 0
+    last_fp         = None
+    last_content    = None
+
+    steps_log.append({
+        "step":   3,
+        "action": f"Adaptive read phase — {len(candidates)} candidates ranked, "
+                  f"following reference chain (max {MAX_READS} reads)",
+    })
+
+    for total_iter in range(1, MAX_TOTAL_ITERS + 1):
+        if reads_done >= MAX_READS:
+            steps_log.append({"step": f"3.{total_iter}", "action": "Read limit reached — proceeding to synthesis"})
+            break
+
+        unread = [r for r in candidates if r.get("file_path") not in read_paths]
+
+        read_summary = (
+            "\n".join(f"  - {fp}" for fp in read_paths)
+            if read_paths else "  (none yet)"
+        )
+        candidate_list = (
+            "\n".join(f"  - {r.get('file_path','')}" for r in unread[:20])
+            if unread else "  (no more candidates)"
+        )
+        recent_block = (
+            f"\nMost recently read — {last_fp}:\n```\n"
+            + last_content[:2500]
+            + ("\n[...truncated...]" if len(last_content) > 2500 else "")
+            + "\n```\n"
+        ) if last_fp else ""
+
+        nav_resp = client.messages.create(
+            model=MODEL,
+            max_tokens=80,
+            messages=[{
+                "role":    "user",
+                "content": (
+                    f"Navigating a VB.NET/C# ASP.NET WebForms codebase.\n"
+                    f"Question: {query}\n\n"
+                    f"Files read so far:\n{read_summary}\n"
+                    f"{recent_block}\n"
+                    f"Unread candidates:\n{candidate_list}\n\n"
+                    "What is the single most important file to read next?\n"
+                    "Look for imports, method calls, and class names in the last-read file "
+                    "that point to unread files.\n\n"
+                    "Reply with EXACTLY ONE line:\n"
+                    "  READ: /full/path/FileName.ext   (from candidates, or exact path seen in code)\n"
+                    "  SEARCH: ClassName               (search for a file not listed above)\n"
+                    "  DONE                            (you have seen UI + CodeBehind + Service + Repository)"
+                ),
+            }],
+        )
+        h_input_tokens  += getattr(getattr(nav_resp, "usage", None), "input_tokens",  0)
+        h_output_tokens += getattr(getattr(nav_resp, "usage", None), "output_tokens", 0)
+
+        nav_text = nav_resp.content[0].text.strip().splitlines()[0].strip()
+        steps_log.append({"step": f"3.{total_iter}", "action": f"Navigation: {nav_text}"})
+
+        if nav_text.upper().startswith("DONE"):
+            steps_log.append({"step": f"3.{total_iter}", "action": "Claude: all layers covered — proceeding to synthesis"})
+            break
+
+        elif nav_text.upper().startswith("SEARCH:"):
+            term = nav_text[7:].strip()
+            try:
+                new_hits  = ado_code_search(term, branch, top=5)
+                new_uniq  = [r for r in new_hits if r.get("file_path") not in seen_paths]
+                for r in new_uniq:
+                    seen_paths.add(r.get("file_path"))
+                    candidates.append(r)
+                search_log.append({
+                    "term": term, "hits": len(new_hits),
+                    "new_unique": len(new_uniq), "triggered_by": "hybrid_nav",
+                })
+                steps_log.append({
+                    "step":   f"3.{total_iter}.search",
+                    "action": f"Searched '{term}' → {len(new_hits)} hit(s), {len(new_uniq)} new candidate(s)",
+                })
+            except Exception as e:
+                steps_log.append({"step": f"3.{total_iter}.search", "action": f"Search '{term}' failed: {e}"})
+            # SEARCH does not consume a read slot — continue to next iter
+
+        elif nav_text.upper().startswith("READ:"):
+            fp = nav_text[5:].strip()
+            # If Claude gave just a filename (not full path), resolve it from candidates
+            if not fp.startswith("/"):
+                fname   = fp.rsplit("/", 1)[-1]
+                matches = [r.get("file_path") for r in candidates if r.get("file_path", "").endswith(fname)]
+                if matches:
+                    fp = matches[0]
+            ok = _read_and_log(fp, f"3.{total_iter}.read")
+            if ok:
+                reads_done  += 1
+                last_fp      = fp
+                last_content = file_contents[-1]["content"]
+
+        else:
+            # Try to salvage a path from the response
+            import re as _re
+            m = _re.search(r'(/[\w/._%+-]+\.\w+)', nav_text)
+            if m:
+                fp = m.group(1)
+                ok = _read_and_log(fp, f"3.{total_iter}.read")
+                if ok:
+                    reads_done  += 1
+                    last_fp      = fp
+                    last_content = file_contents[-1]["content"]
+            else:
+                break   # unparseable — bail out of navigation loop
+
+    # ── Phase 3: Single synthesis pass ───────────────────────────────────────
+
+    SYNTH_SYSTEM = (
+        "You are a senior Cora PPM code analyst. Answer EXCLUSIVELY from the repository files "
+        "provided — never from general knowledge.\n\n"
+        "Your answer MUST follow this structure:\n\n"
+        "## Overview\n"
+        "1-2 sentence plain-language summary of what the feature/function does and why it exists.\n\n"
+        "## How It Works — Step by Step\n"
+        "Trace the COMPLETE execution flow from user action to database and back:\n"
+        "  - Name EVERY method called, in order, with the file it lives in\n"
+        "  - Describe what each step does, not just what it's named\n"
+        "  - Example: 'Clicking Save triggers `btnSave_Click` in `Timesheet.aspx.vb`, which calls "
+        "`TimesheetService.SaveTimesheet()`, which validates hours via `ValidateHours()` then "
+        "calls `TimesheetRepository.Insert()` which executes `sp_InsertTimesheetRow`'\n\n"
+        "## Key Code\n"
+        "Quote the most important method bodies (the actual code, not paraphrases), each preceded by "
+        "its file path. Use fenced code blocks.\n\n"
+        "## Files Involved\n"
+        "List every file you read with its role: UI / CodeBehind / Service / Repository / Helper / SQL.\n\n"
+        "DEPTH REQUIREMENT: A shallow answer that only covers the UI layer without the business logic "
+        "and data layer is NOT acceptable. Cover all layers you have files for."
+    )
+
+    def _build_context(fc_list):
+        if not fc_list:
+            return (
+                "ADO Code Search for terms ["
+                + ", ".join(f'"{t}"' for t in search_terms)
+                + "] returned no readable files."
+            )
+        return "\n\n".join(
+            "### File: " + fc["file_path"] + "\n" + fc["content"]
+            for fc in fc_list
+        )
+
+    steps_log.append({
+        "step":   4,
+        "action": f"Synthesis — building structured answer from {len(file_contents)} file(s)",
+    })
+
+    synth_resp = client.messages.create(
+        model=MODEL,
+        max_tokens=5000,
+        system=SYNTH_SYSTEM,
+        messages=[{
+            "role":    "user",
+            "content": (
+                "Using ONLY the following files from the Cora PPM ADO repository "
+                "(branch: " + branch + "), answer this question with full detail:\n\n"
+                "Question: " + query + "\n\n"
+                "Repository files:\n" + _build_context(file_contents)
+            ),
+        }],
+    )
+    h_input_tokens  += getattr(getattr(synth_resp, "usage", None), "input_tokens",  0)
+    h_output_tokens += getattr(getattr(synth_resp, "usage", None), "output_tokens", 0)
+
+    final_answer = _clean_answer(synth_resp.content[0].text)
+    confidence   = assess_confidence(query, final_answer, len(file_contents), "Hybrid Loop")
+
+    return {
+        "answer":        final_answer,
+        "confidence":    confidence,
+        "steps":         steps_log,
+        "total_steps":   len(steps_log),
+        "results_found": len(all_results),
+        "files_read":    len(file_contents),
+        "branch":        branch,
+        "input_tokens":  h_input_tokens,
+        "output_tokens": h_output_tokens,
     }
 
 
@@ -1804,8 +2270,9 @@ def run_sharepoint_loop(query: str) -> dict:
 #    Combines answers from all three loops into one comprehensive response.
 # ---------------------------------------------------------------------------
 
-def synthesize_all(query: str, agentic_result: dict, computer_result: dict, sp_result: dict) -> str:
-    """Synthesize answers from all three search loops into one authoritative answer."""
+def synthesize_all(query: str, agentic_result: dict, computer_result: dict,
+                   hybrid_result: dict, sp_result: dict) -> str:
+    """Synthesize answers from all search loops into one authoritative answer."""
     client = get_client()
 
     parts = []
@@ -1822,6 +2289,13 @@ def synthesize_all(query: str, agentic_result: dict, computer_result: dict, sp_r
         parts.append(
             f"=== COMPUTER LOOP (ADO Repository{', branch: ' + branch if branch else ''}, "
             f"{files} file(s) read) ===\n{computer_result['answer']}"
+        )
+    if hybrid_result and hybrid_result.get("answer"):
+        branch = hybrid_result.get("branch", "")
+        files  = hybrid_result.get("files_read", 0)
+        parts.append(
+            f"=== HYBRID LOOP (ADO Repository{', branch: ' + branch if branch else ''}, "
+            f"{files} file(s) read) ===\n{hybrid_result['answer']}"
         )
     if sp_result and sp_result.get("answer"):
         files = sp_result.get("files_read", 0)
@@ -2212,6 +2686,35 @@ def api_computer():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/hybrid", methods=["POST"])
+def api_hybrid():
+    data   = request.get_json() or {}
+    query  = data.get("query",  "").strip()
+    branch = data.get("branch", "").strip()
+    if not query:
+        return jsonify({"error": "No query provided."}), 400
+    if not branch:
+        return jsonify({"error": "Please select a branch first."}), 400
+    t0 = time.time()
+    try:
+        result = run_hybrid_loop(query, branch)
+        track_search_event(
+            "hybrid", query, branch, "success",
+            time.time() - t0,
+            result.get("files_read",    0),
+            0,
+            result.get("results_found", 0),
+            result.get("confidence", {}).get("level", ""),
+            input_tokens=result.get("input_tokens",  0),
+            output_tokens=result.get("output_tokens", 0),
+        )
+        return jsonify({"success": True, "result": result})
+    except Exception as e:
+        track_search_event("hybrid", query, branch, "error", time.time() - t0,
+                           error_message=str(e))
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/compare", methods=["POST"])
 def api_compare():
     data     = request.get_json() or {}
@@ -2258,19 +2761,23 @@ def api_synthesize():
     query    = data.get("query", "").strip()
     agentic  = data.get("agentic_result")
     computer = data.get("computer_result")
+    hybrid   = data.get("hybrid_result")
     sp       = data.get("sp_result")
     if not query:
         return jsonify({"error": "No query provided."}), 400
-    if not any([agentic, computer, sp]):
+    if not any([agentic, computer, hybrid, sp]):
         return jsonify({"error": "At least one search result is required."}), 400
     sources_used = ", ".join(filter(None, [
-        "Agentic" if agentic else "",
-        "Computer" if computer else "",
-        "SharePoint" if sp else "",
+        "Agentic"   if agentic  else "",
+        "Computer"  if computer else "",
+        "Hybrid"    if hybrid   else "",
+        "SharePoint" if sp      else "",
     ]))
     t0 = time.time()
     try:
-        synthesis, synth_in, synth_out = synthesize_all(query, agentic or {}, computer or {}, sp or {})
+        synthesis, synth_in, synth_out = synthesize_all(
+            query, agentic or {}, computer or {}, hybrid or {}, sp or {}
+        )
         track_synthesis_event(query, sources_used, time.time() - t0, "success",
                               input_tokens=synth_in, output_tokens=synth_out)
         return jsonify({"success": True, "synthesis": synthesis})
