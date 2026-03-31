@@ -1501,11 +1501,13 @@ def run_hybrid_loop(query, branch):
             steps_log.append({"step": step_label, "action": f"Could not read {fp}: {e}"})
             return False
 
-    MAX_READS       = 10   # max files to read in the adaptive phase
-    MAX_TOTAL_ITERS = 16   # hard ceiling to prevent infinite SEARCH loops
-    reads_done      = 0
-    last_fp         = None
-    last_content    = None
+    MAX_READS          = 10   # max files to read in the adaptive phase
+    MAX_TOTAL_ITERS    = 16   # hard ceiling to prevent infinite SEARCH loops
+    reads_done         = 0
+    last_fp            = None
+    last_content       = None
+    failed_searches    = set()   # terms that returned 0 hits — never retry
+    consecutive_failed = 0       # consecutive zero-hit searches in a row
 
     steps_log.append({
         "step":   3,
@@ -1519,6 +1521,21 @@ def run_hybrid_loop(query, branch):
             break
 
         unread = [r for r in candidates if r.get("file_path") not in read_paths]
+
+        # After 2 consecutive zero-hit searches, force-read the next best candidate
+        if consecutive_failed >= 2 and unread:
+            fp = unread[0].get("file_path", "")
+            steps_log.append({
+                "step":   f"3.{total_iter}",
+                "action": f"Force-reading next candidate after {consecutive_failed} failed searches: {fp}",
+            })
+            ok = _read_and_log(fp, f"3.{total_iter}.read")
+            if ok:
+                reads_done        += 1
+                last_fp            = fp
+                last_content       = file_contents[-1]["content"]
+                consecutive_failed = 0
+            continue
 
         read_summary = (
             "\n".join(f"  - {fp}" for fp in read_paths)
@@ -1535,6 +1552,12 @@ def run_hybrid_loop(query, branch):
             + "\n```\n"
         ) if last_fp else ""
 
+        failed_block = (
+            "Terms already searched with 0 hits — do NOT search these again:\n"
+            + "\n".join(f"  - {t}" for t in sorted(failed_searches))
+            + "\n\n"
+        ) if failed_searches else ""
+
         nav_resp = client.messages.create(
             model=MODEL,
             max_tokens=80,
@@ -1545,14 +1568,18 @@ def run_hybrid_loop(query, branch):
                     f"Question: {query}\n\n"
                     f"Files read so far:\n{read_summary}\n"
                     f"{recent_block}\n"
-                    f"Unread candidates:\n{candidate_list}\n\n"
-                    "What is the single most important file to read next?\n"
-                    "Look for imports, method calls, and class names in the last-read file "
-                    "that point to unread files.\n\n"
+                    f"Unread candidates (already discovered — prefer READ over SEARCH):\n{candidate_list}\n\n"
+                    f"{failed_block}"
+                    "DECISION RULES (follow in order):\n"
+                    "1. If the answer needs a layer (Service/Repository/CodeBehind) already in the candidate list → READ it.\n"
+                    "2. If you see a specific file referenced in code that is NOT in the candidate list → SEARCH once.\n"
+                    "3. Never SEARCH a term that already returned 0 hits (listed above).\n"
+                    "4. Never repeat the same SEARCH twice.\n"
+                    "5. If you have covered UI + at least one server-side layer → DONE.\n\n"
                     "Reply with EXACTLY ONE line:\n"
-                    "  READ: /full/path/FileName.ext   (from candidates, or exact path seen in code)\n"
-                    "  SEARCH: ClassName               (search for a file not listed above)\n"
-                    "  DONE                            (you have seen UI + CodeBehind + Service + Repository)"
+                    "  READ: /full/path/FileName.ext   (pick the most relevant unread candidate)\n"
+                    "  SEARCH: ExactClassName          (only if the file is genuinely missing from candidates)\n"
+                    "  DONE                            (enough layers covered to answer the question)"
                 ),
             }],
         )
@@ -1568,6 +1595,21 @@ def run_hybrid_loop(query, branch):
 
         elif nav_text.upper().startswith("SEARCH:"):
             term = nav_text[7:].strip()
+            # Skip if already tried with 0 results
+            if term in failed_searches:
+                steps_log.append({
+                    "step":   f"3.{total_iter}.search",
+                    "action": f"Skipped repeat zero-hit search for '{term}' — forcing READ instead",
+                })
+                if unread:
+                    fp = unread[0].get("file_path", "")
+                    ok = _read_and_log(fp, f"3.{total_iter}.read")
+                    if ok:
+                        reads_done        += 1
+                        last_fp            = fp
+                        last_content       = file_contents[-1]["content"]
+                        consecutive_failed = 0
+                continue
             try:
                 new_hits  = ado_code_search(term, branch, top=5)
                 new_uniq  = [r for r in new_hits if r.get("file_path") not in seen_paths]
@@ -1582,7 +1624,14 @@ def run_hybrid_loop(query, branch):
                     "step":   f"3.{total_iter}.search",
                     "action": f"Searched '{term}' → {len(new_hits)} hit(s), {len(new_uniq)} new candidate(s)",
                 })
+                if len(new_hits) == 0:
+                    failed_searches.add(term)
+                    consecutive_failed += 1
+                else:
+                    consecutive_failed = 0
             except Exception as e:
+                failed_searches.add(term)
+                consecutive_failed += 1
                 steps_log.append({"step": f"3.{total_iter}.search", "action": f"Search '{term}' failed: {e}"})
             # SEARCH does not consume a read slot — continue to next iter
 
@@ -1596,9 +1645,10 @@ def run_hybrid_loop(query, branch):
                     fp = matches[0]
             ok = _read_and_log(fp, f"3.{total_iter}.read")
             if ok:
-                reads_done  += 1
-                last_fp      = fp
-                last_content = file_contents[-1]["content"]
+                reads_done         += 1
+                last_fp             = fp
+                last_content        = file_contents[-1]["content"]
+                consecutive_failed  = 0
 
         else:
             # Try to salvage a path from the response
@@ -1608,9 +1658,10 @@ def run_hybrid_loop(query, branch):
                 fp = m.group(1)
                 ok = _read_and_log(fp, f"3.{total_iter}.read")
                 if ok:
-                    reads_done  += 1
-                    last_fp      = fp
-                    last_content = file_contents[-1]["content"]
+                    reads_done         += 1
+                    last_fp             = fp
+                    last_content        = file_contents[-1]["content"]
+                    consecutive_failed  = 0
             else:
                 break   # unparseable — bail out of navigation loop
 
