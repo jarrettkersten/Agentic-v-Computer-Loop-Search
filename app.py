@@ -2106,6 +2106,206 @@ def api_synthesize():
 
 
 # ---------------------------------------------------------------------------
+# Clarifying question
+# ---------------------------------------------------------------------------
+
+@app.route("/api/clarify", methods=["POST"])
+def api_clarify():
+    """
+    Quickly check whether a query is specific enough, or needs one clarifying
+    question before searching. Returns JSON:
+      {"needs_clarification": false}
+    or
+      {"needs_clarification": true, "question": "..."}
+    """
+    data  = request.get_json() or {}
+    query = data.get("query", "").strip()
+    if not query:
+        return jsonify({"needs_clarification": False})
+    try:
+        client = get_client()
+        resp   = client.messages.create(
+            model=MODEL,
+            max_tokens=200,
+            system=(
+                "You decide whether a Cora PPM codebase question needs one clarifying question "
+                "before searching, or is already specific enough.\n\n"
+                "Rules:\n"
+                "  - Only ask if the answer would meaningfully change WHAT files to search for.\n"
+                "  - Never ask about things that don't affect the search (e.g. 'why do you want to know').\n"
+                "  - If the question names a specific feature, button, page, or behaviour → it's specific enough.\n"
+                "  - Respond ONLY with valid JSON, no extra text:\n"
+                '    {"needs_clarification": false}\n'
+                "  or:\n"
+                '    {"needs_clarification": true, "question": "One short, specific follow-up question."}'
+            ),
+            messages=[{"role": "user", "content": f"Question: {query}"}],
+        )
+        text = resp.content[0].text.strip()
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"): text = text[4:]
+            text = text.strip()
+        result = json.loads(text)
+        result["needs_clarification"] = bool(result.get("needs_clarification", False))
+        return jsonify(result)
+    except Exception:
+        return jsonify({"needs_clarification": False})
+
+
+# ---------------------------------------------------------------------------
+# Follow-up questions within a session
+# ---------------------------------------------------------------------------
+
+@app.route("/api/followup", methods=["POST"])
+def api_followup():
+    """
+    Answer a follow-up question using only the context already gathered in this
+    session (the answers from prior search loops). Does NOT re-run ADO searches.
+    """
+    data              = request.get_json() or {}
+    original_question = data.get("original_question", "").strip()
+    followup_question = data.get("followup_question", "").strip()
+    answers           = data.get("answers", {})          # {agentic, computer, sharepoint, synthesis}
+    previous_followups = data.get("previous_followups", [])  # [{q, a}, ...]
+
+    if not followup_question:
+        return jsonify({"error": "No follow-up question provided."}), 400
+
+    # Build context from whichever answers are available
+    context_parts = []
+    for key, label in [
+        ("synthesis",   "Comprehensive Synthesis (all sources)"),
+        ("agentic",     "Agentic Loop answer"),
+        ("computer",    "Computer Loop answer"),
+        ("sharepoint",  "SharePoint KB answer"),
+    ]:
+        ans = answers.get(key)
+        if ans and isinstance(ans, dict):
+            text = ans.get("answer") or ans.get("synthesis") or ""
+        elif isinstance(ans, str):
+            text = ans
+        else:
+            text = ""
+        if text.strip():
+            context_parts.append(f"=== {label} ===\n{text.strip()}")
+
+    if not context_parts:
+        return jsonify({"error": "No search results available to answer follow-up questions. Run at least one search first."}), 400
+
+    # Build conversation history from previous follow-ups
+    history_lines = []
+    for i, fu in enumerate(previous_followups, 1):
+        history_lines.append(f"Follow-up {i}: {fu.get('q','')}\nAnswer {i}: {fu.get('a','')}")
+
+    history_section = ("\n\n--- Previous follow-ups ---\n" + "\n\n".join(history_lines)) if history_lines else ""
+
+    try:
+        client = get_client()
+        resp   = client.messages.create(
+            model=MODEL,
+            max_tokens=2000,
+            system=(
+                "You are a Cora PPM analyst answering follow-up questions within an existing Q&A session. "
+                "You MUST answer ONLY from the search results provided below — never from general knowledge.\n\n"
+                "Your answer MUST use EXACTLY this two-section structure:\n\n"
+                "## Answer\n"
+                "Direct, plain-language answer to the follow-up question, drawing on the search results below.\n\n"
+                "---\n\n"
+                "## Technical Reference\n"
+                "*For dev/product team review*\n\n"
+                "Any specific file paths, method names, code references, or document sources from the "
+                "search results that support this answer. If nothing specific applies, write 'See prior search results.'"
+            ),
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Original question: {original_question}\n\n"
+                    f"Search results from this session:\n"
+                    + "\n\n".join(context_parts)
+                    + history_section
+                    + f"\n\n---\nNew follow-up question: {followup_question}"
+                ),
+            }],
+        )
+        answer = _clean_answer(resp.content[0].text)
+        return jsonify({"success": True, "answer": answer})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Session export  (returns a Markdown file)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/session-export", methods=["POST"])
+def api_session_export():
+    """
+    Assemble the full session (original Q, all loop answers, synthesis,
+    all follow-ups) into a single Markdown document and return it as a
+    downloadable .md file.
+    """
+    data              = request.get_json() or {}
+    original_question = data.get("original_question", "").strip()
+    answers           = data.get("answers", {})
+    followups         = data.get("followups", [])    # [{q, a}, ...]
+    branch            = data.get("branch", "")
+
+    lines = [
+        f"# Cora PPM Q&A Session Export",
+        f"",
+        f"**Question:** {original_question}",
+    ]
+    if branch:
+        lines.append(f"**Branch:** `{branch}`")
+    lines += ["", "---", ""]
+
+    # Loop answers
+    for key, label, icon in [
+        ("synthesis",  "Comprehensive Synthesis",  "✨"),
+        ("agentic",    "Agentic Loop",              "⚡"),
+        ("computer",   "Computer Loop",             "🖥"),
+        ("sharepoint", "SharePoint KB",             "🔷"),
+    ]:
+        ans = answers.get(key)
+        if ans and isinstance(ans, dict):
+            text = ans.get("answer") or ans.get("synthesis") or ""
+            conf = ans.get("confidence", {}).get("level", "") if isinstance(ans.get("confidence"), dict) else ""
+        elif isinstance(ans, str):
+            text = ans
+            conf = ""
+        else:
+            text = ""
+            conf = ""
+        if not text.strip():
+            continue
+        conf_str = f" · Confidence: {conf}" if conf else ""
+        lines += [f"## {icon} {label}{conf_str}", "", text.strip(), "", "---", ""]
+
+    # Follow-up questions
+    if followups:
+        lines += ["## 💬 Follow-up Questions", ""]
+        for i, fu in enumerate(followups, 1):
+            lines += [
+                f"### Follow-up {i}: {fu.get('q', '')}",
+                "",
+                fu.get("a", ""),
+                "",
+            ]
+
+    md_content = "\n".join(lines)
+
+    safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in original_question[:60]).strip()
+    filename  = f"CoPPM_QA_{safe_name or 'session'}.md"
+
+    return Response(
+        md_content,
+        mimetype="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Admin routes
 # ---------------------------------------------------------------------------
 
