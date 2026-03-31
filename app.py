@@ -382,11 +382,25 @@ def ado_code_search(query, branch, top=None):
 
     results = []
     for r in resp.json().get("results", [])[:top]:
-        results.append({
+        entry = {
             "file_path":  r.get("path", ""),
             "file_name":  r.get("fileName", ""),
             "repository": r.get("repository", {}).get("name", ""),
-        })
+        }
+        # Extract content snippets from ADO's hits array.
+        # Each hit contains the matching lines of code at a specific char offset.
+        # Including these means callers can see matching code from ANY file — even
+        # large files that would be truncated during a full read — without an extra
+        # API call.  We keep the top 3 snippets per file, trimming whitespace.
+        snippets = []
+        for hit in r.get("hits", []):
+            text = hit.get("content", "").strip()
+            offset = hit.get("charOffset", 0)
+            if text and len(snippets) < 3:
+                snippets.append({"offset": offset, "content": text})
+        if snippets:
+            entry["snippets"] = snippets
+        results.append(entry)
     return results
 
 
@@ -410,7 +424,17 @@ def ado_read_file(file_path, branch):
             f"{resp.status_code} {resp.reason} — ADO detail: {detail}",
             response=resp,
         )
-    return resp.text[:MAX_FILE_CHARS]
+    content = resp.text
+    if len(content) > MAX_FILE_CHARS:
+        return (
+            content[:MAX_FILE_CHARS]
+            + f"\n\n[⚠ FILE TRUNCATED — only the first {MAX_FILE_CHARS:,} chars are shown; "
+            "the file continues beyond this point. Methods or classes defined later in the "
+            "file are NOT visible here. To find specific code deeper in this file, call "
+            "ado_code_search with the exact method or class name as the search term — "
+            "the search engine will return the matching snippet at its actual location.]"
+        )
+    return content
 
 
 def get_client():
@@ -664,10 +688,13 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
             "name": "ado_code_search",
             "description": (
                 "Search the Cora PPM Azure DevOps repository for relevant code, "
-                "files, or implementations. Returns matching file paths from the "
-                f"{ADO_REPO} repository. "
+                "files, or implementations. Returns matching file paths AND content "
+                f"snippets (the actual matching lines of code) from the {ADO_REPO} repository. "
+                "The snippets show the exact code at the match location — use them to "
+                "inspect code from large files without reading the full file, and to "
+                "find methods that may be beyond the truncation point of a file you already read. "
                 "Call this multiple times with different short technical search terms "
-                "(class names, feature names, 1-3 words) to find all relevant files. "
+                "(class names, method names, feature names, 1-3 words) to find all relevant files. "
                 "NEVER use the full user question as the search term — it returns nothing."
             ),
             "input_schema": {
@@ -729,6 +756,14 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         "  5. Any helpers, utilities, or shared controls it calls\n"
         "  6. Any SQL stored procedures or queries referenced\n"
         "Read ALL layers — an answer that only covers the UI without the business logic is incomplete.\n\n"
+        "═══ HANDLING TRUNCATED FILES ═══\n"
+        "When a file you read ends with '⚠ FILE TRUNCATED', the method or class you need may be\n"
+        "further down in the file. DO NOT re-read the same file — it will truncate at the same point.\n"
+        "Instead, IMMEDIATELY call ado_code_search with the EXACT method or class name you are\n"
+        "looking for (e.g. 'btnSubmitEac_OnClick', 'SubmitEac', 'IProjectForecastUiBuilder').\n"
+        "The search engine returns snippets at their actual location, bypassing the truncation.\n"
+        "Also check the snippets already returned in earlier search results — they may already\n"
+        "contain the code you need at the precise offset in the file.\n\n"
         "═══ ANSWER REQUIREMENTS ═══\n"
         "Your final answer MUST include ALL of the following sections:\n\n"
         "## Overview\n"
@@ -1058,10 +1093,54 @@ def run_computer_loop(query, branch):
 
     # Step 3 — Claude selects the most relevant files from all search results
     prioritised = select_relevant_files(query, search_results, client, max_files=MAX_FILES_TO_READ)
+
+    # Step 3b — Layer coverage enforcement
+    # Check that all four key layers of a WebForms feature are represented.
+    # If a layer is entirely absent from the selected set, run a targeted ADO
+    # search for it so the synthesis has the full picture.
+    _LAYER_SIGNALS = {
+        "UI":         lambda p: any(p.endswith(e) for e in (".aspx", ".ascx", ".html", ".htm")),
+        "CodeBehind": lambda p: any(p.endswith(e) for e in (".aspx.vb", ".aspx.cs", ".ascx.vb", ".ascx.cs")),
+        "Service":    lambda p: "service" in p.lower() or "Service" in p,
+        "Repository": lambda p: any(x in p for x in ("Repository", "Repo", "DataAccess", "DA.", "_DA")),
+    }
+    covered = {layer: any(fn(r.get("file_path", "")) for r in prioritised)
+               for layer, fn in _LAYER_SIGNALS.items()}
+
+    # For any missing layer, try a focused search using the first search term + layer suffix
+    if not all(covered.values()):
+        base_term = search_terms[0] if search_terms else ""
+        missing_layers = [l for l, ok in covered.items() if not ok]
+        layer_suffix_map = {
+            "Service":    ["Service"],
+            "Repository": ["Repository", "Repo"],
+        }
+        for layer in missing_layers:
+            if layer not in layer_suffix_map:
+                continue   # UI / CodeBehind gaps are less actionable programmatically
+            for suffix in layer_suffix_map[layer]:
+                try:
+                    extra = _search_and_add(base_term + suffix, label=f"layer:{layer}")
+                    search_log.append(extra)
+                    if extra["hits"] > 0:
+                        break
+                except Exception:
+                    pass
+        # Re-rank the now-expanded candidate pool so coverage picks go in order
+        if any(covered[l] is False for l in layer_suffix_map):
+            prioritised = select_relevant_files(query, all_results, client,
+                                                max_files=MAX_FILES_TO_READ + 2)
+        layer_note = "all layers present" if all(covered.values()) else (
+            "missing layers: " + ", ".join(l for l, ok in covered.items() if not ok)
+            + " — ran targeted layer searches"
+        )
+    else:
+        layer_note = "all layers present"
+
     selected_paths = [r.get("file_path", "") for r in prioritised]
     steps_log.append({
         "step":    3,
-        "action":  "Claude ranked candidates — reading: " + ", ".join(
+        "action":  "Claude ranked candidates (" + layer_note + ") — reading: " + ", ".join(
             p.rsplit("/", 1)[-1] for p in selected_paths if p
         ),
         "results": prioritised,
@@ -1127,10 +1206,55 @@ def run_computer_loop(query, branch):
                 + ", ".join(f'"{t}"' for t in search_terms)
                 + "] returned no readable files."
             )
-        return "\n\n".join(
-            "### File: " + fc["file_path"] + "\n" + fc["content"]
-            for fc in fc_list
-        )
+        parts = []
+        for fc in fc_list:
+            parts.append("### File: " + fc["file_path"] + "\n" + fc["content"])
+
+        # Append ADO search snippets for files that were NOT fully read.
+        # This gives the synthesis pass visibility into content that would have
+        # been missed by the top-N file read cutoff or by file truncation.
+        # Each snippet shows the actual matching lines at their char offset,
+        # so Claude can reference real code even from files it didn't fully read.
+        already_read = {fc["file_path"] for fc in fc_list}
+        snippet_sections = []
+        for r in search_results:
+            fp = r.get("file_path", "")
+            snips = r.get("snippets", [])
+            if not snips:
+                continue
+            if fp in already_read:
+                # For a file that WAS fully read but might be truncated, include
+                # snippets that fall beyond the truncation point (offset > MAX_FILE_CHARS).
+                deep_snips = [s for s in snips if s.get("offset", 0) > MAX_FILE_CHARS]
+                if not deep_snips:
+                    continue
+                section = (
+                    f"### Search Snippets (deep in truncated file): {fp}\n"
+                    + "\n---\n".join(
+                        f"[offset ~{s['offset']:,}]\n{s['content']}"
+                        for s in deep_snips
+                    )
+                )
+            else:
+                section = (
+                    f"### Search Snippet (not fully read): {fp}\n"
+                    + "\n---\n".join(
+                        f"[offset ~{s.get('offset',0):,}]\n{s['content']}"
+                        for s in snips
+                    )
+                )
+            snippet_sections.append(section)
+
+        if snippet_sections:
+            parts.append(
+                "---\n"
+                "## Additional Code Snippets from ADO Search\n"
+                "(These are matching excerpts from files not fully read above. "
+                "Reference them when constructing your answer.)\n\n"
+                + "\n\n".join(snippet_sections)
+            )
+
+        return "\n\n".join(parts)
 
     comp_input_tokens  = 0
     comp_output_tokens = 0
@@ -1169,29 +1293,35 @@ def run_computer_loop(query, branch):
                       + ", ".join(p.rsplit("/", 1)[-1] for p in missing_paths),
         })
         for j, fp in enumerate(missing_paths[:8], start=1):   # resolve up to 8 extra files
-            filename = fp.rsplit("/", 1)[-1]   # e.g. "Popup_ProjectForecasting.aspx.vb"
-            # Search ADO for the filename to discover the real repo path — Claude's
-            # guessed path (e.g. just the filename) is often wrong or incomplete.
-            resolved_path = fp   # default: try the guessed path as-is
-            try:
-                search_hits = ado_code_search(filename, branch, top=3)
-                if search_hits:
-                    # Pick the hit whose filename matches most closely
-                    exact = [h for h in search_hits if h.get("file_path", "").endswith(filename)]
-                    resolved_path = (exact or search_hits)[0]["file_path"]
-                    steps_log.append({
-                        "step":   f"6.{j}.resolve",
-                        "action": f"Resolved '{filename}' → {resolved_path}",
-                    })
-                else:
-                    steps_log.append({
-                        "step":   f"6.{j}.resolve",
-                        "action": f"ADO search found no results for '{filename}' — trying guessed path",
-                    })
-            except Exception as e:
+            filename  = fp.rsplit("/", 1)[-1]          # e.g. "Popup_ProjectForecasting.aspx.vb"
+            classname = filename.rsplit(".", 1)[0] if "." in filename else filename
+            # Build a cascade of search terms to maximise the chance of finding the file.
+            # ADO Code Search tokenises on word boundaries, so a full dotted filename like
+            # "IProjectForecastUiBuilder.vb" often returns 0 hits while "ProjectForecast"
+            # or "ForecastUiBuilder" reliably finds it.
+            search_cascade = [filename, classname] + _camel_split(classname)
+            resolved_path = fp   # default: use Claude's guessed path as last resort
+            found = False
+            for s_term in search_cascade:
+                if len(s_term) < 3:
+                    continue
+                try:
+                    hits = ado_code_search(s_term, branch, top=5)
+                    if hits:
+                        exact = [h for h in hits if h.get("file_path", "").endswith(filename)]
+                        resolved_path = (exact or hits)[0]["file_path"]
+                        steps_log.append({
+                            "step":   f"6.{j}.resolve",
+                            "action": f"Resolved '{filename}' via '{s_term}' → {resolved_path}",
+                        })
+                        found = True
+                        break
+                except Exception:
+                    pass
+            if not found:
                 steps_log.append({
                     "step":   f"6.{j}.resolve",
-                    "action": f"Search for '{filename}' failed ({e}) — trying guessed path",
+                    "action": f"All search strategies exhausted for '{filename}' — trying guessed path",
                 })
             _read_and_log(resolved_path, f"6.{j}")
 

@@ -73,10 +73,8 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .results-grid{display:flex;flex-direction:row;gap:16px;align-items:start}
 @media(max-width:700px){.results-grid{flex-direction:column}}
 
-/* ── Result panels — resizable by dragging the right edge ── */
-.panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:auto;display:flex;flex-direction:column;flex:1 1 0;min-width:220px;position:relative;resize:horizontal}
-/* Subtle resize-handle indicator in bottom-right corner */
-.panel::after{content:'⠿';position:absolute;bottom:5px;right:6px;font-size:.7rem;color:#cbd5e1;pointer-events:none;line-height:1;opacity:.6}
+/* ── Result panels ── */
+.panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:auto;display:flex;flex-direction:column;flex:1 1 0;min-width:220px;position:relative}
 .panel-header{padding:14px 18px;display:flex;align-items:center;gap:9px;border-bottom:1.5px solid var(--border)}
 .panel-header h2{font-size:.93rem;font-weight:700;flex:1;color:var(--text)}
 .badge{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;letter-spacing:.04em}
@@ -346,6 +344,36 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-row-count{font-size:.78rem;color:var(--muted);padding:12px 20px;border-top:1px solid var(--border)}
 .adm-empty-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
 .adm-loading-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
+
+/* ── Panel info button ── */
+.btn-panel-info{background:none;border:1.5px solid var(--border);border-radius:50%;width:24px;height:24px;font-size:.78rem;line-height:1;cursor:pointer;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;font-family:inherit;padding:0}
+.btn-panel-info:hover{background:var(--bg);border-color:#b0bfd0;color:var(--text)}
+
+/* ── Info modal overlay ── */
+.info-modal-overlay{position:fixed;inset:0;background:rgba(10,20,40,.5);display:none;align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(2px);padding:20px}
+.info-modal{background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.22);max-width:560px;width:100%;max-height:85vh;overflow-y:auto;display:flex;flex-direction:column}
+.info-modal-header{padding:20px 24px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.info-modal-header h3{font-size:1rem;font-weight:700;color:var(--text);line-height:1.35;flex:1}
+.info-modal-close{background:none;border:1.5px solid var(--border);border-radius:8px;padding:5px 10px;font-size:.8rem;color:var(--muted);cursor:pointer;font-family:inherit;flex-shrink:0;transition:all .15s}
+.info-modal-close:hover{background:var(--bg);color:var(--text)}
+.info-modal-body{padding:16px 24px 24px;font-size:.875rem;line-height:1.7;color:var(--text)}
+.info-modal-body h4{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:18px 0 7px}
+.info-modal-body h4:first-child{margin-top:0}
+.info-modal-body p{margin-bottom:.7em}
+.info-modal-body ul{margin:.3em 0 .8em 1.2em;padding:0}
+.info-modal-body li{margin-bottom:.3em}
+.info-modal-body strong{color:var(--brand);font-weight:600}
+.info-modal-body .compare-table{width:100%;border-collapse:collapse;margin:.6em 0 1em;font-size:.82rem}
+.info-modal-body .compare-table th{background:var(--bg);padding:7px 11px;text-align:left;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border:1.5px solid var(--border)}
+.info-modal-body .compare-table td{padding:7px 11px;border:1px solid var(--border);vertical-align:top}
+.info-modal-body .compare-table tr:nth-child(even) td{background:#fafbfc}
+.info-divider{border:none;border-top:1.5px solid var(--border);margin:16px 0}
+
+/* ── Panel drag-resize handle ── */
+.panel-resize-handle{position:absolute;top:0;right:0;bottom:0;width:7px;cursor:col-resize;background:transparent;border-radius:0 var(--radius) var(--radius) 0;z-index:20;transition:background .15s}
+.panel-resize-handle:hover,.panel-resize-handle.resizing{background:rgba(30,111,212,.22)}
+.panel-resize-handle::after{content:'';position:absolute;top:50%;right:2px;transform:translateY(-50%);width:3px;height:28px;border-radius:2px;background:var(--border);transition:background .15s}
+.panel-resize-handle:hover::after,.panel-resize-handle.resizing::after{background:var(--brand-light)}
 </style>
 </head>
 <body>
@@ -442,9 +470,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     <!-- Agentic Loop -->
     <div class="panel" id="panelAgentic">
+      <div class="panel-resize-handle" id="resizeAgentic"></div>
       <div class="panel-header" onclick="togglePanel('panelAgentic', event)">
         <h2>⚡ Agentic Loop</h2>
         <span class="badge badge-agentic">ADO Tool Use</span>
+        <button class="btn-panel-info" title="How Agentic Loop works" onclick="openInfoModal('agentic',event)">ℹ</button>
         <span class="chevron">▼</span>
       </div>
       <div class="panel-body" id="agenticBody">
@@ -457,9 +487,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     <!-- Computer Loop -->
     <div class="panel" id="panelComputer">
+      <div class="panel-resize-handle" id="resizeComputer"></div>
       <div class="panel-header" onclick="togglePanel('panelComputer', event)">
         <h2>🖥 Computer Loop</h2>
         <span class="badge badge-computer">ADO Browse Steps</span>
+        <button class="btn-panel-info" title="How Computer Loop works" onclick="openInfoModal('computer',event)">ℹ</button>
         <span class="chevron">▼</span>
       </div>
       <div class="panel-body" id="computerBody">
@@ -472,9 +504,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     <!-- SharePoint Loop -->
     <div class="panel" id="panelSP">
+      <div class="panel-resize-handle" id="resizeSP"></div>
       <div class="panel-header" onclick="togglePanel('panelSP', event)">
         <h2>🔷 SharePoint KB</h2>
         <span class="badge badge-sp">Confluence Content for AI</span>
+        <button class="btn-panel-info" title="How SharePoint KB works" onclick="openInfoModal('sharepoint',event)">ℹ</button>
         <span class="chevron">▼</span>
       </div>
       <div class="panel-body" id="spBody">
@@ -545,6 +579,17 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <button class="btn-export-md" onclick="exportSession()">⬇️ Export Full Session .md</button>
       <span style="font-size:.76rem;color:var(--muted)">Exports your original question, all loop answers, and follow-ups</span>
     </div>
+  </div>
+</div>
+
+<!-- ── Loop info modal ── -->
+<div class="info-modal-overlay" id="infoModalOverlay" onclick="closeInfoModal()">
+  <div class="info-modal" onclick="event.stopPropagation()">
+    <div class="info-modal-header">
+      <h3 id="infoModalTitle"></h3>
+      <button class="info-modal-close" onclick="closeInfoModal()">✕ Close</button>
+    </div>
+    <div class="info-modal-body" id="infoModalBody"></div>
   </div>
 </div>
 
@@ -1739,6 +1784,177 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   function admEsc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+
+  // ── Info modals ────────────────────────────────────────────────────────────
+  const INFO_CONTENT = {
+    agentic: {
+      title: '⚡ Agentic Loop — How it works',
+      body: `
+        <h4>Overview</h4>
+        <p>The Agentic Loop gives Claude full autonomy to search the <strong>CoraSystems/PPM</strong> Azure DevOps repository. Rather than following a fixed script, Claude decides what to search for next based on what it finds — just like a developer would.</p>
+
+        <h4>Step-by-step process</h4>
+        <ul>
+          <li><strong>Round 1:</strong> Claude generates 3–5 search terms from your question and fires them all at the ADO Code Search API in parallel.</li>
+          <li><strong>Rounds 2–12:</strong> After reading each file, Claude decides whether it needs more context — missing layers, deeper methods, related classes — and issues additional targeted searches.</li>
+          <li><strong>Truncation handling:</strong> If a file is too large to read fully (&gt;15,000 chars), Claude searches by the specific method or class name to retrieve the exact snippet at its actual location.</li>
+          <li><strong>Final answer:</strong> Once confident (or at the 12-round cap), Claude synthesises everything it read into a structured answer with code references.</li>
+        </ul>
+
+        <h4>What it searches</h4>
+        <p>Exclusively the <strong>CoraSystems/PPM</strong> repo on the branch you selected. No external sources, documentation, or web results.</p>
+
+        <hr class="info-divider"/>
+        <h4>Agentic Loop vs Computer Loop</h4>
+        <table class="compare-table">
+          <thead><tr><th></th><th>⚡ Agentic</th><th>🖥 Computer</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Strategy</strong></td><td>Iterative — Claude decides each next step</td><td>Fixed — search → rank → read → synthesize</td></tr>
+            <tr><td><strong>Adaptability</strong></td><td>High — pivots if initial results are incomplete</td><td>Low — set sequence, can't course-correct mid-run</td></tr>
+            <tr><td><strong>Coverage</strong></td><td>Broader — follows thread across files and layers</td><td>Narrower — limited to top-ranked files from 3–4 queries</td></tr>
+            <tr><td><strong>Speed</strong></td><td>Slower — 60–120 s typical</td><td>Faster — 20–45 s typical</td></tr>
+            <tr><td><strong>Consistency</strong></td><td>Variable — depends on what Claude finds</td><td>Predictable — same steps every run</td></tr>
+            <tr><td><strong>Best for</strong></td><td>Complex, multi-layer questions; tracing flows</td><td>Quick lookups; single-feature questions</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:.8rem;color:var(--muted)">Both loops use the same underlying ADO Code Search and file-reading APIs against the same repository branch.</p>
+      `
+    },
+    computer: {
+      title: '🖥 Computer Loop — How it works',
+      body: `
+        <h4>Overview</h4>
+        <p>The Computer Loop follows a <strong>deterministic, fixed sequence</strong> of browse steps against the ADO API. It is faster and more predictable than the Agentic Loop, at the cost of adaptability.</p>
+
+        <h4>Step-by-step process</h4>
+        <ul>
+          <li><strong>Step 1 — Query expansion:</strong> Claude generates 3–4 targeted search terms from your question (e.g. class name, method name, feature keyword).</li>
+          <li><strong>Step 2 — Search &amp; rank:</strong> Each term is fired at ADO Code Search. Results are de-duplicated and ranked by relevance using file path and snippet signals.</li>
+          <li><strong>Step 3 — Layer coverage check:</strong> For WebForms features, the loop proactively searches for all four layers — UI (<code>.aspx</code>), CodeBehind (<code>.aspx.vb</code>), Service, and Repository — and adds any missing layers to the read list.</li>
+          <li><strong>Step 4 — Read files:</strong> The top 6 ranked files are read in full (up to 15,000 chars each). For truncated files, ADO snippets at the match location are injected into the synthesis context.</li>
+          <li><strong>Step 5 — Synthesize:</strong> Claude combines all file contents and snippets into a structured answer.</li>
+        </ul>
+
+        <h4>What it searches</h4>
+        <p>Exclusively the <strong>CoraSystems/PPM</strong> repo on the branch you selected. No external sources.</p>
+
+        <hr class="info-divider"/>
+        <h4>Agentic Loop vs Computer Loop</h4>
+        <table class="compare-table">
+          <thead><tr><th></th><th>⚡ Agentic</th><th>🖥 Computer</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Strategy</strong></td><td>Iterative — Claude decides each next step</td><td>Fixed — search → rank → read → synthesize</td></tr>
+            <tr><td><strong>Adaptability</strong></td><td>High — pivots if initial results are incomplete</td><td>Low — set sequence, can't course-correct mid-run</td></tr>
+            <tr><td><strong>Coverage</strong></td><td>Broader — follows thread across files and layers</td><td>Narrower — limited to top-ranked files from 3–4 queries</td></tr>
+            <tr><td><strong>Speed</strong></td><td>Slower — 60–120 s typical</td><td>Faster — 20–45 s typical</td></tr>
+            <tr><td><strong>Consistency</strong></td><td>Variable — depends on what Claude finds</td><td>Predictable — same steps every run</td></tr>
+            <tr><td><strong>Best for</strong></td><td>Complex, multi-layer questions; tracing flows</td><td>Quick lookups; single-feature questions</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:.8rem;color:var(--muted)">Both loops use the same underlying ADO Code Search and file-reading APIs against the same repository branch.</p>
+      `
+    },
+    sharepoint: {
+      title: '🔷 SharePoint KB — How it works',
+      body: `
+        <h4>Overview</h4>
+        <p>The SharePoint KB loop searches the <strong>PS Confluence knowledge base</strong> that has been exported to SharePoint. It surfaces user-facing documentation, guides, and support articles — it does <em>not</em> search source code.</p>
+
+        <h4>Step-by-step process</h4>
+        <ul>
+          <li><strong>Step 1 — Search:</strong> Your question is sent to the SharePoint full-text search endpoint, targeting the KB document library.</li>
+          <li><strong>Step 2 — Retrieve documents:</strong> The top matching documents are fetched and their content extracted.</li>
+          <li><strong>Step 3 — Synthesize:</strong> Claude summarises the relevant sections from each document into a coherent answer, citing the source documents.</li>
+        </ul>
+
+        <h4>What it searches</h4>
+        <p>Only the <strong>PS Confluence knowledge base</strong> content exported to SharePoint. This includes how-to guides, feature documentation, and support articles — not the PPM source code.</p>
+
+        <h4>When to use it</h4>
+        <ul>
+          <li>User-facing feature explanations and workflows</li>
+          <li>Support and troubleshooting guidance</li>
+          <li>Business process documentation</li>
+          <li>Questions about <em>how to use</em> a feature (vs. how it is implemented)</li>
+        </ul>
+
+        <hr class="info-divider"/>
+        <h4>How it compares to the ADO loops</h4>
+        <p>The Agentic and Computer loops both search the <strong>source code repository</strong> and are best for implementation questions. The SharePoint KB loop searches <strong>documentation</strong> and is best for functional or user-facing questions. Running all three and using <strong>Synthesize All</strong> gives the most complete picture.</p>
+      `
+    }
+  };
+
+  function openInfoModal(loop, event) {
+    event.stopPropagation();
+    const content = INFO_CONTENT[loop];
+    if (!content) return;
+    document.getElementById('infoModalTitle').textContent = content.title;
+    document.getElementById('infoModalBody').innerHTML = content.body;
+    const overlay = document.getElementById('infoModalOverlay');
+    overlay.style.display = 'flex';
+    // Close on Escape
+    document._infoKeyHandler = function(e) {
+      if (e.key === 'Escape') closeInfoModal();
+    };
+    document.addEventListener('keydown', document._infoKeyHandler);
+  }
+
+  function closeInfoModal() {
+    document.getElementById('infoModalOverlay').style.display = 'none';
+    if (document._infoKeyHandler) {
+      document.removeEventListener('keydown', document._infoKeyHandler);
+      document._infoKeyHandler = null;
+    }
+  }
+
+  // ── Panel drag-resize ──────────────────────────────────────────────────────
+  function initPanelResize() {
+    document.querySelectorAll('.panel').forEach(panel => {
+      const handle = panel.querySelector('.panel-resize-handle');
+      if (!handle) return;
+
+      let startX = 0, startWidth = 0;
+
+      handle.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        startX     = e.clientX;
+        startWidth = panel.getBoundingClientRect().width;
+        handle.classList.add('resizing');
+
+        function onMouseMove(e) {
+          const dx = e.clientX - startX;
+          const newWidth = Math.max(220, startWidth + dx);
+          panel.style.flex = '0 0 ' + newWidth + 'px';
+          panel.style.width = newWidth + 'px';
+        }
+
+        function onMouseUp() {
+          handle.classList.remove('resizing');
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        }
+
+        document.body.style.cursor    = 'col-resize';
+        document.body.style.userSelect = 'none';
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup',   onMouseUp);
+      });
+
+      // Double-click handle → reset to equal flex width
+      handle.addEventListener('dblclick', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        panel.style.flex  = '1 1 0';
+        panel.style.width = '';
+      });
+    });
+  }
+
+  initPanelResize();
 </script>
 </body>
 </html>
