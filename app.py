@@ -19,9 +19,12 @@ import io
 import csv
 import sqlite3
 import time
+import threading
+import uuid
+import queue
 import urllib.parse
 import requests
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, stream_with_context
 import anthropic
 from dotenv import load_dotenv
 
@@ -49,10 +52,17 @@ ADO_SEARCH_URL    = (
     f"/_apis/search/codesearchresults?api-version=7.0"
 )
 
-MAX_AGENTIC_ITERATIONS = 12    # more headroom for complex multi-file questions
+MAX_AGENTIC_ITERATIONS = 999   # effectively uncapped — time limits govern instead
 MAX_SEARCH_RESULTS     = 12    # broader initial candidate pool per search term
 MAX_FILE_CHARS         = 15000 # read more of each file — key methods are often deep
 MAX_FILES_TO_READ      = 10    # read more files before synthesising
+
+# Time-based search control ─────────────────────────────────────────────────
+# Agentic loop pauses at these elapsed-second marks and asks the user whether
+# to continue. Total hard stop is at SEARCH_HARD_LIMIT_SEC.
+SEARCH_PAUSE_FIRST_SEC  = 300   # 5 min  — first "continue?" prompt
+SEARCH_PAUSE_REPEAT_SEC = 120   # 2 min  — subsequent prompts
+SEARCH_HARD_LIMIT_SEC   = 660   # 11 min — hard stop regardless
 
 # ---------------------------------------------------------------------------
 # SharePoint config
@@ -79,6 +89,34 @@ except ImportError:
     MSAL_AVAILABLE = False
 
 app = Flask(__name__)
+
+# ---------------------------------------------------------------------------
+# Agentic search job store — supports mid-search "continue?" prompts via SSE
+# ---------------------------------------------------------------------------
+# Each running agentic job gets an entry:
+#   job_id -> {
+#     "event_queue":  queue.Queue   — server pushes SSE events here
+#     "continue_evt": threading.Event — frontend signals "continue" by setting this
+#     "stop_evt":     threading.Event — frontend signals "stop" by setting this
+#   }
+_agentic_jobs: dict = {}
+_agentic_jobs_lock  = threading.Lock()
+
+def _job_create(job_id: str):
+    with _agentic_jobs_lock:
+        _agentic_jobs[job_id] = {
+            "event_queue":  queue.Queue(),
+            "continue_evt": threading.Event(),
+            "stop_evt":     threading.Event(),
+        }
+
+def _job_get(job_id: str):
+    with _agentic_jobs_lock:
+        return _agentic_jobs.get(job_id)
+
+def _job_remove(job_id: str):
+    with _agentic_jobs_lock:
+        _agentic_jobs.pop(job_id, None)
 
 # ---------------------------------------------------------------------------
 # Usage tracking — SQLite
@@ -556,7 +594,7 @@ def extract_file_paths_from_text(text: str) -> list:
 #    using two ADO-specific tools, until it has enough context to answer.
 # ---------------------------------------------------------------------------
 
-def run_agentic_loop(query, branch):
+def run_agentic_loop(query, branch, job_id: str | None = None):
     client = get_client()
 
     tools = [
@@ -672,30 +710,62 @@ def run_agentic_loop(query, branch):
     # not just metadata dicts from the iterations log.
     accumulated_files = {}   # file_path -> full content string
 
-    # How many iterations before the cap to inject a "wrap up" warning
-    WRAP_UP_THRESHOLD = 3
+    # Time-based control: hard stop and user-confirm thresholds
+    loop_start_time     = time.time()
+    next_pause_at       = loop_start_time + SEARCH_PAUSE_FIRST_SEC
+    job                 = _job_get(job_id) if job_id else None
 
-    while iteration < MAX_AGENTIC_ITERATIONS:
+    while True:
         iteration += 1
 
-        # ── Warn Claude to start synthesising when close to the cap ──────────
-        remaining = MAX_AGENTIC_ITERATIONS - iteration
-        if remaining == WRAP_UP_THRESHOLD and any(
-            tc.get("type") == "read_file"
-            for it in iterations_log
-            for tc in it.get("tool_calls", [])
-        ):
-            messages.append({
-                "role":    "user",
-                "content": (
-                    f"SYSTEM NOTE: You have {remaining} iterations remaining before the search "
-                    f"cap. You have already read {len(accumulated_files)} file(s). "
-                    "Do NOT make any more tool calls unless a single critical file is still missing. "
-                    "Write your complete structured answer NOW using the files you have. "
-                    "Follow the required format: Overview → How It Works (Step by Step) → "
-                    "Key Code → Files Involved."
+        # ── Time-based hard stop ──────────────────────────────────────────────
+        elapsed = time.time() - loop_start_time
+        if elapsed >= SEARCH_HARD_LIMIT_SEC:
+            messages.append({"role": "user", "content": (
+                "SYSTEM NOTE: The search has reached its 11-minute hard limit. "
+                "Write your complete answer NOW using every file you have already read. "
+                "Do not make any more tool calls."
+            )})
+            break
+
+        # ── Pause threshold: ask user if they want to continue ────────────────
+        if elapsed >= next_pause_at - loop_start_time and job:
+            # Signal the frontend via SSE
+            minutes_so_far = int(elapsed // 60)
+            files_so_far   = len(accumulated_files)
+            job["event_queue"].put({
+                "type":    "pause_prompt",
+                "elapsed": int(elapsed),
+                "files":   files_so_far,
+                "message": (
+                    f"Search is still running ({minutes_so_far} min, {files_so_far} files read). "
+                    "Continue searching for more files?"
                 ),
             })
+            # Wait up to 90 s for either a continue or stop signal from the frontend
+            continue_evt = job["continue_evt"]
+            stop_evt     = job["stop_evt"]
+            continue_evt.clear()
+            stop_evt.clear()
+            deadline = time.time() + 90
+            while time.time() < deadline:
+                if stop_evt.is_set():
+                    # User chose to stop — synthesise with what we have
+                    messages.append({"role": "user", "content": (
+                        "SYSTEM NOTE: The user has requested the search stop now. "
+                        "Write your complete answer using every file you have already read. "
+                        "Do not make any more tool calls."
+                    )})
+                    break
+                if continue_evt.is_set():
+                    next_pause_at = time.time() + SEARCH_PAUSE_REPEAT_SEC
+                    break
+                time.sleep(0.5)
+            else:
+                # Timeout waiting for user response — default to continue
+                next_pause_at = time.time() + SEARCH_PAUSE_REPEAT_SEC
+            if stop_evt.is_set():
+                break
 
         response = client.messages.create(
             model=MODEL,
@@ -840,7 +910,7 @@ def run_agentic_loop(query, branch):
 
     confidence = assess_confidence(query, final_answer, total_files_read, "Agentic Loop")
 
-    return {
+    result = {
         "answer":           final_answer,
         "confidence":       confidence,
         "iterations":       iterations_log,
@@ -851,6 +921,11 @@ def run_agentic_loop(query, branch):
         "input_tokens":     total_input_tokens,
         "output_tokens":    total_output_tokens,
     }
+
+    # Notify SSE stream that the job is done
+    if job:
+        job["event_queue"].put({"type": "done", "result": result})
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1717,6 +1792,58 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/api/extract-screenshot", methods=["POST"])
+def api_extract_screenshot():
+    """
+    Receive a base64-encoded screenshot image, ask Claude to extract UI context
+    (page name, visible fields, error messages, data shown), and return the
+    context as a plain-text string to be appended to the user's query.
+    """
+    data      = request.get_json() or {}
+    image_b64 = data.get("image_b64", "").strip()
+    mime_type = data.get("mime_type", "image/png").strip()
+    if not image_b64:
+        return jsonify({"error": "No image data provided."}), 400
+    try:
+        client = get_client()
+        resp   = client.messages.create(
+            model=MODEL,
+            max_tokens=600,
+            system=(
+                "You are a Cora PPM UI analyst. The user has uploaded a screenshot of the Cora PPM application. "
+                "Extract ALL visible context that would help a developer understand what page/feature is shown. "
+                "Respond ONLY with a concise plain-text summary (no markdown) covering:\n"
+                "• Page name / module visible in the screenshot\n"
+                "• Key field labels, button names, or column headers visible\n"
+                "• Any error messages, warning banners, or validation messages\n"
+                "• Any IDs, statuses, or data values that appear to be relevant\n"
+                "• Any UI elements or controls that look directly related to the user's question\n"
+                "Keep the response under 250 words. Do not include generic observations."
+            ),
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type":       "base64",
+                            "media_type": mime_type,
+                            "data":       image_b64,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": "Please extract the UI context from this Cora PPM screenshot.",
+                    },
+                ],
+            }],
+        )
+        context = resp.content[0].text.strip()
+        return jsonify({"success": True, "context": context})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/branches")
 def api_branches():
     try:
@@ -1764,8 +1891,97 @@ def api_test():
     return jsonify(results)
 
 
+@app.route("/api/agentic/stream", methods=["POST"])
+def api_agentic_stream():
+    """
+    SSE endpoint for the Agentic Loop.
+    - Starts the loop in a background thread.
+    - Streams progress events (pause_prompt, done, error) as SSE.
+    - Returns a job_id in the first event so the frontend can call
+      /api/agentic/continue or /api/agentic/stop.
+    """
+    data   = request.get_json() or {}
+    query  = data.get("query",  "").strip()
+    branch = data.get("branch", "").strip()
+    if not query:
+        return jsonify({"error": "No query provided."}), 400
+    if not branch:
+        return jsonify({"error": "Please select a branch first."}), 400
+
+    job_id = str(uuid.uuid4())
+    _job_create(job_id)
+    job    = _job_get(job_id)
+    t0     = time.time()
+
+    def _run():
+        try:
+            result = run_agentic_loop(query, branch, job_id=job_id)
+            track_search_event(
+                "agentic", query, branch, "success",
+                time.time() - t0,
+                result.get("total_files_read", 0),
+                result.get("total_iterations",  0),
+                result.get("total_searches",    0),
+                result.get("confidence", {}).get("level", ""),
+                input_tokens=result.get("input_tokens",  0),
+                output_tokens=result.get("output_tokens", 0),
+            )
+        except Exception as e:
+            track_search_event("agentic", query, branch, "error", time.time() - t0,
+                               error_message=str(e))
+            job["event_queue"].put({"type": "error", "message": str(e)})
+        finally:
+            _job_remove(job_id)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    def _generate():
+        # First event: send the job_id to the frontend
+        yield f"data: {json.dumps({'type': 'started', 'job_id': job_id})}\n\n"
+        while True:
+            try:
+                evt = job["event_queue"].get(timeout=30)
+                yield f"data: {json.dumps(evt)}\n\n"
+                if evt.get("type") in ("done", "error"):
+                    break
+            except queue.Empty:
+                # Keep-alive ping
+                yield "data: {\"type\":\"ping\"}\n\n"
+
+    return Response(
+        stream_with_context(_generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control":        "no-cache",
+            "X-Accel-Buffering":    "no",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
+
+@app.route("/api/agentic/continue", methods=["POST"])
+def api_agentic_continue():
+    job_id = (request.get_json() or {}).get("job_id", "")
+    job    = _job_get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found."}), 404
+    job["continue_evt"].set()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agentic/stop", methods=["POST"])
+def api_agentic_stop():
+    job_id = (request.get_json() or {}).get("job_id", "")
+    job    = _job_get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found."}), 404
+    job["stop_evt"].set()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/agentic", methods=["POST"])
 def api_agentic():
+    """Legacy synchronous endpoint — kept for backwards compatibility."""
     data   = request.get_json() or {}
     query  = data.get("query",  "").strip()
     branch = data.get("branch", "").strip()

@@ -70,12 +70,13 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .btn-sp:hover:not(:disabled){background:#005ba1}
 
 /* ── Three-column grid ── */
-.results-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:start}
-@media(max-width:1200px){.results-grid{grid-template-columns:1fr 1fr}}
-@media(max-width:700px){.results-grid{grid-template-columns:1fr}}
+.results-grid{display:flex;flex-direction:row;gap:16px;align-items:start}
+@media(max-width:700px){.results-grid{flex-direction:column}}
 
-/* ── Result panels ── */
-.panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+/* ── Result panels — resizable by dragging the right edge ── */
+.panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:auto;display:flex;flex-direction:column;flex:1 1 0;min-width:220px;position:relative;resize:horizontal}
+/* Subtle resize-handle indicator in bottom-right corner */
+.panel::after{content:'⠿';position:absolute;bottom:5px;right:6px;font-size:.7rem;color:#cbd5e1;pointer-events:none;line-height:1;opacity:.6}
 .panel-header{padding:14px 18px;display:flex;align-items:center;gap:9px;border-bottom:1.5px solid var(--border)}
 .panel-header h2{font-size:.93rem;font-weight:700;flex:1;color:var(--text)}
 .badge{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;letter-spacing:.04em}
@@ -208,6 +209,40 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem}
 @media(max-width:640px){main{width:96%}.card{padding:18px 16px}header{padding:0 18px}}
 
+/* ── Pause-prompt dialog ── */
+.pause-overlay{position:fixed;inset:0;background:rgba(10,20,40,.55);display:none;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(2px)}
+.pause-dialog{background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.22);padding:30px 34px;max-width:440px;width:90%;text-align:center}
+.pause-dialog .pd-icon{font-size:2rem;margin-bottom:10px}
+.pause-dialog .pd-title{font-size:1.05rem;font-weight:700;color:var(--brand);margin-bottom:8px}
+.pause-dialog .pd-msg{font-size:.88rem;color:var(--muted);line-height:1.55;margin-bottom:22px}
+.pause-dialog .pd-btns{display:flex;gap:12px;justify-content:center}
+.pause-dialog .pd-continue{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:10px 26px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s}
+.pause-dialog .pd-continue:hover{background:var(--brand-dark)}
+.pause-dialog .pd-stop{background:#fff;color:var(--error);border:1.5px solid var(--error);border-radius:8px;padding:10px 26px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.pause-dialog .pd-stop:hover{background:var(--error-bg)}
+
+/* ── Screenshot upload ── */
+.screenshot-zone{margin-top:14px;border:2px dashed var(--border);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:border-color .18s,background .18s;background:#fafbfc;position:relative}
+.screenshot-zone:hover,.screenshot-zone.drag-over{border-color:var(--brand-light);background:rgba(30,111,212,.04)}
+.screenshot-zone input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.screenshot-zone .sz-icon{font-size:1.4rem;flex-shrink:0}
+.screenshot-zone .sz-text{font-size:.82rem;color:var(--muted);line-height:1.45}
+.screenshot-zone .sz-text strong{color:var(--text);display:block}
+.screenshot-preview{margin-top:12px;display:flex;align-items:flex-start;gap:14px;padding:12px 16px;background:#f8fafc;border:1.5px solid var(--border);border-radius:10px}
+.screenshot-preview img{width:80px;height:54px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0}
+.screenshot-preview .sp-info{flex:1;min-width:0}
+.screenshot-preview .sp-filename{font-size:.8rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.screenshot-preview .sp-status{font-size:.76rem;color:var(--muted);margin-top:3px}
+.screenshot-preview .sp-status.analysing{color:var(--brand-light)}
+.screenshot-preview .sp-status.done{color:var(--success)}
+.screenshot-preview .sp-status.error{color:var(--error)}
+.screenshot-preview .sp-remove{background:none;border:1.5px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:.75rem;padding:3px 9px;transition:all .15s;white-space:nowrap;flex-shrink:0;font-family:inherit}
+.screenshot-preview .sp-remove:hover{border-color:#b0bfd0;background:var(--bg);color:var(--text)}
+.screenshot-context-chip{margin-top:8px;padding:8px 12px;background:rgba(30,111,212,.06);border:1px solid rgba(30,111,212,.18);border-radius:8px;font-size:.76rem;color:var(--text);line-height:1.5;cursor:pointer}
+.screenshot-context-chip .scc-label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand-light);margin-bottom:4px}
+.screenshot-context-chip.collapsed .scc-body{display:none}
+.screenshot-context-chip .scc-toggle{color:var(--brand-light);font-size:.7rem;margin-left:6px;cursor:pointer}
+
 /* ── Admin toggle button in header ── */
 .admin-toggle-btn{color:rgba(255,255,255,.8);text-decoration:none;font-size:.82rem;padding:5px 13px;border-radius:6px;border:1px solid rgba(255,255,255,.22);background:rgba(30,111,212,.35);border-color:rgba(30,111,212,.5);cursor:pointer;font-family:inherit;font-weight:600;transition:all .15s}
 .admin-toggle-btn:hover{background:rgba(255,255,255,.12)!important;border-color:rgba(255,255,255,.3)!important}
@@ -302,6 +337,30 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <label class="field-label" for="queryInput">Your question</label>
         <textarea class="query-textarea" id="queryInput"
           placeholder="e.g. What does the EAC Submit button do on the Project Forecasting page?"></textarea>
+
+        <!-- ── Screenshot upload ── -->
+        <div class="screenshot-zone" id="screenshotZone"
+             ondragover="szDragOver(event)" ondragleave="szDragLeave(event)" ondrop="szDrop(event)">
+          <input type="file" id="screenshotInput" accept="image/*" onchange="szFileChosen(event)"/>
+          <span class="sz-icon">🖼️</span>
+          <span class="sz-text">
+            <strong>Attach a screenshot (optional)</strong>
+            Drag &amp; drop or click to upload a Cora PPM UI screenshot — Claude will extract context to sharpen the search
+          </span>
+        </div>
+        <!-- Preview + context chip appear here when an image is loaded -->
+        <div id="screenshotPreview" style="display:none" class="screenshot-preview">
+          <img id="screenshotThumb" src="" alt="screenshot"/>
+          <div class="sp-info">
+            <div class="sp-filename" id="szFilename"></div>
+            <div class="sp-status analysing" id="szStatus">Analysing screenshot…</div>
+          </div>
+          <button class="sp-remove" onclick="szRemove()">✕ Remove</button>
+        </div>
+        <div id="screenshotContextChip" style="display:none" class="screenshot-context-chip collapsed">
+          <div class="scc-label">📋 Extracted screenshot context <span class="scc-toggle" onclick="szToggleChip()">▸ Show</span></div>
+          <div class="scc-body" id="szContextBody"></div>
+        </div>
       </div>
     </div>
 
@@ -402,6 +461,19 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   </div>
 
 </main>
+
+<!-- ── Agentic Loop pause-prompt dialog ── -->
+<div class="pause-overlay" id="pauseDialog">
+  <div class="pause-dialog">
+    <div class="pd-icon">⏸️</div>
+    <div class="pd-title">Still searching…</div>
+    <div class="pd-msg" id="pauseMsg">The Agentic Loop is still running. Continue searching for more files?</div>
+    <div class="pd-btns">
+      <button class="pd-continue" onclick="pauseDecision('continue')">▶ Continue searching</button>
+      <button class="pd-stop"     onclick="pauseDecision('stop')">⏹ Stop &amp; answer now</button>
+    </div>
+  </div>
+</div>
 </div><!-- /view-main -->
 
 <!-- ══════════════════════════════════════════════════════
@@ -567,7 +639,15 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
   function md(s)      { return marked.parse(String(s || '')); }
-  function getQuery()  { return document.getElementById('queryInput').value.trim(); }
+
+  // ── Screenshot state ────────────────────────────────────────────────────────
+  let szContext = '';   // extracted context string — injected into every search query
+
+  function getQuery() {
+    const raw = document.getElementById('queryInput').value.trim();
+    if (!szContext) return raw;
+    return raw + '\n\n[Screenshot context — extracted from attached UI screenshot]\n' + szContext;
+  }
   function getBranch() { return document.getElementById('branchSelect').value.trim(); }
   function setStatus(m){ document.getElementById('statusBar').textContent = m; }
 
@@ -746,6 +826,24 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div class="log-body" id="spLog">${logItems}</div>`;
   }
 
+  // ── Pause-prompt dialog (shown when agentic loop hits a time threshold) ────
+  let _pauseJobId = null;
+  function showPausePrompt(evt) {
+    _pauseJobId = evt.job_id || _pauseJobId;
+    const dialog = document.getElementById('pauseDialog');
+    document.getElementById('pauseMsg').textContent = evt.message || 'Continue searching?';
+    dialog.style.display = 'flex';
+  }
+  async function pauseDecision(choice) {
+    document.getElementById('pauseDialog').style.display = 'none';
+    if (!_pauseJobId) return;
+    await fetch('/api/agentic/' + choice, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: _pauseJobId }),
+    });
+  }
+
   // ── Runners ────────────────────────────────────────────────────────────────
   async function runLoop(loop) {
     const query  = getQuery();
@@ -753,10 +851,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     if (!query)  { setStatus('Please enter a question first.'); return; }
     if (!branch) { setStatus('Please select a branch first.'); return; }
 
-    const panelId  = loop === 'agentic' ? 'agenticBody' : 'computerBody';
-    const label    = loop === 'agentic' ? 'Agentic Loop' : 'Computer Loop';
-    const endpoint = '/api/' + loop;
-    const btnId    = loop === 'agentic' ? 'btnAgentic' : 'btnComputer';
+    const panelId = loop === 'agentic' ? 'agenticBody' : 'computerBody';
+    const label   = loop === 'agentic' ? 'Agentic Loop' : 'Computer Loop';
+    const btnId   = loop === 'agentic' ? 'btnAgentic' : 'btnComputer';
 
     setLoading(panelId, label);
     document.getElementById(btnId).disabled = true;
@@ -767,23 +864,73 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     document.getElementById('btnCompare').style.display   = 'none';
 
     try {
-      const resp = await fetch(endpoint, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ query, branch }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
-      state[loop] = data.result;
-      if (loop === 'agentic') renderAgentic(data.result);
-      else                    renderComputer(data.result);
-      setStatus(label + ' complete.');
+      if (loop === 'agentic') {
+        // ── Use SSE stream for agentic loop (supports mid-search pause) ────
+        await new Promise((resolve, reject) => {
+          const es = new EventSource('/api/agentic/stream?' + new URLSearchParams({ dummy: '1' }));
+          // The stream endpoint needs a POST body — use fetch + ReadableStream instead
+          es.close();
+
+          // Use fetch with streaming (ReadableStream) since EventSource can't POST
+          fetch('/api/agentic/stream', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ query, branch }),
+          }).then(async resp => {
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buf += decoder.decode(value, { stream: true });
+              const lines = buf.split('\n');
+              buf = lines.pop();
+              for (const line of lines) {
+                if (!line.startsWith('data:')) continue;
+                try {
+                  const evt = JSON.parse(line.slice(5).trim());
+                  if (evt.type === 'started') {
+                    _pauseJobId = evt.job_id;
+                  } else if (evt.type === 'pause_prompt') {
+                    showPausePrompt(evt);
+                  } else if (evt.type === 'done') {
+                    const result = evt.result;
+                    state.agentic = result;
+                    renderAgentic(result);
+                    setStatus('Agentic Loop complete.');
+                    resolve();
+                  } else if (evt.type === 'error') {
+                    setError(panelId, evt.message);
+                    setStatus('Agentic Loop failed: ' + evt.message);
+                    reject(new Error(evt.message));
+                  }
+                } catch (_) {}
+              }
+            }
+            resolve();
+          }).catch(reject);
+        });
+      } else {
+        // ── Computer loop: simple POST ─────────────────────────────────────
+        const resp = await fetch('/api/' + loop, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ query, branch }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
+        state[loop] = data.result;
+        renderComputer(data.result);
+        setStatus(label + ' complete.');
+      }
     } catch (e) {
-      setError(panelId, e.message);
+      if (!state[loop]) setError(panelId, e.message);
       setStatus(label + ' failed: ' + e.message);
     } finally {
       document.getElementById(btnId).disabled = false;
       document.getElementById('btnAll').disabled = false;
+      document.getElementById('pauseDialog').style.display = 'none';
       checkShowCompare();
       checkShowSynthesize();
     }
@@ -921,6 +1068,84 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     } finally {
       document.getElementById('compareLoading').style.display = 'none';
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  SCREENSHOT UPLOAD + CONTEXT EXTRACTION
+  // ═══════════════════════════════════════════════════════════════
+
+  function szDragOver(e) {
+    e.preventDefault();
+    document.getElementById('screenshotZone').classList.add('drag-over');
+  }
+  function szDragLeave(e) {
+    document.getElementById('screenshotZone').classList.remove('drag-over');
+  }
+  function szDrop(e) {
+    e.preventDefault();
+    document.getElementById('screenshotZone').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) szProcess(file);
+  }
+  function szFileChosen(e) {
+    const file = e.target.files[0];
+    if (file) szProcess(file);
+  }
+
+  function szProcess(file) {
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target.result;
+      // Show zone hidden, show preview
+      document.getElementById('screenshotZone').style.display   = 'none';
+      document.getElementById('screenshotPreview').style.display = 'flex';
+      document.getElementById('screenshotThumb').src = dataUrl;
+      document.getElementById('szFilename').textContent = file.name;
+      document.getElementById('szStatus').textContent  = 'Analysing screenshot…';
+      document.getElementById('szStatus').className    = 'sp-status analysing';
+      document.getElementById('screenshotContextChip').style.display = 'none';
+      szContext = '';
+
+      // Send to backend for context extraction
+      try {
+        const b64 = dataUrl.split(',')[1];
+        const mime = file.type;
+        const resp = await fetch('/api/extract-screenshot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_b64: b64, mime_type: mime }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || 'Extraction failed');
+        szContext = data.context || '';
+        document.getElementById('szStatus').textContent = '✓ Context extracted — will be included in searches';
+        document.getElementById('szStatus').className   = 'sp-status done';
+        // Show collapsible chip with the extracted context
+        document.getElementById('szContextBody').textContent = szContext;
+        document.getElementById('screenshotContextChip').style.display = 'block';
+      } catch (err) {
+        document.getElementById('szStatus').textContent = '⚠ Extraction failed: ' + err.message + ' (screenshot won't be used)';
+        document.getElementById('szStatus').className   = 'sp-status error';
+        szContext = '';
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function szRemove() {
+    szContext = '';
+    document.getElementById('screenshotZone').style.display    = 'block';
+    document.getElementById('screenshotPreview').style.display  = 'none';
+    document.getElementById('screenshotContextChip').style.display = 'none';
+    document.getElementById('screenshotInput').value = '';
+    document.getElementById('szContextBody').textContent = '';
+  }
+
+  function szToggleChip() {
+    const chip = document.getElementById('screenshotContextChip');
+    const toggle = chip.querySelector('.scc-toggle');
+    chip.classList.toggle('collapsed');
+    toggle.textContent = chip.classList.contains('collapsed') ? '▸ Show' : '▾ Hide';
   }
 
   // ═══════════════════════════════════════════════════════════════
