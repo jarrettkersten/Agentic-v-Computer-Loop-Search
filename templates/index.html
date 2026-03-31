@@ -388,16 +388,15 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           placeholder="e.g. What does the EAC Submit button do on the Project Forecasting page?"></textarea>
 
         <!-- ── Screenshot upload ── -->
-        <div class="screenshot-zone" id="screenshotZone"
-             onclick="document.getElementById('screenshotInput').click()"
-             ondragover="szDragOver(event)" ondragleave="szDragLeave(event)" ondrop="szDrop(event)">
-          <input type="file" id="screenshotInput" accept="image/*,image/png,image/jpeg,image/gif,image/webp" onchange="szFileChosen(event)"/>
+        <label class="screenshot-zone" id="screenshotZone" for="screenshotInput"
+               ondragover="szDragOver(event)" ondragleave="szDragLeave(event)" ondrop="szDrop(event)">
+          <input type="file" id="screenshotInput" accept="image/*" onchange="szFileChosen(event)"/>
           <span class="sz-icon">🖼️</span>
           <span class="sz-text">
             <strong>Attach a screenshot (optional)</strong>
             Drag &amp; drop or click to upload a Cora PPM UI screenshot — Claude will extract context to sharpen the search
           </span>
-        </div>
+        </label>
         <!-- Preview + context chip appear here when an image is loaded -->
         <div id="screenshotPreview" style="display:none" class="screenshot-preview">
           <img id="screenshotThumb" src="" alt="screenshot"/>
@@ -704,28 +703,35 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   }
 
   async function loadBranches() {
-    const sel = document.getElementById('branchSelect');
+    const sel    = document.getElementById('branchSelect');
     const manual = document.getElementById('branchManual');
-    const lbl = document.getElementById('branchLoading');
+    const lbl    = document.getElementById('branchLoading');
     lbl.innerHTML = 'Loading branches…';
-    sel.style.display = '';
+    sel.style.display    = '';
     manual.style.display = 'none';
+
+    // 8-second hard timeout so a slow/unreachable ADO server doesn't hang forever
+    const ctrl    = new AbortController();
+    const timerId = setTimeout(() => ctrl.abort(), 8000);
     try {
-      const resp = await fetch('/api/branches');
+      const resp = await fetch('/api/branches', { signal: ctrl.signal });
+      clearTimeout(timerId);
       const data = await resp.json();
       if (data.branches && data.branches.length) {
         sel.innerHTML = data.branches.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
         lbl.innerHTML = data.branches.length + ' branches available';
         setTimeout(() => { lbl.innerHTML = ''; }, 2500);
       } else {
-        sel.innerHTML = '<option value="">No branches found</option>';
-        const errMsg = data.error ? ` — ${data.error}` : '';
-        lbl.innerHTML = `No branches returned${errMsg}. <a href="#" onclick="loadBranches();return false">Retry</a> or <a href="#" onclick="showManualBranch();return false">enter manually</a>`;
+        const errMsg = data.error ? ` (${data.error})` : '';
+        sel.innerHTML = '<option value="">— select branch —</option>';
+        lbl.innerHTML = `No branches found${errMsg} — <a href="#" onclick="showManualBranch();return false">type branch name</a> · <a href="#" onclick="loadBranches();return false">retry</a>`;
       }
     } catch (e) {
-      sel.style.display = 'none';
-      manual.style.display = '';
-      lbl.innerHTML = `⚠ Could not load branches: ${e.message}. <a href="#" onclick="loadBranches();return false">Retry</a>`;
+      clearTimeout(timerId);
+      // On timeout or network failure fall straight through to manual input
+      showManualBranch();
+      const reason = e.name === 'AbortError' ? 'timed out' : e.message;
+      lbl.innerHTML = `⚠ Branch load ${reason} — type the branch name above · <a href="#" onclick="loadBranches();return false">retry</a>`;
     }
   }
 
@@ -803,12 +809,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   // ── Clarification flow ──────────────────────────────────────────────────────
   async function runWithClarify(action) {
-    const raw    = document.getElementById('queryInput').value.trim();
-    const branch = getBranch();
-    if (!raw)    { setStatus('Please enter a question first.'); return; }
-    if (!branch) { setStatus('Please select a branch first.'); return; }
+    const raw = document.getElementById('queryInput').value.trim();
+    if (!raw) { setStatus('Please enter a question first.'); return; }
     _pendingAction = action;
-    // Only ask once per session
+    // Only ask clarification once per session; if already done (or no question), run directly
     if (_clarifyDone) { _executePendingAction(); return; }
     setStatus('Checking question…');
     try {
@@ -817,6 +821,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ query: raw }),
       });
+      if (!resp.ok) throw new Error('clarify endpoint error');
       const data = await resp.json();
       if (data.needs_clarification && data.question) {
         document.getElementById('clarifyQuestion').textContent = data.question;
@@ -828,8 +833,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         _clarifyDone = true;
         _executePendingAction();
       }
-    } catch {
-      // If the check fails just proceed without clarification
+    } catch (e) {
+      // Clarify check failed — proceed directly without clarification
       _clarifyDone = true;
       _executePendingAction();
     }
