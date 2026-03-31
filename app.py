@@ -121,7 +121,7 @@ def _job_remove(job_id: str):
 # ---------------------------------------------------------------------------
 # Usage tracking — SQLite
 # ---------------------------------------------------------------------------
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "usage.db")
+DB_PATH = os.path.join(os.environ.get("DB_DIR", os.path.dirname(os.path.abspath(__file__))), "usage.db")
 
 
 def init_db():
@@ -261,12 +261,48 @@ def _ado_headers() -> dict:
 
 
 def ado_get_branches() -> list:
-    """Return only exact supported_release-X.XX.X branches, newest first.
-    Filters out any branch with extra suffixes (e.g. hotfix, patch, rc variants).
+    """Return the branches that are actually indexed by ADO Code Search.
+
+    Uses the Code Search facets API (includeFacets=true with a minimal query)
+    to get the exact branch list that the search engine knows about — these are
+    the branches the admin has enabled under Project Settings → Boards → Code Search.
+    Falls back to the Git Refs API filtered to supported_release-X.XX.X if the
+    facets call fails for any reason.
     """
+    # ── Primary: Code Search facets ──────────────────────────────────────────
+    try:
+        body = {
+            "searchText": "a",          # minimal query — we only want facets
+            "$skip": 0,
+            "$top": 1,
+            "filters": {
+                "Project":    [ADO_PROJECT],
+                "Repository": [ADO_REPO],
+            },
+            "includeFacets": True,
+        }
+        resp = requests.post(ADO_SEARCH_URL, headers=_ado_headers(), json=body, timeout=15)
+        if resp.ok:
+            facets = resp.json().get("facets", {})
+            branch_facets = facets.get("Branch", [])
+            if branch_facets:
+                # Each facet entry: {"name": "branch-name", "resultCount": N}
+                names = [f["name"] for f in branch_facets if f.get("name")]
+                # Put development branches last, release branches first (newest first)
+                def _sort_key(b):
+                    # supported_release-X.Y.Z → sort numerically, descending
+                    import re
+                    m = re.search(r"(\d+)\.(\d+)\.(\d+)", b)
+                    if m:
+                        return (1, -int(m.group(1)), -int(m.group(2)), -int(m.group(3)), b)
+                    return (0, 0, 0, 0, b)   # non-version branches sort first
+                return sorted(names, key=_sort_key)
+    except Exception as e:
+        print(f"[branches] Facets call failed ({e}), falling back to Git Refs API")
+
+    # ── Fallback: Git Refs API filtered to supported_release branches ─────────
     import re
     BRANCH_PATTERN = re.compile(r"^supported_release-\d+\.\d+\.\d+$")
-
     url = (
         f"{ADO_BASE_URL}/{ADO_PROJECT}/_apis/git/repositories/{ADO_REPO}"
         f"/refs?filter=heads/supported_release&api-version=7.0"
@@ -286,29 +322,32 @@ def ado_get_branches() -> list:
 def ado_code_search(query, branch, top=None):
     """Search the Cora PPM ADO codebase and return matching file metadata.
 
-    ADO Code Search only indexes certain branches (typically development/main).
-    Supported_release branches are usually NOT indexed, so we search WITHOUT a
-    branch filter to discover file paths, then callers read those paths from the
-    specific branch they care about.
+    Now that the admin has enabled specific branches for Code Search, we pass
+    the branch filter directly so results come from exactly the branch the user
+    selected — no more searching the default branch and re-reading files from
+    a different branch.
 
     ADO Code Search API requires $skip/$top (dollar-sign prefix).
-    $orderBy and includeFacets are intentionally omitted — they cause 400s
-    on some ADO tenants.
     """
     if top is None:
         top = MAX_SEARCH_RESULTS
 
-    # Never filter by branch in search — supported_release branches are not
-    # indexed by ADO Code Search. File paths are consistent across branches;
-    # we use the branch only when reading file contents.
+    filters: dict = {
+        "Project":    [ADO_PROJECT],
+        "Repository": [ADO_REPO],
+    }
+    # Pass the branch filter so results come from the selected branch directly.
+    # If for any reason the branch isn't indexed, ADO falls back to results
+    # from any indexed branch — callers still read files using the explicit
+    # branch, so correctness is preserved either way.
+    if branch:
+        filters["Branch"] = [branch]
+
     body = {
         "searchText": query,
         "$skip": 0,
         "$top": top,
-        "filters": {
-            "Project":    [ADO_PROJECT],
-            "Repository": [ADO_REPO],
-        },
+        "filters": filters,
     }
 
     resp = requests.post(ADO_SEARCH_URL, headers=_ado_headers(), json=body, timeout=15)
@@ -375,26 +414,32 @@ def extract_search_terms(query: str, client) -> list[str]:
         max_tokens=350,
         system=(
             "You are a search-term extractor for a large C#/VB.NET/ASP.NET WebForms codebase "
-            "stored in Azure DevOps (Cora PPM). ADO Code Search works on exact token matches — "
-            "long natural-language phrases return zero results.\n\n"
-            "Think in layers:\n"
-            "  1. The PRIMARY feature name as it appears in file names (e.g. 'TimesheetGrid', 'EACSubmit')\n"
-            "  2. The SHORT keyword — just the core noun (e.g. 'Timesheet', 'EAC', 'Forecast')\n"
-            "  3. Related SERVICE / REPOSITORY class names (e.g. 'ITimesheetService', 'TimesheetRepository')\n"
-            "  4. Related CONTROLLER or CODEBEHIND patterns (e.g. 'TimesheetController', 'Timesheet.aspx')\n"
-            "  5. Any ENUM, CONSTANT, or SQL stored-proc name likely involved (e.g. 'sp_GetTimesheets')\n"
-            "  6. Alternative naming variants used in older parts of the codebase (e.g. 'TimeSheet' vs 'Timesheet')\n\n"
-            "Rules:\n"
-            "  - Each term must be 1-3 tokens, no spaces longer than one word, no punctuation except underscores\n"
-            "  - Never use the full user question as a term\n"
-            "  - Include BOTH PascalCase compound AND short standalone variants"
+            "stored in Azure DevOps (Cora PPM). ADO Code Search does exact token matching — "
+            "long or invented phrases return ZERO results. Short, real identifiers always win.\n\n"
+            "CRITICAL RULES:\n"
+            "  - Use ONLY short (1-2 word) stems that will literally appear in file names or class names\n"
+            "  - NEVER invent compound terms that sound logical but may not exist (e.g. 'ForecastingScreen',\n"
+            "    'IEACService', 'EACRepository' — these return 0 hits if not the real class name)\n"
+            "  - ALWAYS include the bare short noun form (e.g. 'EAC', 'Timesheet', 'Forecast', 'Budget')\n"
+            "  - ALWAYS include the most likely .aspx page stem (e.g. 'ProjectForecasting', 'TimesheetEntry')\n"
+            "  - For buttons/actions, search for the button label word, not the full action description\n\n"
+            "Think in layers — SHORT stem first, then variations:\n"
+            "  1. Core noun: the 1-word topic (e.g. 'EAC', 'Timesheet', 'Forecast')\n"
+            "  2. Page/screen file prefix (e.g. 'ProjectForecasting', 'TimesheetGrid', 'Popup_Project')\n"
+            "  3. The button or feature keyword exactly as it likely appears in code (e.g. 'btnSubmit', 'Submit')\n"
+            "  4. Likely service class prefix — real name only (e.g. 'ForecastService', 'TimesheetService')\n"
+            "  5. Alternate casing/spelling (e.g. 'EacSubmit', 'eacSubmit', 'Eac')\n"
+            "  6. Any SQL prefix if data access is involved (e.g. 'sp_EAC', 'sp_Forecast')\n\n"
+            "Good example for 'EAC Submit button on Project Forecasting':\n"
+            "  ['EAC', 'ProjectForecasting', 'btnSubmit', 'ForecastService', 'EacSubmit', 'sp_EAC']\n"
+            "Bad example (these would all return 0 hits):\n"
+            "  ['EACSubmit', 'ForecastingScreen', 'IEACService', 'EACRepository', 'sp_EACSubmit']"
         ),
         messages=[{
             "role":    "user",
             "content": (
-                "Extract 4-7 search terms that together will find ALL files relevant to this question "
-                "in the Cora PPM ADO repository. Cover the page/control, the business logic, "
-                "the service/repository layer, and any helpers.\n\n"
+                "Extract 5-8 search terms that together will find ALL files relevant to this question "
+                "in the Cora PPM ADO repository. Prioritise SHORT real identifier stems over invented compounds.\n\n"
                 "Return ONLY a JSON array of strings, nothing else.\n\n"
                 f"Question: {query}"
             ),
@@ -926,18 +971,55 @@ def run_computer_loop(query, branch):
     })
 
     # Step 2 — Run ADO Code Search for each term, deduplicate results
+    # When a term returns 0 hits, automatically try shorter fallback variants
+    # (split camelCase, strip suffix) before giving up on that term.
     all_results = []
     seen_paths  = set()
     search_log  = []
 
+    def _camel_split(s):
+        """Split a PascalCase/camelCase string into its component words."""
+        import re
+        parts = re.sub(r'([A-Z][a-z]+)', r' \1', re.sub(r'([A-Z]+)(?=[A-Z][a-z])', r' \1', s)).split()
+        return [p for p in parts if len(p) >= 3]
+
+    def _search_and_add(term, label=None):
+        """Run one search term, add new hits to all_results, return log entry."""
+        hits = ado_code_search(term, branch, top=MAX_SEARCH_RESULTS)
+        new_hits = [r for r in hits if r.get("file_path") not in seen_paths]
+        for r in new_hits:
+            seen_paths.add(r.get("file_path"))
+            all_results.append(r)
+        return {"term": label or term, "hits": len(hits), "new_unique": len(new_hits)}
+
     for term in search_terms:
         try:
-            hits = ado_code_search(term, branch, top=MAX_SEARCH_RESULTS)
-            new_hits = [r for r in hits if r.get("file_path") not in seen_paths]
-            for r in new_hits:
-                seen_paths.add(r.get("file_path"))
-                all_results.append(r)
-            search_log.append({"term": term, "hits": len(hits), "new_unique": len(new_hits)})
+            entry = _search_and_add(term)
+            search_log.append(entry)
+
+            # If this term returned nothing, try shorter fallbacks before moving on
+            if entry["hits"] == 0:
+                fallbacks_tried = []
+                # 1. Split camelCase and try each component word
+                for part in _camel_split(term):
+                    if part not in search_terms and part not in fallbacks_tried:
+                        fallbacks_tried.append(part)
+                        try:
+                            fb = _search_and_add(part, label=f"{term}→{part}")
+                            search_log.append(fb)
+                            if fb["hits"] > 0:
+                                break   # found something — stop trying fallbacks for this term
+                        except Exception:
+                            pass
+                # 2. If still nothing, try just the first 4+ chars (catches naming variants)
+                if entry["hits"] == 0 and not any(s.get("hits", 0) > 0 for s in search_log[-len(fallbacks_tried):]):
+                    stem = term[:max(4, len(term) - 3)]
+                    if len(stem) >= 4 and stem not in search_terms and stem not in fallbacks_tried:
+                        try:
+                            fb = _search_and_add(stem, label=f"{term}→{stem}(stem)")
+                            search_log.append(fb)
+                        except Exception:
+                            pass
         except Exception as e:
             search_log.append({"term": term, "error": str(e)})
 
@@ -1066,11 +1148,35 @@ def run_computer_loop(query, branch):
     if missing_paths:
         steps_log.append({
             "step":   6,
-            "action": "Fetching " + str(len(missing_paths)) + " additional file(s) identified as needed: "
+            "action": "Resolving " + str(len(missing_paths)) + " missing file(s) via ADO search: "
                       + ", ".join(p.rsplit("/", 1)[-1] for p in missing_paths),
         })
-        for j, fp in enumerate(missing_paths[:8], start=1):   # fetch up to 8 extra files
-            _read_and_log(fp, f"6.{j}")
+        for j, fp in enumerate(missing_paths[:8], start=1):   # resolve up to 8 extra files
+            filename = fp.rsplit("/", 1)[-1]   # e.g. "Popup_ProjectForecasting.aspx.vb"
+            # Search ADO for the filename to discover the real repo path — Claude's
+            # guessed path (e.g. just the filename) is often wrong or incomplete.
+            resolved_path = fp   # default: try the guessed path as-is
+            try:
+                search_hits = ado_code_search(filename, branch, top=3)
+                if search_hits:
+                    # Pick the hit whose filename matches most closely
+                    exact = [h for h in search_hits if h.get("file_path", "").endswith(filename)]
+                    resolved_path = (exact or search_hits)[0]["file_path"]
+                    steps_log.append({
+                        "step":   f"6.{j}.resolve",
+                        "action": f"Resolved '{filename}' → {resolved_path}",
+                    })
+                else:
+                    steps_log.append({
+                        "step":   f"6.{j}.resolve",
+                        "action": f"ADO search found no results for '{filename}' — trying guessed path",
+                    })
+            except Exception as e:
+                steps_log.append({
+                    "step":   f"6.{j}.resolve",
+                    "action": f"Search for '{filename}' failed ({e}) — trying guessed path",
+                })
+            _read_and_log(resolved_path, f"6.{j}")
 
         # Re-synthesise with the full context
         steps_log.append({"step": "6.final", "action": "Re-synthesising with complete file set"})
