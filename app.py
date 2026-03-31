@@ -87,7 +87,7 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "usage.db")
 
 
 def init_db():
-    """Create usage tracking tables if they don't exist."""
+    """Create usage tracking tables if they don't exist, and migrate token columns."""
     try:
         conn = sqlite3.connect(DB_PATH)
         cur  = conn.cursor()
@@ -104,20 +104,37 @@ def init_db():
                 iterations       INTEGER DEFAULT 0,
                 searches         INTEGER DEFAULT 0,
                 confidence_level TEXT,
+                input_tokens     INTEGER DEFAULT 0,
+                output_tokens    INTEGER DEFAULT 0,
+                total_tokens     INTEGER DEFAULT 0,
                 error_message    TEXT
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS synthesis_events (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                ran_at       TEXT    NOT NULL DEFAULT (datetime('now')),
-                query        TEXT,
-                sources_used TEXT,
-                duration_sec REAL,
-                status       TEXT    NOT NULL DEFAULT 'success',
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                ran_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+                query         TEXT,
+                sources_used  TEXT,
+                duration_sec  REAL,
+                status        TEXT    NOT NULL DEFAULT 'success',
+                input_tokens  INTEGER DEFAULT 0,
+                output_tokens INTEGER DEFAULT 0,
+                total_tokens  INTEGER DEFAULT 0,
                 error_message TEXT
             )
         """)
+        # Migrate existing tables: add token columns if they don't already exist
+        for table in ("search_events", "synthesis_events"):
+            for col_def in (
+                "input_tokens  INTEGER DEFAULT 0",
+                "output_tokens INTEGER DEFAULT 0",
+                "total_tokens  INTEGER DEFAULT 0",
+            ):
+                try:
+                    cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
+                except Exception:
+                    pass  # column already exists
         conn.commit()
         conn.close()
     except Exception as e:
@@ -127,7 +144,8 @@ def init_db():
 def track_search_event(loop_type: str, query: str, branch: str, status: str,
                        duration_sec: float, files_read: int = 0,
                        iterations: int = 0, searches: int = 0,
-                       confidence_level: str = "", error_message: str = ""):
+                       confidence_level: str = "", error_message: str = "",
+                       input_tokens: int = 0, output_tokens: int = 0):
     """Record a single loop search run."""
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -135,11 +153,14 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
         cur.execute(
             """INSERT INTO search_events
                (loop_type, query, branch, status, duration_sec, files_read,
-                iterations, searches, confidence_level, error_message)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                iterations, searches, confidence_level,
+                input_tokens, output_tokens, total_tokens, error_message)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (loop_type, (query or "")[:300], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
-             confidence_level or "", error_message or ""),
+             confidence_level or "",
+             input_tokens, output_tokens, input_tokens + output_tokens,
+             error_message or ""),
         )
         conn.commit()
         conn.close()
@@ -148,17 +169,20 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
 
 
 def track_synthesis_event(query: str, sources_used: str, duration_sec: float,
-                          status: str = "success", error_message: str = ""):
+                          status: str = "success", error_message: str = "",
+                          input_tokens: int = 0, output_tokens: int = 0):
     """Record a synthesis call."""
     try:
         conn = sqlite3.connect(DB_PATH)
         cur  = conn.cursor()
         cur.execute(
             """INSERT INTO synthesis_events
-               (query, sources_used, duration_sec, status, error_message)
-               VALUES (?,?,?,?,?)""",
+               (query, sources_used, duration_sec, status,
+                input_tokens, output_tokens, total_tokens, error_message)
+               VALUES (?,?,?,?,?,?,?,?)""",
             ((query or "")[:300], sources_used or "", round(duration_sec, 2),
-             status, error_message or ""),
+             status, input_tokens, output_tokens, input_tokens + output_tokens,
+             error_message or ""),
         )
         conn.commit()
         conn.close()
@@ -639,9 +663,11 @@ def run_agentic_loop(query, branch):
         f"Question: {query}\n\n"
         f"Remember: extract the KEY TECHNICAL TERMS first, then search with those short terms."
     )}]
-    iterations_log   = []
-    iteration        = 0
-    final_answer     = ""
+    iterations_log      = []
+    iteration           = 0
+    final_answer        = ""
+    total_input_tokens  = 0
+    total_output_tokens = 0
     # Track full file contents separately so fallback synthesis has real context,
     # not just metadata dicts from the iterations log.
     accumulated_files = {}   # file_path -> full content string
@@ -678,6 +704,8 @@ def run_agentic_loop(query, branch):
             tools=tools,
             messages=messages,
         )
+        total_input_tokens  += getattr(getattr(response, "usage", None), "input_tokens",  0)
+        total_output_tokens += getattr(getattr(response, "usage", None), "output_tokens", 0)
 
         tool_uses = [b for b in response.content if b.type == "tool_use"]
 
@@ -803,6 +831,8 @@ def run_agentic_loop(query, branch):
                 ),
             }],
         )
+        total_input_tokens  += getattr(getattr(fallback, "usage", None), "input_tokens",  0)
+        total_output_tokens += getattr(getattr(fallback, "usage", None), "output_tokens", 0)
         final_answer = _clean_answer(fallback.content[0].text)
 
     total_searches   = sum(1 for it in iterations_log for tc in it.get("tool_calls", []) if tc.get("type") == "search")
@@ -818,6 +848,8 @@ def run_agentic_loop(query, branch):
         "total_searches":   total_searches,
         "total_files_read": total_files_read,
         "branch":           branch,
+        "input_tokens":     total_input_tokens,
+        "output_tokens":    total_output_tokens,
     }
 
 
@@ -956,6 +988,9 @@ def run_computer_loop(query, branch):
             for fc in fc_list
         )
 
+    comp_input_tokens  = 0
+    comp_output_tokens = 0
+
     first_pass = client.messages.create(
         model=MODEL,
         max_tokens=5000,
@@ -970,6 +1005,8 @@ def run_computer_loop(query, branch):
             ),
         }],
     )
+    comp_input_tokens  += getattr(getattr(first_pass, "usage", None), "input_tokens",  0)
+    comp_output_tokens += getattr(getattr(first_pass, "usage", None), "output_tokens", 0)
     first_text = first_pass.content[0].text
 
     # Step 6 — Second pass: fetch any files Claude said were missing
@@ -1006,6 +1043,8 @@ def run_computer_loop(query, branch):
                 ),
             }],
         )
+        comp_input_tokens  += getattr(getattr(final_pass, "usage", None), "input_tokens",  0)
+        comp_output_tokens += getattr(getattr(final_pass, "usage", None), "output_tokens", 0)
         final_answer = _clean_answer(final_pass.content[0].text)
     else:
         # No missing files flagged — first pass is the answer
@@ -1021,6 +1060,8 @@ def run_computer_loop(query, branch):
         "results_found": len(search_results),
         "files_read":    len(file_contents),
         "branch":        branch,
+        "input_tokens":  comp_input_tokens,
+        "output_tokens": comp_output_tokens,
     }
 
 
@@ -1563,6 +1604,8 @@ def run_sharepoint_loop(query: str) -> dict:
 
     sp_answer = _clean_answer(synthesis.content[0].text)
     confidence = assess_confidence(query, sp_answer, len(file_contents), "SharePoint Loop")
+    sp_in  = getattr(getattr(synthesis, "usage", None), "input_tokens",  0)
+    sp_out = getattr(getattr(synthesis, "usage", None), "output_tokens", 0)
 
     return {
         "answer":        sp_answer,
@@ -1572,6 +1615,8 @@ def run_sharepoint_loop(query: str) -> dict:
         "results_found": len(all_results),
         "files_read":    len(file_contents),
         "folder":        SP_FOLDER_FULL,
+        "input_tokens":  sp_in,
+        "output_tokens": sp_out,
     }
 
 
@@ -1658,7 +1703,9 @@ def synthesize_all(query: str, agentic_result: dict, computer_result: dict, sp_r
             ),
         }],
     )
-    return _clean_answer(resp.content[0].text)
+    synth_in  = getattr(getattr(resp, "usage", None), "input_tokens",  0)
+    synth_out = getattr(getattr(resp, "usage", None), "output_tokens", 0)
+    return _clean_answer(resp.content[0].text), synth_in, synth_out
 
 
 # ---------------------------------------------------------------------------
@@ -1736,6 +1783,8 @@ def api_agentic():
             result.get("total_iterations",  0),
             result.get("total_searches",    0),
             result.get("confidence", {}).get("level", ""),
+            input_tokens=result.get("input_tokens",  0),
+            output_tokens=result.get("output_tokens", 0),
         )
         return jsonify({"success": True, "result": result})
     except Exception as e:
@@ -1763,6 +1812,8 @@ def api_computer():
             0,
             result.get("results_found", 0),
             result.get("confidence", {}).get("level", ""),
+            input_tokens=result.get("input_tokens",  0),
+            output_tokens=result.get("output_tokens", 0),
         )
         return jsonify({"success": True, "result": result})
     except Exception as e:
@@ -1801,6 +1852,8 @@ def api_sharepoint():
             result.get("files_read", 0),
             0, 0,
             result.get("confidence", {}).get("level", ""),
+            input_tokens=result.get("input_tokens",  0),
+            output_tokens=result.get("output_tokens", 0),
         )
         return jsonify({"success": True, "result": result})
     except Exception as e:
@@ -1827,8 +1880,9 @@ def api_synthesize():
     ]))
     t0 = time.time()
     try:
-        synthesis = synthesize_all(query, agentic or {}, computer or {}, sp or {})
-        track_synthesis_event(query, sources_used, time.time() - t0, "success")
+        synthesis, synth_in, synth_out = synthesize_all(query, agentic or {}, computer or {}, sp or {})
+        track_synthesis_event(query, sources_used, time.time() - t0, "success",
+                              input_tokens=synth_in, output_tokens=synth_out)
         return jsonify({"success": True, "synthesis": synthesis})
     except Exception as e:
         track_synthesis_event(query, sources_used, time.time() - t0, "error", str(e))
@@ -1842,11 +1896,13 @@ def api_synthesize():
 ADMIN_TABLES = {
     "search_events": (
         "SELECT id, ran_at, loop_type, query, branch, status, "
-        "duration_sec, files_read, iterations, searches, confidence_level, error_message "
+        "duration_sec, files_read, iterations, searches, confidence_level, "
+        "input_tokens, output_tokens, total_tokens, error_message "
         "FROM search_events ORDER BY ran_at DESC LIMIT 500"
     ),
     "synthesis_events": (
-        "SELECT id, ran_at, query, sources_used, duration_sec, status, error_message "
+        "SELECT id, ran_at, query, sources_used, duration_sec, status, "
+        "input_tokens, output_tokens, total_tokens, error_message "
         "FROM synthesis_events ORDER BY ran_at DESC LIMIT 500"
     ),
 }

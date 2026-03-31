@@ -207,6 +207,63 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 
 footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem}
 @media(max-width:640px){main{width:96%}.card{padding:18px 16px}header{padding:0 18px}}
+
+/* ── Admin toggle button in header ── */
+.admin-toggle-btn{color:rgba(255,255,255,.8);text-decoration:none;font-size:.82rem;padding:5px 13px;border-radius:6px;border:1px solid rgba(255,255,255,.22);background:rgba(30,111,212,.35);border-color:rgba(30,111,212,.5);cursor:pointer;font-family:inherit;font-weight:600;transition:all .15s}
+.admin-toggle-btn:hover{background:rgba(255,255,255,.12)!important;border-color:rgba(255,255,255,.3)!important}
+
+/* ── Admin view (SPA — swaps with main) ── */
+#view-admin{display:none}
+#view-admin main{width:95%;max-width:none;margin:28px auto;padding:0}
+.adm-summary-row{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:1100px){.adm-summary-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.adm-summary-row{grid-template-columns:1fr}}
+.adm-summary-card{background:var(--card);border-radius:var(--radius);padding:20px 24px;box-shadow:var(--shadow)}
+.adm-summary-card .label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.adm-summary-card .value{font-size:1.8rem;font-weight:800;color:var(--brand)}
+.adm-summary-card .sub{font-size:.78rem;color:var(--muted);margin-top:4px}
+.adm-breakdown-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:700px){.adm-breakdown-row{grid-template-columns:1fr}}
+.adm-breakdown-card{background:var(--card);border-radius:var(--radius);padding:18px 22px;box-shadow:var(--shadow);border-top:3px solid var(--border)}
+.adm-breakdown-card.agentic{border-color:#2563eb}
+.adm-breakdown-card.computer{border-color:#7c3aed}
+.adm-breakdown-card.sharepoint{border-color:#0078d4}
+.adm-breakdown-card .bc-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.adm-breakdown-card .bc-stat{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;padding:5px 0;border-bottom:1px solid var(--border)}
+.adm-breakdown-card .bc-stat:last-child{border-bottom:none}
+.adm-breakdown-card .bc-stat .bc-key{color:var(--muted)}
+.adm-breakdown-card .bc-stat .bc-val{font-weight:700;color:var(--text)}
+.adm-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--card);padding:4px;border-radius:10px;box-shadow:var(--shadow);width:fit-content}
+.adm-tab{padding:10px 22px;border-radius:8px;border:none;background:transparent;font-size:.88rem;font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;font-family:inherit}
+.adm-tab.active{background:var(--brand);color:#fff}
+.adm-tab:hover:not(.active){background:var(--bg);color:var(--text)}
+.adm-table-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.adm-table-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.adm-table-header h2{font-size:.95rem;font-weight:700;color:var(--text)}
+.adm-table-actions{display:flex;gap:8px;align-items:center}
+.adm-btn-export{padding:7px 16px;border-radius:7px;border:1.5px solid var(--border);background:#fff;color:var(--text);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;display:inline-flex;align-items:center;gap:5px}
+.adm-btn-export:hover{background:var(--bg);border-color:#b0bfd0}
+.adm-table-filter{padding:7px 12px;border-radius:7px;border:1.5px solid var(--border);font-size:.82rem;font-family:inherit;color:var(--text);min-width:200px}
+.adm-table-filter:focus{outline:none;border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
+.adm-table-wrap{overflow-x:auto;max-height:60vh;overflow-y:auto}
+#adm-table-body-el table{width:100%;border-collapse:collapse;font-size:.82rem}
+#adm-table-body-el th{background:#f8fafc;padding:10px 14px;text-align:left;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1.5px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;position:sticky;top:0}
+#adm-table-body-el th:hover{background:#eef1f6}
+#adm-table-body-el th .sort-arrow{font-size:.6rem;margin-left:4px;opacity:.4}
+#adm-table-body-el th.sorted .sort-arrow{opacity:1}
+#adm-table-body-el td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--text);max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#adm-table-body-el tr:hover td{background:#f8fafc}
+.adm-status-success{color:var(--success);font-weight:600}
+.adm-status-error{color:var(--error);font-weight:600}
+.adm-conf-high{color:var(--success);font-weight:600}
+.adm-conf-medium{color:var(--warn);font-weight:600}
+.adm-conf-low{color:var(--error);font-weight:600}
+.adm-loop-agentic{color:#2563eb;font-weight:600}
+.adm-loop-computer{color:#7c3aed;font-weight:600}
+.adm-loop-sharepoint{color:#0078d4;font-weight:600}
+.adm-row-count{font-size:.78rem;color:var(--muted);padding:12px 20px;border-top:1px solid var(--border)}
+.adm-empty-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
+.adm-loading-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
 </style>
 </head>
 <body>
@@ -222,10 +279,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <span class="dot"></span>
       CoraSystems / PPM — no external sources
     </div>
-    <a href="/admin" style="color:rgba(255,255,255,.8);text-decoration:none;font-size:.82rem;padding:5px 13px;border-radius:6px;border:1px solid rgba(255,255,255,.22);transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.12)'" onmouseout="this.style.background=''">Admin</a>
+    <button class="admin-toggle-btn" id="adminToggleBtn" onclick="toggleAdminView()">Admin</button>
   </div>
 </header>
 
+<div id="view-main">
 <main>
 
   <!-- ── Top: Query + Branch ── -->
@@ -344,6 +402,118 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   </div>
 
 </main>
+</div><!-- /view-main -->
+
+<!-- ══════════════════════════════════════════════════════
+     ADMIN VIEW  (swaps in when toggle button is clicked)
+════════════════════════════════════════════════════════ -->
+<div id="view-admin">
+<main>
+
+  <!-- Summary cards -->
+  <div class="adm-summary-row">
+    <div class="adm-summary-card">
+      <div class="label">Total Searches</div>
+      <div class="value" id="adm-stat-total">—</div>
+      <div class="sub" id="adm-stat-total-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">Unique Questions</div>
+      <div class="value" id="adm-stat-unique">—</div>
+      <div class="sub" id="adm-stat-unique-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">Avg Response Time</div>
+      <div class="value" id="adm-stat-time">—</div>
+      <div class="sub" id="adm-stat-time-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">High Confidence</div>
+      <div class="value" id="adm-stat-confidence">—</div>
+      <div class="sub" id="adm-stat-confidence-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">Syntheses Run</div>
+      <div class="value" id="adm-stat-synth">—</div>
+      <div class="sub" id="adm-stat-synth-sub"></div>
+    </div>
+  </div>
+
+  <!-- Token summary row -->
+  <div class="adm-summary-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px">
+    <div class="adm-summary-card">
+      <div class="label">Avg Tokens / Search</div>
+      <div class="value" id="adm-stat-tok-avg">—</div>
+      <div class="sub" id="adm-stat-tok-avg-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">Total Tokens (all searches)</div>
+      <div class="value" id="adm-stat-tok-total">—</div>
+      <div class="sub" id="adm-stat-tok-total-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">Most Expensive Search</div>
+      <div class="value" id="adm-stat-tok-max">—</div>
+      <div class="sub" id="adm-stat-tok-max-sub"></div>
+    </div>
+  </div>
+
+  <!-- Per-loop breakdown -->
+  <div class="adm-breakdown-row">
+    <div class="adm-breakdown-card agentic">
+      <div class="bc-label">⚡ Agentic Loop</div>
+      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="adm-ag-runs">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Files Read</span><span class="bc-val" id="adm-ag-files">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Iterations</span><span class="bc-val" id="adm-ag-iters">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-ag-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-ag-tokens">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-ag-errors">—</span></div>
+    </div>
+    <div class="adm-breakdown-card computer">
+      <div class="bc-label">🖥 Computer Loop</div>
+      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="adm-cp-runs">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Files Read</span><span class="bc-val" id="adm-cp-files">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Searches</span><span class="bc-val" id="adm-cp-searches">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-cp-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-cp-tokens">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-cp-errors">—</span></div>
+    </div>
+    <div class="adm-breakdown-card sharepoint">
+      <div class="bc-label">🔷 SharePoint Loop</div>
+      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="adm-sp-runs">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Docs Read</span><span class="bc-val" id="adm-sp-files">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-sp-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-sp-tokens">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-sp-errors">—</span></div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="adm-tabs">
+    <button class="adm-tab active" onclick="admSwitchTab(event,'search_events')">Search Events</button>
+    <button class="adm-tab" onclick="admSwitchTab(event,'synthesis_events')">Synthesis Events</button>
+  </div>
+
+  <!-- Table -->
+  <div class="adm-table-card">
+    <div class="adm-table-header">
+      <h2 id="adm-table-title">Search Events</h2>
+      <div class="adm-table-actions">
+        <input type="text" class="adm-table-filter" id="adm-table-filter" placeholder="Filter rows…" oninput="admApplyFilter()"/>
+        <button class="adm-btn-export" onclick="admExport()"><span>📥</span> Export CSV</button>
+      </div>
+    </div>
+    <div class="adm-table-wrap" id="adm-table-body-el">
+      <table>
+        <thead id="adm-thead"></thead>
+        <tbody id="adm-tbody"><tr><td class="adm-loading-msg" colspan="99">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="adm-row-count" id="adm-row-count"></div>
+  </div>
+
+</main>
+</div><!-- /view-admin -->
 
 <footer>Cora PPM Loop Comparison · All answers sourced exclusively from CoraSystems/PPM Azure DevOps</footer>
 
@@ -751,6 +921,228 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     } finally {
       document.getElementById('compareLoading').style.display = 'none';
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ADMIN SPA
+  // ═══════════════════════════════════════════════════════════════
+  let admViewActive  = false;
+  let admLoaded      = false;
+  let admTableData   = {};
+  let admCurrentTab  = 'search_events';
+  let admSortCol     = null;
+  let admSortAsc     = true;
+
+  const ADM_TABLE_LABELS = {
+    search_events:    'Search Events',
+    synthesis_events: 'Synthesis Events'
+  };
+
+  const ADM_COL_LABELS = {
+    id: 'ID', ran_at: 'Time', loop_type: 'Loop', query: 'Query', branch: 'Branch',
+    status: 'Status', duration_sec: 'Time (s)', files_read: 'Files',
+    iterations: 'Iterations', searches: 'Searches', confidence_level: 'Confidence',
+    input_tokens: 'Input Tokens', output_tokens: 'Output Tokens', total_tokens: 'Total Tokens',
+    error_message: 'Error', sources_used: 'Sources Used'
+  };
+
+  function toggleAdminView() {
+    admViewActive = !admViewActive;
+    const mainView = document.getElementById('view-main');
+    const adminView = document.getElementById('view-admin');
+    const btn = document.getElementById('adminToggleBtn');
+    if (admViewActive) {
+      mainView.style.display = 'none';
+      adminView.style.display = 'block';
+      btn.textContent = '← Search';
+      btn.style.background = 'rgba(255,255,255,.12)';
+      btn.style.borderColor = 'rgba(255,255,255,.3)';
+      if (!admLoaded) { admLoadAll(); admLoaded = true; }
+    } else {
+      adminView.style.display = 'none';
+      mainView.style.display = 'block';
+      btn.textContent = 'Admin';
+      btn.style.background = 'rgba(30,111,212,.35)';
+      btn.style.borderColor = 'rgba(30,111,212,.5)';
+    }
+  }
+
+  async function admLoadAll() {
+    for (const t of ['search_events', 'synthesis_events']) {
+      try {
+        const res  = await fetch(`/admin/data/${t}`);
+        const data = await res.json();
+        admTableData[t] = data.rows || [];
+      } catch (e) { admTableData[t] = []; }
+    }
+    admUpdateSummary();
+    admRenderTable();
+  }
+
+  function admAvg(arr) {
+    if (!arr.length) return null;
+    return arr.reduce((a, b) => a + b, 0) / arr.length;
+  }
+
+  function admUpdateSummary() {
+    const searches = admTableData.search_events    || [];
+    const synths   = admTableData.synthesis_events || [];
+
+    document.getElementById('adm-stat-total').textContent = searches.length;
+    const uniqueQ = new Set(searches.map(r => (r.query || '').trim().toLowerCase())).size;
+    document.getElementById('adm-stat-unique').textContent = uniqueQ;
+    document.getElementById('adm-stat-unique-sub').textContent =
+      uniqueQ === searches.length ? 'all unique' : `of ${searches.length} total`;
+
+    const times = searches.filter(r => r.duration_sec).map(r => r.duration_sec);
+    if (times.length) {
+      const a = admAvg(times);
+      document.getElementById('adm-stat-time').textContent = a.toFixed(1) + 's';
+      document.getElementById('adm-stat-time-sub').textContent = `across ${times.length} run${times.length !== 1 ? 's' : ''}`;
+    } else {
+      document.getElementById('adm-stat-time').textContent = '—';
+    }
+
+    const highConf = searches.filter(r => (r.confidence_level || '').toLowerCase() === 'high').length;
+    document.getElementById('adm-stat-confidence').textContent =
+      searches.length ? Math.round(highConf / searches.length * 100) + '%' : '—';
+    document.getElementById('adm-stat-confidence-sub').textContent =
+      searches.length ? `${highConf} of ${searches.length} runs` : '';
+
+    document.getElementById('adm-stat-synth').textContent = synths.length;
+    const synthOK = synths.filter(r => r.status === 'success').length;
+    document.getElementById('adm-stat-synth-sub').textContent =
+      synths.length ? `${synthOK} success` : 'none yet';
+
+    // Token summary cards
+    const tokRows = searches.filter(r => r.total_tokens > 0);
+    if (tokRows.length) {
+      const avgTok = admAvg(tokRows.map(r => r.total_tokens));
+      document.getElementById('adm-stat-tok-avg').textContent = Math.round(avgTok).toLocaleString();
+      document.getElementById('adm-stat-tok-avg-sub').textContent = `across ${tokRows.length} tracked run${tokRows.length !== 1 ? 's' : ''}`;
+      const totalTok = tokRows.reduce((s, r) => s + r.total_tokens, 0);
+      document.getElementById('adm-stat-tok-total').textContent = totalTok.toLocaleString();
+      document.getElementById('adm-stat-tok-total-sub').textContent = `${tokRows.reduce((s,r)=>s+r.input_tokens,0).toLocaleString()} in / ${tokRows.reduce((s,r)=>s+r.output_tokens,0).toLocaleString()} out`;
+      const maxRow = tokRows.reduce((a, b) => b.total_tokens > a.total_tokens ? b : a, tokRows[0]);
+      document.getElementById('adm-stat-tok-max').textContent = maxRow.total_tokens.toLocaleString();
+      document.getElementById('adm-stat-tok-max-sub').textContent = (maxRow.loop_type || '') + ' — ' + (maxRow.query || '').slice(0, 40);
+    }
+
+    function loopStats(type, runsEl, filesEl, thirdEl, thirdKey, timeEl, tokEl, errorsEl) {
+      const rows = searches.filter(r => r.loop_type === type);
+      document.getElementById(runsEl).textContent = rows.length || '0';
+      const fAvg = admAvg(rows.filter(r => r.files_read).map(r => r.files_read));
+      document.getElementById(filesEl).textContent = fAvg != null ? fAvg.toFixed(1) : '—';
+      const tAvg = admAvg(rows.filter(r => r[thirdKey]).map(r => r[thirdKey]));
+      document.getElementById(thirdEl).textContent = tAvg != null ? tAvg.toFixed(1) : '—';
+      const dAvg = admAvg(rows.filter(r => r.duration_sec).map(r => r.duration_sec));
+      document.getElementById(timeEl).textContent = dAvg != null ? dAvg.toFixed(1) + 's' : '—';
+      const tokAvg = admAvg(rows.filter(r => r.total_tokens > 0).map(r => r.total_tokens));
+      document.getElementById(tokEl).textContent = tokAvg != null ? Math.round(tokAvg).toLocaleString() : '—';
+      document.getElementById(errorsEl).textContent = rows.filter(r => r.status === 'error').length;
+    }
+    loopStats('agentic',    'adm-ag-runs', 'adm-ag-files', 'adm-ag-iters', 'iterations', 'adm-ag-time', 'adm-ag-tokens', 'adm-ag-errors');
+    loopStats('computer',   'adm-cp-runs', 'adm-cp-files', 'adm-cp-searches', 'searches', 'adm-cp-time', 'adm-cp-tokens', 'adm-cp-errors');
+    loopStats('sharepoint', 'adm-sp-runs', 'adm-sp-files', 'adm-sp-time', 'duration_sec', 'adm-sp-time', 'adm-sp-tokens', 'adm-sp-errors');
+  }
+
+  function admSwitchTab(event, table) {
+    admCurrentTab = table;
+    admSortCol = null; admSortAsc = true;
+    document.querySelectorAll('.adm-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('adm-table-title').textContent = ADM_TABLE_LABELS[table];
+    document.getElementById('adm-table-filter').value = '';
+    admRenderTable();
+  }
+
+  function admRenderTable() {
+    const rows = admTableData[admCurrentTab] || [];
+    const thead = document.getElementById('adm-thead');
+    const tbody = document.getElementById('adm-tbody');
+
+    if (rows.length === 0) {
+      thead.innerHTML = '';
+      tbody.innerHTML = '<tr><td class="adm-empty-msg" colspan="99">No data yet</td></tr>';
+      document.getElementById('adm-row-count').textContent = '0 rows';
+      return;
+    }
+
+    const columns = Object.keys(rows[0]);
+    let sorted = [...rows];
+    if (admSortCol !== null && columns.includes(admSortCol)) {
+      sorted.sort((a, b) => {
+        const va = a[admSortCol], vb = b[admSortCol];
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1; if (vb == null) return -1;
+        if (typeof va === 'number' && typeof vb === 'number') return admSortAsc ? va - vb : vb - va;
+        return admSortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+      });
+    }
+
+    const filter = (document.getElementById('adm-table-filter').value || '').toLowerCase();
+    if (filter) {
+      sorted = sorted.filter(row => columns.some(c => String(row[c] || '').toLowerCase().includes(filter)));
+    }
+
+    thead.innerHTML = '<tr>' + columns.map(c => {
+      const label = ADM_COL_LABELS[c] || c;
+      const isSorted = admSortCol === c;
+      const arrow = isSorted ? (admSortAsc ? '▲' : '▼') : '▽';
+      return `<th class="${isSorted ? 'sorted' : ''}" onclick="admSortBy('${c}')">${admEsc(label)} <span class="sort-arrow">${arrow}</span></th>`;
+    }).join('') + '</tr>';
+
+    tbody.innerHTML = sorted.map(row =>
+      '<tr>' + columns.map(c => {
+        let val = row[c];
+        if (val === null || val === undefined) val = '';
+        if (c === 'status') {
+          const cls = val === 'success' ? 'adm-status-success' : 'adm-status-error';
+          return `<td class="${cls}">${admEsc(val)}</td>`;
+        }
+        if (c === 'loop_type') {
+          const cls = { agentic: 'adm-loop-agentic', computer: 'adm-loop-computer', sharepoint: 'adm-loop-sharepoint' }[val] || '';
+          const icon = { agentic: '⚡', computer: '🖥', sharepoint: '🔷' }[val] || '';
+          return `<td class="${cls}">${icon} ${admEsc(val)}</td>`;
+        }
+        if (c === 'confidence_level' && val) {
+          const cls = { high: 'adm-conf-high', medium: 'adm-conf-medium', low: 'adm-conf-low' }[val.toLowerCase()] || '';
+          return `<td class="${cls}">${admEsc(val)}</td>`;
+        }
+        if (c === 'total_tokens' && val) {
+          const n = parseInt(val, 10);
+          const colour = n > 80000 ? 'color:#b91c1c;font-weight:600' : n > 40000 ? 'color:#d97706;font-weight:600' : 'color:#16a34a;font-weight:600';
+          return `<td style="${colour}">${n.toLocaleString()}</td>`;
+        }
+        if ((c === 'input_tokens' || c === 'output_tokens') && val) {
+          return `<td>${parseInt(val, 10).toLocaleString()}</td>`;
+        }
+        if (typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T?/)) {
+          val = new Date(val).toLocaleString();
+        }
+        if (typeof val === 'number' && !Number.isInteger(val)) val = val.toFixed(2);
+        return `<td title="${admEsc(String(val))}">${admEsc(String(val))}</td>`;
+      }).join('') + '</tr>'
+    ).join('');
+
+    document.getElementById('adm-row-count').textContent =
+      `${sorted.length} of ${rows.length} row${rows.length !== 1 ? 's' : ''}`;
+  }
+
+  function admSortBy(col) {
+    if (admSortCol === col) admSortAsc = !admSortAsc;
+    else { admSortCol = col; admSortAsc = true; }
+    admRenderTable();
+  }
+
+  function admApplyFilter() { admRenderTable(); }
+
+  function admExport() {
+    window.location.href = `/admin/export/${admCurrentTab}`;
+  }
+
+  function admEsc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 </script>
 </body>
