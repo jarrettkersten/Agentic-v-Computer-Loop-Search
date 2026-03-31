@@ -122,6 +122,7 @@ def _job_remove(job_id: str):
 # Usage tracking — SQLite
 # ---------------------------------------------------------------------------
 DB_PATH = os.path.join(os.environ.get("DB_DIR", os.path.dirname(os.path.abspath(__file__))), "usage.db")
+print(f"[db] DB_DIR={os.environ.get('DB_DIR','(not set — using app dir)')}  DB_PATH={DB_PATH}", flush=True)
 
 
 def init_db():
@@ -479,7 +480,7 @@ def extract_search_terms(query: str, client) -> list[str]:
         messages=[{
             "role":    "user",
             "content": (
-                "Extract 5-8 search terms that together will find ALL files relevant to this question "
+                "Extract 3-5 search terms that together will find ALL files relevant to this question "
                 "in the Cora PPM ADO repository. Prioritise SHORT real identifier stems over invented compounds.\n\n"
                 "Return ONLY a JSON array of strings, nothing else.\n\n"
                 f"Question: {query}"
@@ -494,7 +495,7 @@ def extract_search_terms(query: str, client) -> list[str]:
     try:
         terms = json.loads(raw)
         if isinstance(terms, list) and terms:
-            return [str(t).strip() for t in terms[:7] if str(t).strip()]
+            return [str(t).strip() for t in terms[:5] if str(t).strip()]
     except Exception:
         pass
     return [query[:40]]
@@ -779,7 +780,18 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         "List every file you read, with its role: UI / CodeBehind / Service / Repository / Helper.\n\n"
         "NEVER use general knowledge. Only answer from files you have read. "
         "If you cannot find a file you need, say which file and why it matters, then continue "
-        "with what you have rather than stopping early."
+        "with what you have rather than stopping early.\n\n"
+        "═══ WHEN TO STOP SEARCHING ═══\n"
+        "Once you have read files covering all relevant layers (UI page, code-behind, service, "
+        "data access), STOP and write your final answer — do NOT keep searching.\n"
+        "You have enough to answer when you have:\n"
+        "  • The .aspx/.ascx page that renders the UI for this feature\n"
+        "  • The .aspx.vb/.aspx.cs code-behind that handles the events\n"
+        "  • The service or business-logic class that processes the request\n"
+        "  • The repository/SQL that reads or writes the data\n"
+        "Do NOT keep searching for: CSS/styling, unrelated helper classes, alternative "
+        "implementations, or every file that mentions the topic. "
+        "A focused answer from 8-12 key files is better than an exhaustive answer from 25+ files."
     )
 
     messages = [{"role": "user", "content": (
@@ -803,6 +815,15 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
 
     while True:
         iteration += 1
+
+        # ── Iteration hard cap ────────────────────────────────────────────────
+        if iteration > 25:
+            messages.append({"role": "user", "content": (
+                "SYSTEM NOTE: You have reached the 25-iteration limit. "
+                "Write your complete answer NOW using every file you have already read. "
+                "Do not make any more tool calls."
+            )})
+            break
 
         # ── Time-based hard stop ──────────────────────────────────────────────
         elapsed = time.time() - loop_start_time
@@ -1194,9 +1215,10 @@ def run_computer_loop(query, branch):
         "List every file you read with its role: UI / CodeBehind / Service / Repository / Helper / SQL.\n\n"
         "DEPTH REQUIREMENT: A shallow answer that only covers the UI layer without the business logic "
         "and data layer is NOT acceptable. Cover all layers you have files for.\n\n"
-        "MISSING FILES: If key files are absent, list each on its own line as:\n"
-        "MISSING_FILE: /full/repo/path/FileName.ext\n"
-        "The system will automatically fetch them so you can give a complete answer."
+        "MISSING FILES: Only declare a file missing if (a) you are certain it exists because "
+        "you saw its exact path or filename cited in code you have already read, AND (b) it is "
+        "critical to answering the question. Do NOT speculatively list files that might exist. "
+        "Maximum 3 missing files. Format: MISSING_FILE: /full/repo/path/FileName.ext"
     )
 
     def _build_context(fc_list):
@@ -1292,7 +1314,7 @@ def run_computer_loop(query, branch):
             "action": "Resolving " + str(len(missing_paths)) + " missing file(s) via ADO search: "
                       + ", ".join(p.rsplit("/", 1)[-1] for p in missing_paths),
         })
-        for j, fp in enumerate(missing_paths[:8], start=1):   # resolve up to 8 extra files
+        for j, fp in enumerate(missing_paths[:4], start=1):   # resolve up to 4 extra files
             filename  = fp.rsplit("/", 1)[-1]          # e.g. "Popup_ProjectForecasting.aspx.vb"
             classname = filename.rsplit(".", 1)[0] if "." in filename else filename
             # Build a cascade of search terms to maximise the chance of finding the file.
@@ -1300,29 +1322,31 @@ def run_computer_loop(query, branch):
             # "IProjectForecastUiBuilder.vb" often returns 0 hits while "ProjectForecast"
             # or "ForecastUiBuilder" reliably finds it.
             search_cascade = [filename, classname] + _camel_split(classname)
-            resolved_path = fp   # default: use Claude's guessed path as last resort
-            found = False
+            resolved_path = None   # only set if we find an exact filename match
             for s_term in search_cascade:
-                if len(s_term) < 3:
+                if len(s_term) < 4:
                     continue
                 try:
                     hits = ado_code_search(s_term, branch, top=5)
                     if hits:
+                        # Only accept hits where the filename actually matches — never
+                        # fall through to a generic hit which could be a completely wrong file.
                         exact = [h for h in hits if h.get("file_path", "").endswith(filename)]
-                        resolved_path = (exact or hits)[0]["file_path"]
-                        steps_log.append({
-                            "step":   f"6.{j}.resolve",
-                            "action": f"Resolved '{filename}' via '{s_term}' → {resolved_path}",
-                        })
-                        found = True
-                        break
+                        if exact:
+                            resolved_path = exact[0]["file_path"]
+                            steps_log.append({
+                                "step":   f"6.{j}.resolve",
+                                "action": f"Resolved '{filename}' via '{s_term}' → {resolved_path}",
+                            })
+                            break
                 except Exception:
                     pass
-            if not found:
+            if resolved_path is None:
                 steps_log.append({
                     "step":   f"6.{j}.resolve",
-                    "action": f"All search strategies exhausted for '{filename}' — trying guessed path",
+                    "action": f"'{filename}' not found in repository — skipping (no exact match found)",
                 })
+                continue   # don't read a wrong file
             _read_and_log(resolved_path, f"6.{j}")
 
         # Re-synthesise with the full context
@@ -1847,7 +1871,7 @@ def run_sharepoint_loop(query: str) -> dict:
                 "**Service account:** " + SP_USERNAME + "\n"
                 "**SharePoint site:** " + SP_SITE_URL
             ),
-            "confidence":     "none",
+            "confidence":     {"level": "none", "reason": "SharePoint authentication blocked by Conditional Access policy (AADSTS53003)."},
             "confidence_reason": "SharePoint authentication blocked by Conditional Access policy (AADSTS53003).",
             "results_found":  0,
             "files_read":     0,

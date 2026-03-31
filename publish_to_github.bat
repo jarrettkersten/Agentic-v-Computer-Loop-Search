@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-title Git Save — Agentic v Computer Loop Search
+title Git Save - Agentic v Computer Loop Search
 cd /d "%~dp0"
 
 echo ============================================================
@@ -18,7 +18,7 @@ if exist ".git\objects\maintenance.lock" del /f /q ".git\objects\maintenance.loc
 :: ── First-time setup: wipe any broken .git and reinitialise ──
 if exist ".git\config" (
     for %%A in (".git\config") do if %%~zA lss 10 (
-        echo [FIX] Corrupt .git detected — reinitialising...
+        echo [FIX] Corrupt .git detected - reinitialising...
         rmdir /s /q ".git"
     )
 )
@@ -89,7 +89,7 @@ if defined FNAME (
     set SUGGESTED=Update !FNAME!
     if !FCOUNT! GTR 1 set SUGGESTED=Update !FNAME! ^(+ !FCOUNT! files changed^)
 ) else (
-    set SUGGESTED=Update — %DATE%
+    set SUGGESTED=Update - %DATE%
 )
 
 :show_suggestion
@@ -97,7 +97,7 @@ echo --- Suggested commit message ---
 echo   !SUGGESTED!
 echo.
 
-:: ── Stage everything, commit if needed, then push ────────────
+:: -- Stage everything, commit if needed, then push --
 if !HAS_UNCOMMITTED! EQU 1 (
     git add -A
     git reset HEAD .env >nul 2>&1
@@ -108,16 +108,16 @@ if !HAS_UNCOMMITTED! EQU 1 (
     echo.
     git commit -m "!MSG!"
 ) else if !PENDING! EQU 0 (
-    echo Nothing to commit or push — everything is up to date.
+    echo Nothing to commit or push - everything is up to date.
     echo.
     pause
     exit /b 0
 ) else (
-    echo No uncommitted changes — pushing existing commits now.
+    echo No uncommitted changes - pushing existing commits now.
     echo.
 )
 
-:: ── Push ─────────────────────────────────────────────────────
+:: -- Push --
 echo Pushing to GitHub...
 git push -u origin main 2>nul || git push
 
