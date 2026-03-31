@@ -263,46 +263,63 @@ def _ado_headers() -> dict:
 def ado_get_branches() -> list:
     """Return the branches that are actually indexed by ADO Code Search.
 
-    Uses the Code Search facets API (includeFacets=true with a minimal query)
-    to get the exact branch list that the search engine knows about — these are
-    the branches the admin has enabled under Project Settings → Boards → Code Search.
-    Falls back to the Git Refs API filtered to supported_release-X.XX.X if the
-    facets call fails for any reason.
+    The Code Search facets API caps returned facet values at ~10 per call,
+    ordered by result count.  Newly-added branches with fewer indexed hits
+    may fall below that cap and not appear.
+
+    Fix: query with several common code tokens and union all branch names
+    across the responses.  Falls back to the Git Refs API if every facets
+    call fails.
+
+    Display order: supported_release-* newest-first, then everything else.
     """
-    # ── Primary: Code Search facets ──────────────────────────────────────────
-    try:
-        body = {
-            "searchText": "a",          # minimal query — we only want facets
-            "$skip": 0,
-            "$top": 1,
-            "filters": {
-                "Project":    [ADO_PROJECT],
-                "Repository": [ADO_REPO],
-            },
-            "includeFacets": True,
-        }
-        resp = requests.post(ADO_SEARCH_URL, headers=_ado_headers(), json=body, timeout=15)
-        if resp.ok:
-            facets = resp.json().get("facets", {})
-            branch_facets = facets.get("Branch", [])
-            if branch_facets:
-                # Each facet entry: {"name": "branch-name", "resultCount": N}
-                names = [f["name"] for f in branch_facets if f.get("name")]
-                # Put development branches last, release branches first (newest first)
-                def _sort_key(b):
-                    # supported_release-X.Y.Z → sort numerically, descending
-                    import re
-                    m = re.search(r"(\d+)\.(\d+)\.(\d+)", b)
-                    if m:
-                        return (1, -int(m.group(1)), -int(m.group(2)), -int(m.group(3)), b)
-                    return (0, 0, 0, 0, b)   # non-version branches sort first
-                return sorted(names, key=_sort_key)
-    except Exception as e:
-        print(f"[branches] Facets call failed ({e}), falling back to Git Refs API")
+    import re as _re
+
+    def _sort_key(b):
+        # supported_release-X.Y.Z  → bucket 0, sorted newest-first (descending)
+        # anything else             → bucket 1, sorted alphabetically
+        m = _re.search(r"(\d+)\.(\d+)\.(\d+)", b)
+        if b.lower().startswith("supported_release") and m:
+            return (0, -int(m.group(1)), -int(m.group(2)), -int(m.group(3)), b)
+        return (1, 0, 0, 0, b)
+
+    # ── Primary: union facets from several search terms ───────────────────────
+    # Different terms hit different files/branches; unioning covers branches
+    # that might be below the per-call facet cap for any single term.
+    _PROBE_TERMS = ["class", "public", "return", "void", "function"]
+    all_branches: set = set()
+    any_facets_ok = False
+    for term in _PROBE_TERMS:
+        try:
+            body = {
+                "searchText": term,
+                "$skip": 0,
+                "$top": 1,
+                "filters": {
+                    "Project":    [ADO_PROJECT],
+                    "Repository": [ADO_REPO],
+                },
+                "includeFacets": True,
+            }
+            resp = requests.post(ADO_SEARCH_URL, headers=_ado_headers(), json=body, timeout=15)
+            if resp.ok:
+                facets = resp.json().get("facets", {})
+                for entry in facets.get("Branch", []):
+                    if entry.get("name"):
+                        all_branches.add(entry["name"])
+                        any_facets_ok = True
+        except Exception as e:
+            print(f"[branches] Facets probe '{term}' failed: {e}")
+
+    if all_branches:
+        print(f"[branches] Facets collected {len(all_branches)} branches: {sorted(all_branches)}")
+        return sorted(all_branches, key=_sort_key)
+
+    if not any_facets_ok:
+        print("[branches] All facets calls failed — falling back to Git Refs API")
 
     # ── Fallback: Git Refs API filtered to supported_release branches ─────────
-    import re
-    BRANCH_PATTERN = re.compile(r"^supported_release-\d+\.\d+\.\d+$")
+    BRANCH_PATTERN = _re.compile(r"^supported_release-\d+\.\d+\.\d+$")
     url = (
         f"{ADO_BASE_URL}/{ADO_PROJECT}/_apis/git/repositories/{ADO_REPO}"
         f"/refs?filter=heads/supported_release&api-version=7.0"
@@ -316,7 +333,7 @@ def ado_get_branches() -> list:
             short = name[len("refs/heads/"):]
             if BRANCH_PATTERN.match(short):
                 branches.append(short)
-    return sorted(branches, reverse=True)
+    return sorted(branches, key=_sort_key)
 
 
 def ado_code_search(query, branch, top=None):
