@@ -1473,7 +1473,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         document.getElementById('szContextBody').textContent = szContext;
         document.getElementById('screenshotContextChip').style.display = 'block';
       } catch (err) {
-        document.getElementById('szStatus').textContent = '⚠ Extraction failed: ' + err.message + ' (screenshot won't be used)';
+        document.getElementById('szStatus').textContent = '⚠ Extraction failed: ' + err.message + ' (screenshot will not be used)';
         document.getElementById('szStatus').className   = 'sp-status error';
         szContext = '';
       }
