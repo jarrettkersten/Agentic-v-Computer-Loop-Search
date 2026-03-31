@@ -811,9 +811,9 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         iteration += 1
 
         # ── Iteration hard cap ────────────────────────────────────────────────
-        if iteration > 25:
+        if iteration > 15:
             messages.append({"role": "user", "content": (
-                "SYSTEM NOTE: You have reached the 25-iteration limit. "
+                "SYSTEM NOTE: You have reached the 15-iteration limit. "
                 "Write your complete answer NOW using every file you have already read. "
                 "Do not make any more tool calls."
             )})
@@ -1038,55 +1038,18 @@ def run_computer_loop(query, branch):
     })
 
     # Step 2 — Run ADO Code Search for each term, deduplicate results
-    # When a term returns 0 hits, automatically try shorter fallback variants
-    # (split camelCase, strip suffix) before giving up on that term.
     all_results = []
     seen_paths  = set()
     search_log  = []
 
-    def _camel_split(s):
-        """Split a PascalCase/camelCase string into its component words."""
-        import re
-        parts = re.sub(r'([A-Z][a-z]+)', r' \1', re.sub(r'([A-Z]+)(?=[A-Z][a-z])', r' \1', s)).split()
-        return [p for p in parts if len(p) >= 3]
-
-    def _search_and_add(term, label=None):
-        """Run one search term, add new hits to all_results, return log entry."""
-        hits = ado_code_search(term, branch, top=MAX_SEARCH_RESULTS)
-        new_hits = [r for r in hits if r.get("file_path") not in seen_paths]
-        for r in new_hits:
-            seen_paths.add(r.get("file_path"))
-            all_results.append(r)
-        return {"term": label or term, "hits": len(hits), "new_unique": len(new_hits)}
-
     for term in search_terms:
         try:
-            entry = _search_and_add(term)
-            search_log.append(entry)
-
-            # If this term returned nothing, try shorter fallbacks before moving on
-            if entry["hits"] == 0:
-                fallbacks_tried = []
-                # 1. Split camelCase and try each component word
-                for part in _camel_split(term):
-                    if part not in search_terms and part not in fallbacks_tried:
-                        fallbacks_tried.append(part)
-                        try:
-                            fb = _search_and_add(part, label=f"{term}→{part}")
-                            search_log.append(fb)
-                            if fb["hits"] > 0:
-                                break   # found something — stop trying fallbacks for this term
-                        except Exception:
-                            pass
-                # 2. If still nothing, try just the first 4+ chars (catches naming variants)
-                if entry["hits"] == 0 and not any(s.get("hits", 0) > 0 for s in search_log[-len(fallbacks_tried):]):
-                    stem = term[:max(4, len(term) - 3)]
-                    if len(stem) >= 4 and stem not in search_terms and stem not in fallbacks_tried:
-                        try:
-                            fb = _search_and_add(stem, label=f"{term}→{stem}(stem)")
-                            search_log.append(fb)
-                        except Exception:
-                            pass
+            hits = ado_code_search(term, branch, top=MAX_SEARCH_RESULTS)
+            new_hits = [r for r in hits if r.get("file_path") not in seen_paths]
+            for r in new_hits:
+                seen_paths.add(r.get("file_path"))
+                all_results.append(r)
+            search_log.append({"term": term, "hits": len(hits), "new_unique": len(new_hits)})
         except Exception as e:
             search_log.append({"term": term, "error": str(e)})
 
@@ -1108,54 +1071,10 @@ def run_computer_loop(query, branch):
 
     # Step 3 — Claude selects the most relevant files from all search results
     prioritised = select_relevant_files(query, search_results, client, max_files=MAX_FILES_TO_READ)
-
-    # Step 3b — Layer coverage enforcement
-    # Check that all four key layers of a WebForms feature are represented.
-    # If a layer is entirely absent from the selected set, run a targeted ADO
-    # search for it so the synthesis has the full picture.
-    _LAYER_SIGNALS = {
-        "UI":         lambda p: any(p.endswith(e) for e in (".aspx", ".ascx", ".html", ".htm")),
-        "CodeBehind": lambda p: any(p.endswith(e) for e in (".aspx.vb", ".aspx.cs", ".ascx.vb", ".ascx.cs")),
-        "Service":    lambda p: "service" in p.lower() or "Service" in p,
-        "Repository": lambda p: any(x in p for x in ("Repository", "Repo", "DataAccess", "DA.", "_DA")),
-    }
-    covered = {layer: any(fn(r.get("file_path", "")) for r in prioritised)
-               for layer, fn in _LAYER_SIGNALS.items()}
-
-    # For any missing layer, try a focused search using the first search term + layer suffix
-    if not all(covered.values()):
-        base_term = search_terms[0] if search_terms else ""
-        missing_layers = [l for l, ok in covered.items() if not ok]
-        layer_suffix_map = {
-            "Service":    ["Service"],
-            "Repository": ["Repository", "Repo"],
-        }
-        for layer in missing_layers:
-            if layer not in layer_suffix_map:
-                continue   # UI / CodeBehind gaps are less actionable programmatically
-            for suffix in layer_suffix_map[layer]:
-                try:
-                    extra = _search_and_add(base_term + suffix, label=f"layer:{layer}")
-                    search_log.append(extra)
-                    if extra["hits"] > 0:
-                        break
-                except Exception:
-                    pass
-        # Re-rank the now-expanded candidate pool so coverage picks go in order
-        if any(covered[l] is False for l in layer_suffix_map):
-            prioritised = select_relevant_files(query, all_results, client,
-                                                max_files=MAX_FILES_TO_READ + 2)
-        layer_note = "all layers present" if all(covered.values()) else (
-            "missing layers: " + ", ".join(l for l, ok in covered.items() if not ok)
-            + " — ran targeted layer searches"
-        )
-    else:
-        layer_note = "all layers present"
-
     selected_paths = [r.get("file_path", "") for r in prioritised]
     steps_log.append({
         "step":    3,
-        "action":  "Claude ranked candidates (" + layer_note + ") — reading: " + ", ".join(
+        "action":  "Claude ranked candidates — reading: " + ", ".join(
             p.rsplit("/", 1)[-1] for p in selected_paths if p
         ),
         "results": prioritised,
@@ -1209,10 +1128,9 @@ def run_computer_loop(query, branch):
         "List every file you read with its role: UI / CodeBehind / Service / Repository / Helper / SQL.\n\n"
         "DEPTH REQUIREMENT: A shallow answer that only covers the UI layer without the business logic "
         "and data layer is NOT acceptable. Cover all layers you have files for.\n\n"
-        "MISSING FILES: Only declare a file missing if (a) you are certain it exists because "
-        "you saw its exact path or filename cited in code you have already read, AND (b) it is "
-        "critical to answering the question. Do NOT speculatively list files that might exist. "
-        "Maximum 3 missing files. Format: MISSING_FILE: /full/repo/path/FileName.ext"
+        "MISSING FILES: If key files are absent, list each on its own line as:\n"
+        "MISSING_FILE: /full/repo/path/FileName.ext\n"
+        "The system will automatically fetch them so you can give a complete answer."
     )
 
     def _build_context(fc_list):
@@ -1222,55 +1140,10 @@ def run_computer_loop(query, branch):
                 + ", ".join(f'"{t}"' for t in search_terms)
                 + "] returned no readable files."
             )
-        parts = []
-        for fc in fc_list:
-            parts.append("### File: " + fc["file_path"] + "\n" + fc["content"])
-
-        # Append ADO search snippets for files that were NOT fully read.
-        # This gives the synthesis pass visibility into content that would have
-        # been missed by the top-N file read cutoff or by file truncation.
-        # Each snippet shows the actual matching lines at their char offset,
-        # so Claude can reference real code even from files it didn't fully read.
-        already_read = {fc["file_path"] for fc in fc_list}
-        snippet_sections = []
-        for r in search_results:
-            fp = r.get("file_path", "")
-            snips = r.get("snippets", [])
-            if not snips:
-                continue
-            if fp in already_read:
-                # For a file that WAS fully read but might be truncated, include
-                # snippets that fall beyond the truncation point (offset > MAX_FILE_CHARS).
-                deep_snips = [s for s in snips if s.get("offset", 0) > MAX_FILE_CHARS]
-                if not deep_snips:
-                    continue
-                section = (
-                    f"### Search Snippets (deep in truncated file): {fp}\n"
-                    + "\n---\n".join(
-                        f"[offset ~{s['offset']:,}]\n{s['content']}"
-                        for s in deep_snips
-                    )
-                )
-            else:
-                section = (
-                    f"### Search Snippet (not fully read): {fp}\n"
-                    + "\n---\n".join(
-                        f"[offset ~{s.get('offset',0):,}]\n{s['content']}"
-                        for s in snips
-                    )
-                )
-            snippet_sections.append(section)
-
-        if snippet_sections:
-            parts.append(
-                "---\n"
-                "## Additional Code Snippets from ADO Search\n"
-                "(These are matching excerpts from files not fully read above. "
-                "Reference them when constructing your answer.)\n\n"
-                + "\n\n".join(snippet_sections)
-            )
-
-        return "\n\n".join(parts)
+        return "\n\n".join(
+            "### File: " + fc["file_path"] + "\n" + fc["content"]
+            for fc in fc_list
+        )
 
     comp_input_tokens  = 0
     comp_output_tokens = 0
@@ -1305,43 +1178,11 @@ def run_computer_loop(query, branch):
     if missing_paths:
         steps_log.append({
             "step":   6,
-            "action": "Resolving " + str(len(missing_paths)) + " missing file(s) via ADO search: "
+            "action": "Fetching " + str(len(missing_paths)) + " additional file(s) identified as needed: "
                       + ", ".join(p.rsplit("/", 1)[-1] for p in missing_paths),
         })
-        for j, fp in enumerate(missing_paths[:4], start=1):   # resolve up to 4 extra files
-            filename  = fp.rsplit("/", 1)[-1]          # e.g. "Popup_ProjectForecasting.aspx.vb"
-            classname = filename.rsplit(".", 1)[0] if "." in filename else filename
-            # Build a cascade of search terms to maximise the chance of finding the file.
-            # ADO Code Search tokenises on word boundaries, so a full dotted filename like
-            # "IProjectForecastUiBuilder.vb" often returns 0 hits while "ProjectForecast"
-            # or "ForecastUiBuilder" reliably finds it.
-            search_cascade = [filename, classname] + _camel_split(classname)
-            resolved_path = None   # only set if we find an exact filename match
-            for s_term in search_cascade:
-                if len(s_term) < 4:
-                    continue
-                try:
-                    hits = ado_code_search(s_term, branch, top=5)
-                    if hits:
-                        # Only accept hits where the filename actually matches — never
-                        # fall through to a generic hit which could be a completely wrong file.
-                        exact = [h for h in hits if h.get("file_path", "").endswith(filename)]
-                        if exact:
-                            resolved_path = exact[0]["file_path"]
-                            steps_log.append({
-                                "step":   f"6.{j}.resolve",
-                                "action": f"Resolved '{filename}' via '{s_term}' → {resolved_path}",
-                            })
-                            break
-                except Exception:
-                    pass
-            if resolved_path is None:
-                steps_log.append({
-                    "step":   f"6.{j}.resolve",
-                    "action": f"'{filename}' not found in repository — skipping (no exact match found)",
-                })
-                continue   # don't read a wrong file
-            _read_and_log(resolved_path, f"6.{j}")
+        for j, fp in enumerate(missing_paths[:8], start=1):   # fetch up to 8 extra files
+            _read_and_log(fp, f"6.{j}")
 
         # Re-synthesise with the full context
         steps_log.append({"step": "6.final", "action": "Re-synthesising with complete file set"})
