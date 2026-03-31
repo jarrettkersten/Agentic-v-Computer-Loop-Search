@@ -1643,6 +1643,17 @@ def run_hybrid_loop(query, branch):
                 matches = [r.get("file_path") for r in candidates if r.get("file_path", "").endswith(fname)]
                 if matches:
                     fp = matches[0]
+            # If Claude is trying to re-read an already-read file, redirect to next unread candidate
+            if fp in read_paths:
+                if unread:
+                    fp = unread[0].get("file_path", "")
+                    steps_log.append({
+                        "step":   f"3.{total_iter}",
+                        "action": f"Redirected re-read attempt → next unread candidate: {fp}",
+                    })
+                else:
+                    steps_log.append({"step": f"3.{total_iter}", "action": "All candidates read — proceeding to synthesis"})
+                    break
             ok = _read_and_log(fp, f"3.{total_iter}.read")
             if ok:
                 reads_done         += 1
