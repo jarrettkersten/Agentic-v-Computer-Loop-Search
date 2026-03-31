@@ -16,10 +16,12 @@ import json
 import asyncio
 import base64
 import io
+import csv
+import sqlite3
 import time
 import urllib.parse
 import requests
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 import anthropic
 from dotenv import load_dotenv
 
@@ -77,6 +79,110 @@ except ImportError:
     MSAL_AVAILABLE = False
 
 app = Flask(__name__)
+
+# ---------------------------------------------------------------------------
+# Usage tracking — SQLite
+# ---------------------------------------------------------------------------
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "usage.db")
+
+
+def init_db():
+    """Create usage tracking tables if they don't exist."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur  = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS search_events (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                ran_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+                loop_type        TEXT    NOT NULL,
+                query            TEXT,
+                branch           TEXT,
+                status           TEXT    NOT NULL DEFAULT 'success',
+                duration_sec     REAL,
+                files_read       INTEGER DEFAULT 0,
+                iterations       INTEGER DEFAULT 0,
+                searches         INTEGER DEFAULT 0,
+                confidence_level TEXT,
+                error_message    TEXT
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS synthesis_events (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                ran_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+                query        TEXT,
+                sources_used TEXT,
+                duration_sec REAL,
+                status       TEXT    NOT NULL DEFAULT 'success',
+                error_message TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DB] Warning: could not init tracking tables: {e}")
+
+
+def track_search_event(loop_type: str, query: str, branch: str, status: str,
+                       duration_sec: float, files_read: int = 0,
+                       iterations: int = 0, searches: int = 0,
+                       confidence_level: str = "", error_message: str = ""):
+    """Record a single loop search run."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur  = conn.cursor()
+        cur.execute(
+            """INSERT INTO search_events
+               (loop_type, query, branch, status, duration_sec, files_read,
+                iterations, searches, confidence_level, error_message)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (loop_type, (query or "")[:300], branch or "", status,
+             round(duration_sec, 2), files_read, iterations, searches,
+             confidence_level or "", error_message or ""),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DB] Warning: could not track search event: {e}")
+
+
+def track_synthesis_event(query: str, sources_used: str, duration_sec: float,
+                          status: str = "success", error_message: str = ""):
+    """Record a synthesis call."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur  = conn.cursor()
+        cur.execute(
+            """INSERT INTO synthesis_events
+               (query, sources_used, duration_sec, status, error_message)
+               VALUES (?,?,?,?,?)""",
+            ((query or "")[:300], sources_used or "", round(duration_sec, 2),
+             status, error_message or ""),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DB] Warning: could not track synthesis event: {e}")
+
+
+def query_db(sql: str) -> list:
+    """Run a SELECT and return rows as list of dicts."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cur  = conn.cursor()
+        cur.execute(sql)
+        rows = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return rows
+    except Exception as e:
+        print(f"[DB] Warning: query failed: {e}")
+        return []
+
+
+# Initialise tables on startup
+init_db()
 
 
 # ---------------------------------------------------------------------------
@@ -510,9 +616,18 @@ def run_agentic_loop(query, branch):
         "## Technical Reference\n"
         "*For dev/product team review*\n\n"
         "Provide full technical depth for developers to verify and confirm the answer:\n"
-        "  - Complete execution flow naming every method, file, and layer in order\n"
-        "  - Key code snippets (actual method bodies in fenced code blocks) with file paths\n"
+        "  - Complete execution flow naming every method, file, and layer in order.\n"
+        "    After EACH step, add an inline annotation showing which Answer claim it explains:\n"
+        "    e.g. `btnSave_Click` in `Timesheet.aspx.vb` (line 142) → *Supports: \"timesheet data is validated before saving\"*\n"
+        "  - Key code snippets (actual method bodies in fenced code blocks). Each snippet MUST be\n"
+        "    preceded by a header line: `File: path/to/File.ext, lines N–M` and followed by a note\n"
+        "    on which Answer claim this code directly supports.\n"
         "  - File inventory: list every file read with its role (UI / CodeBehind / Service / Repository / Helper / SQL)\n"
+        "    and which Answer statement(s) it backs.\n"
+        "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: Explicitly call out ANY conditional branches,\n"
+        "    feature flags, config-driven paths, or permission checks that affect the behaviour described\n"
+        "    in the Answer. Format each one as:\n"
+        "    > ⚠️ **Conditional:** `If SomeFlag = True` in `File.ext` (line N) — affects: \"[Answer claim]\"\n"
         "  - Any architecture notes, edge cases, or gaps in coverage\n\n"
         "NEVER use general knowledge. Only answer from files you have read. "
         "If you cannot find a file you need, note it in the Technical Reference section, then continue "
@@ -665,9 +780,16 @@ def run_agentic_loop(query, branch):
                 "## Technical Reference\n"
                 "*For dev/product team review*\n\n"
                 "Provide full technical depth for developers to verify and confirm the answer:\n"
-                "  - Complete execution flow naming every method and file at each step\n"
-                "  - Key code snippets (actual method bodies in fenced code blocks) with file paths\n"
-                "  - File inventory: every file read with its role (UI / CodeBehind / Service / Repository)\n\n"
+                "  - Complete execution flow naming every method and file at each step.\n"
+                "    After EACH step, add an inline annotation: `MethodName` in `File.ext` (line N) → *Supports: \"[Answer claim]\"*\n"
+                "  - Key code snippets (actual method bodies in fenced code blocks). Each snippet MUST be\n"
+                "    preceded by: `File: path/to/File.ext, lines N–M` and followed by a note on which Answer claim it supports.\n"
+                "  - File inventory: every file read with its role (UI / CodeBehind / Service / Repository)\n"
+                "    and which Answer statement(s) it backs.\n"
+                "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: Explicitly call out ANY conditional branches,\n"
+                "    feature flags, config-driven paths, or permission checks that affect the behaviour described\n"
+                "    in the Answer. Format each one as:\n"
+                "    > ⚠️ **Conditional:** `If SomeFlag = True` in `File.ext` (line N) — affects: \"[Answer claim]\"\n\n"
                 "If context is insufficient to cover all layers, state clearly which layer is missing "
                 "and what additional files would be needed."
             ),
@@ -803,13 +925,18 @@ def run_computer_loop(query, branch):
         "## Technical Reference\n"
         "*For dev/product team review*\n\n"
         "Provide full technical depth for developers to verify and confirm the answer:\n"
-        "  - Complete execution flow: name every method, file, and layer in order\n"
-        "    Example: 'Clicking Save triggers `btnSave_Click` in `Timesheet.aspx.vb`, which calls "
-        "`TimesheetService.SaveTimesheet()`, which validates via `ValidateHours()` then calls "
-        "`TimesheetRepository.Insert()` executing `sp_InsertTimesheetRow`'\n"
-        "  - Key code snippets: quote the most important method bodies (actual code) in fenced code blocks, "
-        "each preceded by its file path\n"
-        "  - File inventory: every file read with its role (UI / CodeBehind / Service / Repository / Helper / SQL)\n\n"
+        "  - Complete execution flow: name every method, file, and layer in order.\n"
+        "    After EACH step, add an inline annotation showing which Answer claim it explains:\n"
+        "    e.g. `btnSave_Click` in `Timesheet.aspx.vb` (line 142) → *Supports: \"timesheet data is validated before saving\"*\n"
+        "  - Key code snippets: quote the most important method bodies (actual code) in fenced code blocks.\n"
+        "    Each snippet MUST be preceded by: `File: path/to/File.ext, lines N–M`\n"
+        "    and followed by a note on which Answer claim the snippet directly supports.\n"
+        "  - File inventory: every file read with its role (UI / CodeBehind / Service / Repository / Helper / SQL)\n"
+        "    and which Answer statement(s) it backs.\n"
+        "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: Explicitly call out ANY conditional branches,\n"
+        "    feature flags, config-driven paths, or permission checks that affect the behaviour described\n"
+        "    in the Answer. Format each one as:\n"
+        "    > ⚠️ **Conditional:** `If SomeFlag = True` in `File.ext` (line N) — affects: \"[Answer claim]\"\n\n"
         "DEPTH REQUIREMENT: A shallow answer that only covers the UI layer without the business logic "
         "and data layer is NOT acceptable. Cover all layers you have files for.\n\n"
         "MISSING FILES: If key files are absent, list each on its own line as:\n"
@@ -1410,9 +1537,16 @@ def run_sharepoint_loop(query: str) -> dict:
             "## Technical Reference\n"
             "*For dev/product team review*\n\n"
             "Provide detailed source references for the team to verify and confirm the answer:\n"
-            "  - Specific details and quotes from the source documents (with document title in parentheses)\n"
-            "  - Step-by-step procedures or technical processes described in the documentation\n"
-            "  - Any configuration details, field names, or system behaviour noted in the documents\n"
+            "  - For EACH detail cited, include an inline annotation showing which Answer claim it supports:\n"
+            "    e.g. Document Title, page 3 → *Supports: \"approvals require manager sign-off\"*\n"
+            "  - Specific quotes from source documents (document title + page number where available),\n"
+            "    each annotated with which Answer claim the quote backs.\n"
+            "  - Step-by-step procedures or technical processes described in the documentation,\n"
+            "    each annotated with which Answer claim it explains.\n"
+            "  - Any configuration details, field names, or system behaviour noted in the documents.\n"
+            "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: If any document describes behaviour that is\n"
+            "    conditional on settings, roles, permissions, or feature flags, call these out explicitly:\n"
+            "    > ⚠️ **Conditional:** [Description of condition from doc] (Document Title, page N) — affects: \"[Answer claim]\"\n"
             "  - Sources section: list each document title as a markdown link using its Source URL\n\n"
             "If the documents do not contain enough information, say so explicitly in both sections."
         ),
@@ -1501,10 +1635,18 @@ def synthesize_all(query: str, agentic_result: dict, computer_result: dict, sp_r
             "## Technical Reference\n"
             "*For dev/product team review*\n\n"
             "Full technical synthesis for developers to verify:\n"
-            "  - Complete execution flow from ADO sources combined (every method, file, layer in order)\n"
-            "  - Key code snippets in fenced code blocks with file paths\n"
-            "  - File inventory across all ADO sources\n"
-            "  - Relevant documentation references from SharePoint (document titles as links)\n"
+            "  - Complete execution flow from ADO sources (every method, file, layer in order).\n"
+            "    After EACH step, add an inline annotation showing which Answer claim it explains:\n"
+            "    e.g. `TimesheetService.SaveTimesheet()` in `TimesheetService.vb` (line 87) → *Supports: \"data is saved via a service layer\"*\n"
+            "  - Key code snippets in fenced code blocks. Each snippet MUST be preceded by:\n"
+            "    `File: path/to/File.ext, lines N–M` and annotated with which Answer claim it supports.\n"
+            "  - File inventory across all ADO sources, with each file's role and which Answer statement(s) it backs.\n"
+            "  - Relevant documentation references from SharePoint (document titles as links + page numbers),\n"
+            "    each annotated with which Answer claim the document supports.\n"
+            "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: Explicitly call out ANY conditional branches,\n"
+            "    feature flags, config-driven paths, or permission checks found across ALL sources that\n"
+            "    affect the behaviour described in the Answer. Format each as:\n"
+            "    > ⚠️ **Conditional:** `If SomeFlag = True` in `File.ext` (line N) — affects: \"[Answer claim]\"\n"
             "  - Any conflicts or gaps identified between sources"
         ),
         messages=[{
@@ -1584,10 +1726,21 @@ def api_agentic():
         return jsonify({"error": "No query provided."}), 400
     if not branch:
         return jsonify({"error": "Please select a branch first."}), 400
+    t0 = time.time()
     try:
         result = run_agentic_loop(query, branch)
+        track_search_event(
+            "agentic", query, branch, "success",
+            time.time() - t0,
+            result.get("total_files_read", 0),
+            result.get("total_iterations",  0),
+            result.get("total_searches",    0),
+            result.get("confidence", {}).get("level", ""),
+        )
         return jsonify({"success": True, "result": result})
     except Exception as e:
+        track_search_event("agentic", query, branch, "error", time.time() - t0,
+                           error_message=str(e))
         return jsonify({"error": str(e)}), 500
 
 
@@ -1600,10 +1753,21 @@ def api_computer():
         return jsonify({"error": "No query provided."}), 400
     if not branch:
         return jsonify({"error": "Please select a branch first."}), 400
+    t0 = time.time()
     try:
         result = run_computer_loop(query, branch)
+        track_search_event(
+            "computer", query, branch, "success",
+            time.time() - t0,
+            result.get("files_read",    0),
+            0,
+            result.get("results_found", 0),
+            result.get("confidence", {}).get("level", ""),
+        )
         return jsonify({"success": True, "result": result})
     except Exception as e:
+        track_search_event("computer", query, branch, "error", time.time() - t0,
+                           error_message=str(e))
         return jsonify({"error": str(e)}), 500
 
 
@@ -1628,10 +1792,20 @@ def api_sharepoint():
     query = data.get("query", "").strip()
     if not query:
         return jsonify({"error": "No query provided."}), 400
+    t0 = time.time()
     try:
         result = run_sharepoint_loop(query)
+        track_search_event(
+            "sharepoint", query, "", "success",
+            time.time() - t0,
+            result.get("files_read", 0),
+            0, 0,
+            result.get("confidence", {}).get("level", ""),
+        )
         return jsonify({"success": True, "result": result})
     except Exception as e:
+        track_search_event("sharepoint", query, "", "error", time.time() - t0,
+                           error_message=str(e))
         return jsonify({"error": str(e)}), 500
 
 
@@ -1646,11 +1820,67 @@ def api_synthesize():
         return jsonify({"error": "No query provided."}), 400
     if not any([agentic, computer, sp]):
         return jsonify({"error": "At least one search result is required."}), 400
+    sources_used = ", ".join(filter(None, [
+        "Agentic" if agentic else "",
+        "Computer" if computer else "",
+        "SharePoint" if sp else "",
+    ]))
+    t0 = time.time()
     try:
         synthesis = synthesize_all(query, agentic or {}, computer or {}, sp or {})
+        track_synthesis_event(query, sources_used, time.time() - t0, "success")
         return jsonify({"success": True, "synthesis": synthesis})
     except Exception as e:
+        track_synthesis_event(query, sources_used, time.time() - t0, "error", str(e))
         return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Admin routes
+# ---------------------------------------------------------------------------
+
+ADMIN_TABLES = {
+    "search_events": (
+        "SELECT id, ran_at, loop_type, query, branch, status, "
+        "duration_sec, files_read, iterations, searches, confidence_level, error_message "
+        "FROM search_events ORDER BY ran_at DESC LIMIT 500"
+    ),
+    "synthesis_events": (
+        "SELECT id, ran_at, query, sources_used, duration_sec, status, error_message "
+        "FROM synthesis_events ORDER BY ran_at DESC LIMIT 500"
+    ),
+}
+
+
+@app.route("/admin")
+def admin_dashboard():
+    return render_template("admin.html")
+
+
+@app.route("/admin/data/<table_name>")
+def admin_table_data(table_name):
+    if table_name not in ADMIN_TABLES:
+        return jsonify({"error": "Invalid table name"}), 400
+    rows = query_db(ADMIN_TABLES[table_name])
+    return jsonify({"rows": rows, "count": len(rows)})
+
+
+@app.route("/admin/export/<table_name>")
+def admin_export_csv(table_name):
+    if table_name not in ADMIN_TABLES:
+        return "Invalid table name", 400
+    rows = query_db(ADMIN_TABLES[table_name])
+    if not rows:
+        return "No data", 200
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+    writer.writeheader()
+    writer.writerows(rows)
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={table_name}.csv"},
+    )
 
 
 if __name__ == "__main__":
