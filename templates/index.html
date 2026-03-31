@@ -1,466 +1,291 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cora PPM — Loop Comparison</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0d1117;
-      color: #e2e8f0;
-      min-height: 100vh;
-      padding: 28px 0 60px;
-    }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Cora PPM — Loop Comparison Search</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+:root{
+  --brand:#1a2535;--brand-light:#1e6fd4;--brand-dark:#0f1c2b;
+  --bg:#f2f4f8;--card:#fff;
+  --border:#e2e8f0;--text:#1a2535;--muted:#64748b;
+  --success:#16a34a;--success-bg:#f0fdf4;
+  --error:#b91c1c;--error-bg:#fff5f5;
+  --warn:#d97706;--warn-bg:#fffbeb;
+  --agentic:#2563eb;--agentic-bg:#eff6ff;--agentic-border:#bfdbfe;
+  --computer:#7c3aed;--computer-bg:#f5f3ff;--computer-border:#ddd6fe;
+  --sharepoint:#0078d4;--sharepoint-bg:#eff6ff;--sharepoint-border:#bae6fd;
+  --radius:14px;--shadow:0 2px 16px rgba(26,37,53,.07),0 1px 4px rgba(26,37,53,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
 
-    /* ── Page width: 75% of viewport ── */
-    .page { width: 75%; margin: 0 auto; }
-    @media (max-width: 1100px) { .page { width: 92%; } }
+/* ── Header ── */
+header{background:var(--brand);color:#fff;padding:0 36px;height:58px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+.logo{display:flex;align-items:center;gap:12px;font-size:1rem;font-weight:600;letter-spacing:.01em;flex:1}
+.logo .sep{width:1px;height:22px;background:rgba(255,255,255,.25)}
+.source-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:99px;font-size:.76rem;color:rgba(255,255,255,.8);padding:4px 14px}
+.source-badge .dot{width:7px;height:7px;background:#4ade80;border-radius:50%;flex-shrink:0}
 
-    /* ── Header ── */
-    .header { text-align: center; margin-bottom: 28px; }
-    .header h1 {
-      font-size: 1.75rem; font-weight: 800;
-      background: linear-gradient(135deg, #60a5fa, #a78bfa);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text; margin-bottom: 6px;
-    }
-    .header p { color: #94a3b8; font-size: 0.9rem; }
-    .source-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: #161b27; border: 1px solid #2d3a55;
-      border-radius: 99px; font-size: 0.75rem; color: #94a3b8;
-      padding: 4px 14px; margin-top: 10px;
-    }
-    .source-badge .dot { width: 7px; height: 7px; background: #22c55e; border-radius: 50%; flex-shrink: 0; }
+/* ── Main layout ── */
+main{max-width:1600px;margin:28px auto;padding:0 24px;display:flex;flex-direction:column;gap:18px}
 
-    /* ── Query box ── */
-    .query-box {
-      background: #161b27; border: 1px solid #2d3a55;
-      border-radius: 14px; padding: 22px; margin-bottom: 18px;
-    }
-    .branch-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-    .branch-row label {
-      font-size: 0.75rem; text-transform: uppercase;
-      letter-spacing: .08em; color: #64748b; white-space: nowrap;
-    }
-    .branch-select {
-      background: #0d1117; border: 1px solid #374151; border-radius: 7px;
-      color: #e2e8f0; font-size: 0.88rem; padding: 7px 11px;
-      outline: none; cursor: pointer; min-width: 260px; transition: border-color .2s;
-    }
-    .branch-select:focus { border-color: #6366f1; }
-    .branch-loading { font-size: 0.75rem; color: #64748b; font-style: italic; }
-    .query-box > label {
-      display: block; font-size: 0.75rem; text-transform: uppercase;
-      letter-spacing: .08em; color: #64748b; margin-bottom: 9px;
-    }
-    .query-box textarea {
-      width: 100%; background: #0d1117; border: 1px solid #374151;
-      border-radius: 9px; color: #e2e8f0; font-size: 0.97rem;
-      padding: 12px 14px; resize: vertical; min-height: 76px;
-      outline: none; transition: border-color .2s; line-height: 1.55;
-    }
-    .query-box textarea:focus { border-color: #6366f1; }
+/* ── Cards ── */
+.card{background:var(--card);border-radius:var(--radius);padding:24px 28px;box-shadow:var(--shadow)}
+.card-title{font-size:.95rem;font-weight:700;color:var(--text);margin-bottom:18px;display:flex;align-items:center;gap:10px}
 
-    /* ── Buttons ── */
-    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
-    .btn {
-      display: flex; align-items: center; gap: 7px;
-      padding: 9px 20px; border: none; border-radius: 8px;
-      font-size: 0.9rem; font-weight: 600; cursor: pointer;
-      transition: opacity .18s, transform .1s;
-    }
-    .btn:active { transform: scale(.97); }
-    .btn:disabled { opacity: .38; cursor: not-allowed; }
-    .btn-agentic  { background: #2563eb; color: #fff; }
-    .btn-computer { background: #7c3aed; color: #fff; }
-    .btn-both     { background: #0d9488; color: #fff; }
-    .btn-compare    { background: #b45309; color: #fff; display: none; }
-    .btn-sharepoint { background: #0078d4; color: #fff; }
+/* ── Top query card ── */
+.query-card{}
+.query-layout{display:grid;grid-template-columns:200px 1fr;gap:20px;align-items:start}
+@media(max-width:900px){.query-layout{grid-template-columns:1fr}}
 
-    /* ── Status bar ── */
-    .status-bar { text-align: center; font-size: 0.79rem; color: #64748b; margin: 4px 0 16px; min-height: 17px; }
+.field-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px}
+.branch-select{width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;font-family:inherit;color:var(--text);background:#fff;transition:border-color .2s;cursor:pointer;outline:none}
+.branch-select:focus{border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
+.branch-loading{font-size:.75rem;color:var(--muted);font-style:italic;margin-top:5px;min-height:16px}
 
-    /* ── Grid ── */
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-    @media(max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.query-textarea{width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:.93rem;font-family:inherit;color:var(--text);background:#fff;resize:vertical;min-height:80px;outline:none;transition:border-color .2s;line-height:1.55}
+.query-textarea:focus{border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
+.query-textarea::placeholder{color:#94a3b8}
 
-    /* ── Panel ── */
-    .panel {
-      background: #161b27; border: 1px solid #2d3a55;
-      border-radius: 14px; overflow: hidden; display: flex; flex-direction: column;
-    }
-    .panel-header {
-      padding: 14px 18px; display: flex; align-items: center;
-      gap: 9px; border-bottom: 1px solid #2d3a55;
-      background: #12172200;
-    }
-    .panel-header h2 { font-size: 1rem; font-weight: 700; flex: 1; }
-    .badge {
-      font-size: 0.68rem; font-weight: 700; padding: 3px 9px;
-      border-radius: 99px; white-space: nowrap; letter-spacing: .04em;
-    }
-    .badge-agentic  { background: #1e3a8a; color: #93c5fd; }
-    .badge-computer { background: #581c87; color: #d8b4fe; }
-    .panel-body { padding: 18px 20px; flex: 1; }
+/* ── Action row (top card) ── */
+.action-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.status-bar{font-size:.79rem;color:var(--muted);min-height:17px;margin-top:6px}
 
-    /* ── States ── */
-    .state-idle, .state-loading, .state-error {
-      display: flex; flex-direction: column; align-items: center;
-      justify-content: center; gap: 10px; color: #4b5563;
-      min-height: 140px; text-align: center;
-      font-size: 0.86rem; line-height: 1.6;
-    }
-    .state-error { color: #f87171; }
-    .state-idle .icon { font-size: 2rem; }
-    .spinner {
-      width: 30px; height: 30px; border: 3px solid #374151;
-      border-top-color: #6366f1; border-radius: 50%;
-      animation: spin .75s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 20px;border:none;border-radius:8px;font-size:.87rem;font-weight:600;cursor:pointer;transition:all .15s;letter-spacing:.01em;font-family:inherit}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-run-all{background:var(--brand);color:#fff;padding:10px 26px;font-size:.93rem}
+.btn-run-all:hover:not(:disabled){background:var(--brand-dark)}
+.btn-compare{background:#92400e;color:#fff}
+.btn-compare:hover:not(:disabled){background:#78350f}
+.btn-sm{padding:7px 15px;font-size:.82rem;border-radius:7px}
+.btn-agentic{background:var(--agentic);color:#fff}
+.btn-agentic:hover:not(:disabled){background:#1d4ed8}
+.btn-computer{background:var(--computer);color:#fff}
+.btn-computer:hover:not(:disabled){background:#6d28d9}
+.btn-sp{background:var(--sharepoint);color:#fff}
+.btn-sp:hover:not(:disabled){background:#005ba1}
 
-    /* ── Stats bar ── */
-    .stats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-    .stat {
-      background: #0d1117; border: 1px solid #1f2937;
-      border-radius: 7px; padding: 5px 12px; font-size: 0.76rem; color: #94a3b8;
-    }
-    .stat strong { color: #e2e8f0; }
-    .branch-tag {
-      background: #0d1f0d; border: 1px solid #14532d;
-      border-radius: 7px; padding: 5px 12px; font-size: 0.76rem; color: #86efac;
-    }
+/* ── Three-column grid ── */
+.results-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:start}
+@media(max-width:1200px){.results-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.results-grid{grid-template-columns:1fr}}
 
-    /* ── Answer label ── */
-    .answer-label {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 0.72rem; text-transform: uppercase; letter-spacing: .09em;
-      color: #475569; margin-bottom: 14px; padding-bottom: 10px;
-      border-bottom: 1px solid #1e293b;
-    }
-    .answer-label .pill {
-      background: #1e293b; border-radius: 99px;
-      font-size: 0.68rem; color: #64748b; padding: 2px 9px;
-    }
+/* ── Result panels ── */
+.panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+.panel-header{padding:14px 18px;display:flex;align-items:center;gap:9px;border-bottom:1.5px solid var(--border)}
+.panel-header h2{font-size:.93rem;font-weight:700;flex:1;color:var(--text)}
+.badge{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;letter-spacing:.04em}
+.badge-agentic{background:var(--agentic-bg);color:var(--agentic);border:1px solid var(--agentic-border)}
+.badge-computer{background:var(--computer-bg);color:var(--computer);border:1px solid var(--computer-border)}
+.badge-sp{background:var(--sharepoint-bg);color:var(--sharepoint);border:1px solid var(--sharepoint-border)}
+.panel-body{padding:18px 20px;flex:1}
 
-    /* ── Markdown article rendering ── */
-    .answer-body {
-      font-size: 0.92rem;
-      line-height: 1.75;
-      color: #cbd5e1;
-    }
-    .answer-body h1,
-    .answer-body h2 {
-      color: #e2e8f0;
-      font-weight: 700;
-      margin: 1.4em 0 0.55em;
-      padding-bottom: 0.35em;
-      border-bottom: 1px solid #1e293b;
-    }
-    .answer-body h1 { font-size: 1.12rem; }
-    .answer-body h2 { font-size: 1.02rem; }
-    .answer-body h3 {
-      color: #94a3b8; font-size: 0.9rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .06em;
-      margin: 1.3em 0 0.45em;
-    }
-    .answer-body h4 {
-      color: #64748b; font-size: 0.86rem; font-weight: 600;
-      margin: 1em 0 0.35em;
-    }
-    .answer-body p { margin-bottom: 0.85em; }
-    .answer-body ul,
-    .answer-body ol {
-      margin: 0.4em 0 0.9em 1.3em; padding: 0;
-    }
-    .answer-body li { margin-bottom: 0.3em; }
-    .answer-body strong { color: #e2e8f0; font-weight: 600; }
-    .answer-body em { color: #94a3b8; }
-    .answer-body hr {
-      border: none; border-top: 1px solid #1e293b;
-      margin: 1.4em 0;
-    }
-    .answer-body code {
-      font-family: "Fira Code", "Cascadia Code", "Consolas", monospace;
-      font-size: 0.83em;
-      background: #0d1117;
-      border: 1px solid #1e293b;
-      border-radius: 4px;
-      padding: 2px 6px;
-      color: #7dd3fc;
-    }
-    .answer-body pre {
-      background: #0d1117;
-      border: 1px solid #1e293b;
-      border-left: 3px solid #3b82f6;
-      border-radius: 0 8px 8px 0;
-      padding: 14px 16px;
-      margin: 0.7em 0 1em;
-      overflow-x: auto;
-    }
-    .answer-body pre code {
-      background: none; border: none; padding: 0;
-      color: #a5f3fc; font-size: 0.82em; line-height: 1.6;
-    }
-    .answer-body blockquote {
-      border-left: 3px solid #4b5563;
-      margin: 0.8em 0; padding: 6px 14px;
-      color: #64748b; font-style: italic;
-    }
-    .answer-body table {
-      width: 100%; border-collapse: collapse; margin: 0.8em 0 1em; font-size: 0.85em;
-    }
-    .answer-body th {
-      background: #1e293b; color: #94a3b8;
-      padding: 7px 12px; text-align: left; font-weight: 600;
-      border: 1px solid #2d3a55;
-    }
-    .answer-body td {
-      padding: 7px 12px; border: 1px solid #1e293b; color: #cbd5e1;
-    }
-    .answer-body tr:nth-child(even) td { background: #0d1117; }
-    /* first child margin reset */
-    .answer-body > *:first-child { margin-top: 0; }
-    .answer-body > *:last-child  { margin-bottom: 0; }
+/* ── Panel states ── */
+.state-idle,.state-loading,.state-error{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:160px;text-align:center;font-size:.86rem;color:var(--muted);line-height:1.6}
+.state-error{color:var(--error)}
+.state-idle .icon{font-size:2rem;opacity:.5}
+.spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--brand-light);border-radius:50%;animation:spin .75s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 
-    /* ── Log accordion ── */
-    .log-toggle {
-      background: none; border: 1px solid #2d3a55; border-radius: 7px;
-      color: #64748b; cursor: pointer; font-size: 0.76rem; padding: 6px 12px;
-      width: 100%; text-align: left; margin-top: 16px; transition: background .15s;
-    }
-    .log-toggle:hover { background: #1e293b; color: #94a3b8; }
-    .log-body { display: none; margin-top: 6px; }
-    .log-body.open { display: block; }
-    .log-item {
-      background: #0d1117; border-left: 3px solid #2d3a55;
-      border-radius: 0 6px 6px 0; margin-bottom: 6px; padding: 9px 13px; font-size: 0.76rem;
-    }
-    .log-item .log-label { font-weight: 700; margin-bottom: 3px; }
-    .log-item .log-label.search { color: #60a5fa; }
-    .log-item .log-label.file   { color: #a78bfa; }
-    .log-item .log-label.step   { color: #6366f1; }
-    .log-item .log-detail { color: #6b7280; margin-bottom: 3px; }
-    .log-result-item {
-      color: #9ca3af; margin-bottom: 2px; padding-left: 10px;
-      border-left: 2px solid #1f2937; font-size: 0.74rem;
-    }
-    .log-result-item strong { color: #d1d5db; }
-    .log-preview { font-style: italic; color: #4b5563; margin-top: 4px; font-size: 0.72rem; }
-    .log-url { color: #3b82f6; font-size: 0.7rem; word-break: break-all; margin-top: 2px; }
+/* ── Stats row ── */
+.stats-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.stat{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:4px 11px;font-size:.76rem;color:var(--muted)}
+.stat strong{color:var(--text)}
+.branch-tag{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:4px 11px;font-size:.76rem;color:var(--success)}
 
-    /* ── Comparison panel ── */
-    .compare-panel {
-      background: #13111a; border: 1px solid #4c2a07;
-      border-radius: 14px; padding: 22px; display: none; margin-top: 4px;
-    }
-    .compare-header {
-      display: flex; align-items: center; gap: 10px;
-      margin-bottom: 16px; padding-bottom: 14px;
-      border-bottom: 1px solid #292116;
-    }
-    .compare-header h2 { font-size: 1.02rem; font-weight: 700; color: #fbbf24; flex: 1; }
-    .compare-loading {
-      display: none; align-items: center; gap: 10px;
-      color: #64748b; font-size: 0.86rem; margin-bottom: 12px;
-    }
-    .compare-body {
-      font-size: 0.92rem; line-height: 1.75; color: #cbd5e1;
-    }
-    /* Re-use same markdown styles for compare panel */
-    .compare-body h1, .compare-body h2 {
-      color: #e2e8f0; font-weight: 700;
-      margin: 1.4em 0 0.55em; padding-bottom: 0.35em;
-      border-bottom: 1px solid #292116;
-    }
-    .compare-body h1 { font-size: 1.1rem; }
-    .compare-body h2 { font-size: 1rem; }
-    .compare-body h3 {
-      color: #b45309; font-size: 0.88rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .06em;
-      margin: 1.3em 0 0.45em;
-    }
-    .compare-body p  { margin-bottom: 0.85em; }
-    .compare-body ul, .compare-body ol { margin: 0.4em 0 0.9em 1.3em; }
-    .compare-body li { margin-bottom: 0.3em; }
-    .compare-body strong { color: #fbbf24; font-weight: 600; }
-    .compare-body hr { border: none; border-top: 1px solid #292116; margin: 1.4em 0; }
-    .compare-body code {
-      font-family: "Fira Code", "Consolas", monospace; font-size: 0.83em;
-      background: #0d1117; border: 1px solid #292116;
-      border-radius: 4px; padding: 2px 6px; color: #fcd34d;
-    }
-    .compare-body pre {
-      background: #0d1117; border: 1px solid #292116;
-      border-left: 3px solid #b45309; border-radius: 0 8px 8px 0;
-      padding: 14px 16px; margin: 0.7em 0 1em; overflow-x: auto;
-    }
-    .compare-body pre code {
-      background: none; border: none; padding: 0;
-      color: #fde68a; font-size: 0.82em; line-height: 1.6;
-    }
-    .compare-body > *:first-child { margin-top: 0; }
-    .compare-body > *:last-child  { margin-bottom: 0; }
+/* ── Confidence badge ── */
+.confidence{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:7px 14px;font-size:.82rem;font-weight:600;margin-bottom:16px;border:1.5px solid}
+.confidence-high{background:#f0fdf4;border-color:#bbf7d0;color:var(--success)}
+.confidence-medium{background:#fffbeb;border-color:#fde68a;color:var(--warn)}
+.confidence-low{background:#fff5f5;border-color:#fecaca;color:var(--error)}
+.confidence .conf-icon{font-size:1rem}
+.confidence .conf-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
 
-    /* ── SharePoint panel ── */
-    .sp-panel {
-      background: #0d1621; border: 1px solid #1a3a5c;
-      border-radius: 14px; padding: 22px; display: none; margin-top: 4px;
-    }
-    .sp-header {
-      display: flex; align-items: center; gap: 10px;
-      margin-bottom: 16px; padding-bottom: 14px;
-      border-bottom: 1px solid #1a3a5c;
-    }
-    .sp-header h2 { font-size: 1.02rem; font-weight: 700; color: #60a5fa; flex: 1; }
-    .sp-meta {
-      font-size: 0.72rem; color: #3b82f6;
-      word-break: break-all; margin-bottom: 14px;
-    }
-    .sp-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-    .sp-stat {
-      background: #0d1117; border: 1px solid #1a3a5c;
-      border-radius: 7px; padding: 5px 12px; font-size: 0.76rem; color: #93c5fd;
-    }
-    .sp-stat strong { color: #e2e8f0; }
-    .sp-answer-label {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 0.72rem; text-transform: uppercase; letter-spacing: .09em;
-      color: #1e3a5f; margin-bottom: 14px; padding-bottom: 10px;
-      border-bottom: 1px solid #1a3a5c;
-    }
-    .sp-answer-label .pill {
-      background: #172554; border-radius: 99px;
-      font-size: 0.68rem; color: #3b82f6; padding: 2px 9px;
-    }
-    /* Markdown body for SharePoint — blue accent scheme */
-    .sp-body {
-      font-size: 0.92rem; line-height: 1.75; color: #cbd5e1;
-    }
-    .sp-body h1, .sp-body h2 {
-      color: #e2e8f0; font-weight: 700;
-      margin: 1.4em 0 0.55em; padding-bottom: 0.35em;
-      border-bottom: 1px solid #1a3a5c;
-    }
-    .sp-body h1 { font-size: 1.1rem; }
-    .sp-body h2 { font-size: 1rem; }
-    .sp-body h3 {
-      color: #60a5fa; font-size: 0.88rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .06em;
-      margin: 1.3em 0 0.45em;
-    }
-    .sp-body p  { margin-bottom: 0.85em; }
-    .sp-body ul, .sp-body ol { margin: 0.4em 0 0.9em 1.3em; }
-    .sp-body li { margin-bottom: 0.3em; }
-    .sp-body strong { color: #93c5fd; font-weight: 600; }
-    .sp-body em    { color: #94a3b8; }
-    .sp-body a     { color: #60a5fa; text-decoration: underline; }
-    .sp-body a:hover { color: #93c5fd; }
-    .sp-body hr { border: none; border-top: 1px solid #1a3a5c; margin: 1.4em 0; }
-    .sp-body code {
-      font-family: "Fira Code", "Consolas", monospace; font-size: 0.83em;
-      background: #0d1117; border: 1px solid #1a3a5c;
-      border-radius: 4px; padding: 2px 6px; color: #7dd3fc;
-    }
-    .sp-body pre {
-      background: #0d1117; border: 1px solid #1a3a5c;
-      border-left: 3px solid #0078d4; border-radius: 0 8px 8px 0;
-      padding: 14px 16px; margin: 0.7em 0 1em; overflow-x: auto;
-    }
-    .sp-body pre code { background: none; border: none; padding: 0; color: #bae6fd; }
-    .sp-body > *:first-child { margin-top: 0; }
-    .sp-body > *:last-child  { margin-bottom: 0; }
-    /* SharePoint log */
-    .sp-log-item {
-      background: #080d14; border-left: 3px solid #1a3a5c;
-      border-radius: 0 6px 6px 0; margin-bottom: 6px; padding: 9px 13px; font-size: 0.76rem;
-    }
-    .sp-log-label { font-weight: 700; margin-bottom: 3px; color: #3b82f6; }
-    .sp-log-detail { color: #4b5563; margin-bottom: 3px; }
-    .sp-log-url { color: #0078d4; font-size: 0.7rem; word-break: break-all; margin-top: 2px; }
-    .sp-log-result {
-      color: #9ca3af; margin-bottom: 2px; padding-left: 10px;
-      border-left: 2px solid #1a3a5c; font-size: 0.74rem;
-    }
-    .sp-log-preview { font-style: italic; color: #374151; margin-top: 4px; font-size: 0.72rem; }
-  </style>
+/* ── Answer label ── */
+.answer-label{display:flex;align-items:center;gap:8px;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;padding-bottom:10px;border-bottom:1.5px solid var(--border)}
+.answer-label .pill{background:var(--bg);border:1px solid var(--border);border-radius:99px;font-size:.68rem;color:var(--muted);padding:2px 9px}
+
+/* ── Markdown answer ── */
+.answer-body{font-size:.9rem;line-height:1.75;color:var(--text)}
+.answer-body h1,.answer-body h2{color:var(--text);font-weight:700;margin:1.3em 0 .5em;padding-bottom:.3em;border-bottom:1.5px solid var(--border)}
+.answer-body h1{font-size:1.05rem}
+.answer-body h2{font-size:.97rem}
+.answer-body h3{color:var(--brand-light);font-size:.86rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:1.2em 0 .4em}
+.answer-body h4{color:var(--muted);font-size:.84rem;font-weight:600;margin:.9em 0 .3em}
+.answer-body p{margin-bottom:.8em}
+.answer-body ul,.answer-body ol{margin:.4em 0 .9em 1.3em;padding:0}
+.answer-body li{margin-bottom:.25em}
+.answer-body strong{color:var(--brand);font-weight:600}
+.answer-body em{color:var(--muted)}
+.answer-body hr{border:none;border-top:1.5px solid var(--border);margin:1.4em 0}
+.answer-body code{font-family:"Fira Code","Cascadia Code","Consolas",monospace;font-size:.82em;background:#f1f5f9;border:1px solid var(--border);border-radius:4px;padding:2px 5px;color:#0f172a}
+.answer-body pre{background:#0f172a;border:1px solid #1e293b;border-left:3px solid var(--brand-light);border-radius:0 8px 8px 0;padding:13px 15px;margin:.7em 0 1em;overflow-x:auto}
+.answer-body pre code{background:none;border:none;padding:0;color:#a5f3fc;font-size:.81em;line-height:1.6}
+.answer-body blockquote{border-left:3px solid var(--border);margin:.8em 0;padding:6px 14px;color:var(--muted);font-style:italic}
+.answer-body table{width:100%;border-collapse:collapse;margin:.8em 0 1em;font-size:.84em}
+.answer-body th{background:var(--bg);color:var(--muted);padding:7px 12px;text-align:left;font-weight:700;border:1.5px solid var(--border);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+.answer-body td{padding:7px 12px;border:1px solid var(--border);color:var(--text)}
+.answer-body tr:nth-child(even) td{background:#fafbfc}
+.answer-body>*:first-child{margin-top:0}
+.answer-body>*:last-child{margin-bottom:0}
+
+/* ── Log accordion ── */
+.log-toggle{background:none;border:1.5px solid var(--border);border-radius:7px;color:var(--muted);cursor:pointer;font-size:.76rem;padding:6px 12px;width:100%;text-align:left;margin-top:14px;transition:background .15s;font-family:inherit}
+.log-toggle:hover{background:var(--bg);color:var(--text);border-color:#b0bfd0}
+.log-body{display:none;margin-top:6px}
+.log-body.open{display:block}
+.log-item{background:var(--bg);border-left:3px solid var(--border);border-radius:0 6px 6px 0;margin-bottom:6px;padding:9px 13px;font-size:.76rem}
+.log-item .log-label{font-weight:700;margin-bottom:3px}
+.log-item .log-label.search{color:var(--agentic)}
+.log-item .log-label.file{color:var(--computer)}
+.log-item .log-label.step{color:var(--brand-light)}
+.log-item .log-detail{color:var(--muted);margin-bottom:3px}
+.log-result-item{color:var(--muted);margin-bottom:2px;padding-left:10px;border-left:2px solid var(--border);font-size:.74rem}
+.log-result-item strong{color:var(--text)}
+.log-preview{font-style:italic;color:#94a3b8;margin-top:4px;font-size:.72rem}
+.log-url{color:var(--brand-light);font-size:.7rem;word-break:break-all;margin-top:2px}
+
+/* ── Compare panel ── */
+.compare-panel{background:var(--warn-bg);border:1.5px solid #fde68a;border-radius:var(--radius);padding:22px;display:none;margin-top:4px;box-shadow:var(--shadow)}
+.compare-header{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1.5px solid #fde68a}
+.compare-header h2{font-size:.97rem;font-weight:700;color:#92400e;flex:1}
+.compare-loading{display:none;align-items:center;gap:10px;color:var(--muted);font-size:.86rem;margin-bottom:12px}
+.compare-body{font-size:.9rem;line-height:1.75;color:var(--text)}
+.compare-body h1,.compare-body h2{color:var(--text);font-weight:700;margin:1.3em 0 .5em;padding-bottom:.3em;border-bottom:1.5px solid #fde68a}
+.compare-body h3{color:#92400e;font-size:.86rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:1.2em 0 .4em}
+.compare-body p{margin-bottom:.8em}
+.compare-body ul,.compare-body ol{margin:.4em 0 .9em 1.3em}
+.compare-body li{margin-bottom:.25em}
+.compare-body strong{color:#78350f;font-weight:600}
+.compare-body hr{border:none;border-top:1.5px solid #fde68a;margin:1.4em 0}
+.compare-body code{font-family:"Fira Code","Consolas",monospace;font-size:.82em;background:#fef9c3;border:1px solid #fde68a;border-radius:4px;padding:2px 5px;color:#78350f}
+.compare-body pre{background:#1c1917;border:1px solid #292524;border-left:3px solid #d97706;border-radius:0 8px 8px 0;padding:13px 15px;margin:.7em 0 1em;overflow-x:auto}
+.compare-body pre code{background:none;border:none;padding:0;color:#fde68a;font-size:.81em;line-height:1.6}
+.compare-body>*:first-child{margin-top:0}
+.compare-body>*:last-child{margin-bottom:0}
+
+/* ── SP-specific log items ── */
+.sp-log-item{background:var(--bg);border-left:3px solid var(--sharepoint-border);border-radius:0 6px 6px 0;margin-bottom:6px;padding:9px 13px;font-size:.76rem}
+.sp-log-label{font-weight:700;margin-bottom:3px;color:var(--sharepoint)}
+.sp-log-detail{color:var(--muted);margin-bottom:3px}
+.sp-log-url{color:var(--sharepoint);font-size:.7rem;word-break:break-all;margin-top:2px}
+.sp-log-result{color:var(--muted);margin-bottom:2px;padding-left:10px;border-left:2px solid var(--sharepoint-border);font-size:.74rem}
+.sp-log-preview{font-style:italic;color:#94a3b8;margin-top:4px;font-size:.72rem}
+.sp-meta{font-size:.75rem;color:var(--sharepoint);word-break:break-all;margin-bottom:12px}
+
+/* ── Synthesis panel ── */
+.synthesis-panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;display:none}
+.synthesis-header{padding:16px 22px;display:flex;align-items:center;gap:10px;background:var(--brand);color:#fff}
+.synthesis-header h2{font-size:.97rem;font-weight:700;flex:1}
+.synthesis-header .badge{background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25)}
+.synthesis-body{padding:22px 26px}
+.synthesis-loading{display:none;align-items:center;gap:10px;color:var(--muted);font-size:.86rem;margin-bottom:12px}
+
+footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem}
+@media(max-width:640px){main{padding:0 14px}.card{padding:18px 16px}header{padding:0 18px}}
+</style>
 </head>
 <body>
-<div class="page">
 
-  <div class="header">
-    <h1>⚡ Agentic Loop vs 🖥 Computer Loop</h1>
-    <p>Compare how each approach searches the Cora PPM codebase to answer your question.</p>
-    <div class="source-badge">
-      <span class="dot"></span>
-      Source: Cora PPM ADO Repository (CoraSystems / PPM) — no external sources
+<header>
+  <div class="logo">
+    <img src="https://corasystems.com/_next/static/media/cora-logo-white.3ac9db11.svg" alt="Cora" height="22" style="display:block"/>
+    <div class="sep"></div>
+    Loop Comparison Search
+  </div>
+  <div class="source-badge">
+    <span class="dot"></span>
+    CoraSystems / PPM — no external sources
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Top: Query + Branch ── -->
+  <div class="card query-card">
+    <div class="card-title">Ask a question about the Cora PPM codebase</div>
+    <div class="query-layout">
+      <div>
+        <label class="field-label" for="branchSelect">Branch</label>
+        <select class="branch-select" id="branchSelect">
+          <option value="">Loading…</option>
+        </select>
+        <div class="branch-loading" id="branchLoading"></div>
+      </div>
+      <div>
+        <label class="field-label" for="queryInput">Your question</label>
+        <textarea class="query-textarea" id="queryInput"
+          placeholder="e.g. What does the EAC Submit button do on the Project Forecasting page?"></textarea>
+      </div>
     </div>
+
+    <div class="action-row">
+      <button class="btn btn-run-all" id="btnAll" onclick="runAll()">▶▶ Run All Searches</button>
+      <button class="btn btn-compare" id="btnCompare" style="display:none" onclick="runCompare()">🔍 Compare ADO Results</button>
+      <button class="btn" id="btnSynthesize" style="display:none;background:#475569;color:#fff" onclick="runSynthesize()">✨ Synthesize All Results</button>
+    </div>
+    <div class="status-bar" id="statusBar"></div>
   </div>
 
-  <div class="query-box">
-    <div class="branch-row">
-      <label>Branch</label>
-      <select class="branch-select" id="branchSelect">
-        <option value="">Loading branches…</option>
-      </select>
-      <span class="branch-loading" id="branchLoading"></span>
-    </div>
+  <!-- ── Three-column result panels ── -->
+  <div class="results-grid">
 
-    <label>Your question about the Cora PPM codebase</label>
-    <textarea id="queryInput" placeholder="e.g. What does the EAC Submit button do on the Project Forecasting Page?"></textarea>
-
-    <div class="btn-row">
-      <button class="btn btn-agentic"  id="btnAgentic"  onclick="runLoop('agentic')">⚡ Run Agentic Loop</button>
-      <button class="btn btn-computer" id="btnComputer" onclick="runLoop('computer')">🖥 Run Computer Loop</button>
-      <button class="btn btn-both"     id="btnBoth"     onclick="runBoth()">▶▶ Run Both</button>
-      <button class="btn btn-compare"    id="btnCompare"    onclick="runCompare()">🔍 Compare Results</button>
-      <button class="btn btn-sharepoint" id="btnSharePoint" onclick="runSharePoint()">🔷 Search SharePoint</button>
-    </div>
-  </div>
-
-  <div class="status-bar" id="statusBar"></div>
-
-  <div class="grid">
-
+    <!-- Agentic Loop -->
     <div class="panel">
       <div class="panel-header">
         <h2>⚡ Agentic Loop</h2>
         <span class="badge badge-agentic">ADO Tool Use</span>
+        <button class="btn btn-agentic btn-sm" id="btnAgentic" onclick="runLoop('agentic')">Run</button>
       </div>
       <div class="panel-body" id="agenticBody">
         <div class="state-idle">
           <span class="icon">⚡</span>
-          <span>Claude iteratively searches the ADO repo,<br>
-          deciding what to look for next across up to 4 rounds.<br>
-          <em style="font-size:.8rem;color:#374151">Results come only from CoraSystems/PPM</em></span>
+          <span>Claude iteratively searches the ADO repo,<br>deciding what to look for next across up to 12 rounds.<br><em style="font-size:.8rem">Results come only from CoraSystems/PPM</em></span>
         </div>
       </div>
     </div>
 
+    <!-- Computer Loop -->
     <div class="panel">
       <div class="panel-header">
         <h2>🖥 Computer Loop</h2>
         <span class="badge badge-computer">ADO Browse Steps</span>
+        <button class="btn btn-computer btn-sm" id="btnComputer" onclick="runLoop('computer')">Run</button>
       </div>
       <div class="panel-body" id="computerBody">
         <div class="state-idle">
           <span class="icon">🖥</span>
-          <span>Fixed browse steps against the ADO API —<br>
-          search → read top files → synthesize.<br>
-          <em style="font-size:.8rem;color:#374151">Results come only from CoraSystems/PPM</em></span>
+          <span>Fixed browse steps against the ADO API —<br>search → read top files → synthesize.<br><em style="font-size:.8rem">Results come only from CoraSystems/PPM</em></span>
         </div>
       </div>
     </div>
 
+    <!-- SharePoint Loop -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2>🔷 SharePoint KB</h2>
+        <span class="badge badge-sp">Confluence Content for AI</span>
+        <button class="btn btn-sp btn-sm" id="btnSharePoint" onclick="runSharePoint()">Run</button>
+      </div>
+      <div class="panel-body" id="spBody">
+        <div class="state-idle">
+          <span class="icon">🔷</span>
+          <span>Searches the PS Confluence knowledge base<br>exported to SharePoint.<br><em style="font-size:.8rem">Results come only from the KB documents</em></span>
+        </div>
+      </div>
+      <div id="spMeta" style="padding:0 20px 10px;display:none"></div>
+    </div>
+
   </div>
 
+  <!-- ── Compare panel (shown after both ADO loops complete) ── -->
   <div class="compare-panel" id="comparePanel">
     <div class="compare-header">
-      <h2>🔍 Comparison Analysis</h2>
+      <h2>🔍 Comparison Analysis — Agentic Loop vs Computer Loop</h2>
     </div>
     <div class="compare-loading" id="compareLoading">
       <div class="spinner"></div>
@@ -469,43 +294,42 @@
     <div class="compare-body" id="compareText"></div>
   </div>
 
-  <!-- SharePoint panel -->
-  <div class="sp-panel" id="spPanel">
-    <div class="sp-header">
-      <h2>🔷 SharePoint Knowledge Base</h2>
-      <span class="badge" style="background:#172554;color:#60a5fa;font-size:.68rem;padding:3px 9px;border-radius:99px;">Confluence Content for AI</span>
+  <!-- ── Master synthesis panel ── -->
+  <div class="synthesis-panel" id="synthesisPanel">
+    <div class="synthesis-header">
+      <h2>✨ Comprehensive Synthesis</h2>
+      <span class="badge">All Sources Combined</span>
     </div>
-    <div class="sp-meta" id="spMeta"></div>
-    <div id="spBody">
-      <div class="state-loading" id="spLoading" style="display:none">
-        <div class="spinner"></div>
-        <span>Searching SharePoint knowledge base…</span>
+    <div class="synthesis-body">
+      <div class="synthesis-loading" id="synthesisLoading">
+        <div class="spinner" style="border-top-color:#fff"></div>
+        <span style="color:var(--muted)">Synthesizing all search results into a single answer…</span>
       </div>
+      <div class="answer-body" id="synthesisText"></div>
     </div>
   </div>
 
-</div>
+</main>
+
+<footer>Cora PPM Loop Comparison · All answers sourced exclusively from CoraSystems/PPM Azure DevOps</footer>
 
 <script>
-  // Configure marked for safe rendering
   marked.setOptions({ breaks: true, gfm: true });
 
-  const state = { agentic: null, computer: null };
+  const state = { agentic: null, computer: null, sharepoint: null };
 
   // ── Branch loader ──────────────────────────────────────────────────────────
   async function loadBranches() {
     const sel = document.getElementById('branchSelect');
     const lbl = document.getElementById('branchLoading');
-    lbl.textContent = 'Loading…';
+    lbl.textContent = 'Loading branches…';
     try {
       const resp = await fetch('/api/branches');
       const data = await resp.json();
       if (data.branches && data.branches.length) {
-        sel.innerHTML = data.branches
-          .map(b => `<option value="${esc(b)}">${esc(b)}</option>`)
-          .join('');
-        lbl.textContent = data.branches.length + ' branches loaded';
-        setTimeout(() => { lbl.textContent = ''; }, 2000);
+        sel.innerHTML = data.branches.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+        lbl.textContent = data.branches.length + ' branches available';
+        setTimeout(() => { lbl.textContent = ''; }, 2500);
       } else {
         sel.innerHTML = '<option value="">No branches found</option>';
         lbl.textContent = data.error || 'None found';
@@ -523,19 +347,22 @@
       .replace(/&/g,'&amp;').replace(/</g,'&lt;')
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-  function md(s)  { return marked.parse(String(s || '')); }
+  function md(s)      { return marked.parse(String(s || '')); }
   function getQuery()  { return document.getElementById('queryInput').value.trim(); }
   function getBranch() { return document.getElementById('branchSelect').value.trim(); }
-  function setStatus(m) { document.getElementById('statusBar').textContent = m; }
-  function setBtnsDisabled(v) {
-    ['btnAgentic','btnComputer','btnBoth'].forEach(id =>
-      document.getElementById(id).disabled = v);
+  function setStatus(m){ document.getElementById('statusBar').textContent = m; }
+
+  function setAllAdoBtnsDisabled(v) {
+    ['btnAll','btnAgentic','btnComputer'].forEach(id => {
+      document.getElementById(id).disabled = v;
+    });
   }
+
   function setLoading(panelId, label) {
     document.getElementById(panelId).innerHTML = `
       <div class="state-loading">
         <div class="spinner"></div>
-        <span>Running ${label} against Cora ADO repo…</span>
+        <span>Running ${label}…</span>
       </div>`;
   }
   function setError(panelId, msg) {
@@ -549,6 +376,22 @@
     btn.textContent = (el.classList.contains('open') ? '▾ Hide' : '▸ Show') + btn.dataset.label;
   }
 
+  // ── Confidence badge ───────────────────────────────────────────────────────
+  function renderConfidence(conf) {
+    if (!conf) return '';
+    const level  = (conf.level || 'Medium').toLowerCase();
+    const icons  = { high: '✅', medium: '⚠️', low: '❌' };
+    const cls    = { high: 'confidence-high', medium: 'confidence-medium', low: 'confidence-low' };
+    const icon   = icons[level]  || '⚠️';
+    const klass  = cls[level]    || 'confidence-medium';
+    return `<div class="confidence ${klass}">
+      <span class="conf-icon">${icon}</span>
+      <span class="conf-label">Confidence</span>
+      <strong>${esc(conf.level || 'Medium')}</strong>
+      <span style="font-weight:400;color:inherit;opacity:.85"> — ${esc(conf.reason || '')}</span>
+    </div>`;
+  }
+
   // ── Agentic renderer ───────────────────────────────────────────────────────
   function renderAgentic(result) {
     const iters = result.iterations || [];
@@ -556,13 +399,13 @@
       const calls = (it.tool_calls || []).map(tc => {
         if (tc.type === 'search') {
           const rows = (tc.results || []).map(r =>
-            `<div class="log-result-item">📄 <strong>${esc(r.file_name)}</strong> — <span style="color:#4b5563">${esc(r.file_path)}</span></div>`
+            `<div class="log-result-item">📄 <strong>${esc(r.file_name)}</strong> — <span>${esc(r.file_path)}</span></div>`
           ).join('');
           return `<div class="log-item">
             <div class="log-label search">🔎 ADO Search</div>
             <div class="log-detail">Query: <strong>${esc(tc.query)}</strong></div>
-            ${rows || '<div class="log-detail" style="color:#4b5563">No results returned.</div>'}
-            ${tc.error ? `<div style="color:#f87171;font-size:.73rem">Error: ${esc(tc.error)}</div>` : ''}
+            ${rows || '<div class="log-detail">No results returned.</div>'}
+            ${tc.error ? `<div style="color:var(--error);font-size:.73rem">Error: ${esc(tc.error)}</div>` : ''}
           </div>`;
         }
         if (tc.type === 'read_file') {
@@ -571,7 +414,7 @@
             <div class="log-detail">${esc(tc.file_path)}</div>
             ${tc.preview ? `<div class="log-preview">"${esc(tc.preview)}"</div>` : ''}
             ${tc.content_length ? `<div class="log-detail">${tc.content_length.toLocaleString()} chars read</div>` : ''}
-            ${tc.error ? `<div style="color:#f87171;font-size:.73rem">Error: ${esc(tc.error)}</div>` : ''}
+            ${tc.error ? `<div style="color:var(--error);font-size:.73rem">Error: ${esc(tc.error)}</div>` : ''}
           </div>`;
         }
         return '';
@@ -583,15 +426,16 @@
     }).join('');
 
     document.getElementById('agenticBody').innerHTML = `
-      <div class="stats">
+      <div class="stats-row">
         <div class="stat">⚡ Iterations: <strong>${result.total_iterations}</strong></div>
         <div class="stat">🔎 Searches: <strong>${result.total_searches}</strong></div>
-        <div class="stat">📄 Files read: <strong>${result.total_files_read}</strong></div>
+        <div class="stat">📄 Files: <strong>${result.total_files_read}</strong></div>
         <div class="branch-tag">🌿 ${esc(result.branch)}</div>
       </div>
+      ${renderConfidence(result.confidence)}
       <div class="answer-label">
-        <span>📋 Answer</span>
-        <span class="pill">Cora ADO Repository Only</span>
+        <span>Answer</span>
+        <span class="pill">ADO Repository Only</span>
       </div>
       <div class="answer-body">${md(result.answer)}</div>
       <button class="log-toggle" data-label=" ADO tool call log" onclick="toggleLog('agLog')">▸ Show ADO tool call log</button>
@@ -603,14 +447,15 @@
     const steps = result.steps || [];
     const logItems = steps.map(s => {
       const rows = (s.results || []).map(r =>
-        `<div class="log-result-item">📄 <strong>${esc(r.file_name)}</strong> — <span style="color:#4b5563">${esc(r.file_path)}</span></div>`
+        `<div class="log-result-item">📄 <strong>${esc(r.file_name)}</strong> — <span>${esc(r.file_path)}</span></div>`
       ).join('');
-      // Show per-search detail when available
       const searches = (s.searches || []).map(sr =>
-        `<div class="log-result-item">🔎 "${esc(sr.term)}" → ${sr.error ? '<span style="color:#f87171">error</span>' : `${sr.hits} hit(s), ${sr.new_unique} new`}</div>`
+        `<div class="log-result-item">🔎 "${esc(sr.term)}" → ${sr.error
+          ? '<span style="color:var(--error)">error</span>'
+          : `${sr.hits} hit(s), ${sr.new_unique} new`
+        }</div>`
       ).join('');
-      const preview = s.content_preview
-        ? `<div class="log-preview">"${esc(s.content_preview)}"</div>` : '';
+      const preview = s.content_preview ? `<div class="log-preview">"${esc(s.content_preview)}"</div>` : '';
       return `<div class="log-item">
         <div class="log-label step">Step ${s.step}</div>
         <div class="log-detail">${esc(s.action)}</div>
@@ -621,19 +466,65 @@
     }).join('');
 
     document.getElementById('computerBody').innerHTML = `
-      <div class="stats">
+      <div class="stats-row">
         <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
-        <div class="stat">🔎 Files found: <strong>${result.results_found}</strong></div>
-        <div class="stat">📄 Files read: <strong>${result.files_read}</strong></div>
+        <div class="stat">🔎 Found: <strong>${result.results_found}</strong></div>
+        <div class="stat">📄 Files: <strong>${result.files_read}</strong></div>
         <div class="branch-tag">🌿 ${esc(result.branch)}</div>
       </div>
+      ${renderConfidence(result.confidence)}
       <div class="answer-label">
-        <span>📋 Answer</span>
-        <span class="pill">Cora ADO Repository Only</span>
+        <span>Answer</span>
+        <span class="pill">ADO Repository Only</span>
       </div>
       <div class="answer-body">${md(result.answer)}</div>
       <button class="log-toggle" data-label=" ADO browse step log" onclick="toggleLog('cpLog')">▸ Show ADO browse step log</button>
       <div class="log-body" id="cpLog">${logItems}</div>`;
+  }
+
+  // ── SharePoint renderer ────────────────────────────────────────────────────
+  function renderSharePoint(result) {
+    const steps = result.steps || [];
+    const logItems = steps.map(s => {
+      const searches = (s.searches || []).map(sr =>
+        `<div class="sp-log-result">🔎 "${esc(sr.term)}" → ${sr.error
+          ? `<span style="color:var(--error)">error: ${esc(sr.error)}</span>`
+          : `${sr.hits} hit(s), ${sr.new_unique} new`
+        }</div>`
+      ).join('');
+      const results = (s.results || []).map(r =>
+        `<div class="sp-log-result">📄 <strong>${esc(r.title)}</strong>
+           <span style="font-size:.7rem"> · ${esc(r.file_type || '')}</span>
+         </div>`
+      ).join('');
+      const preview = s.content_preview ? `<div class="sp-log-preview">"${esc(s.content_preview)}"</div>` : '';
+      return `<div class="sp-log-item">
+        <div class="sp-log-label">Step ${s.step}</div>
+        <div class="sp-log-detail">${esc(s.action)}</div>
+        ${s.url ? `<div class="sp-log-url">↳ <a href="${esc(s.url)}" target="_blank">${esc(s.url)}</a></div>` : ''}
+        ${searches}${results}${preview}
+        ${s.chars_read ? `<div class="sp-log-detail">${s.chars_read.toLocaleString()} chars read</div>` : ''}
+      </div>`;
+    }).join('');
+
+    const metaEl = document.getElementById('spMeta');
+    metaEl.style.display = 'block';
+    metaEl.innerHTML = `📁 <a href="${esc(result.folder)}" target="_blank">${esc(result.folder)}</a>`;
+
+    document.getElementById('spBody').innerHTML = `
+      <div class="stats-row">
+        <div class="stat">🔎 Found: <strong>${result.results_found}</strong></div>
+        <div class="stat">📄 Files: <strong>${result.files_read}</strong></div>
+        <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
+      </div>
+      ${renderConfidence(result.confidence)}
+      <div class="answer-label">
+        <span>Answer</span>
+        <span class="pill">SharePoint KB Only</span>
+      </div>
+      <div class="answer-body">${md(result.answer)}</div>
+      <button class="log-toggle" data-label=" SharePoint step log" onclick="toggleLog('spLog')">▸ Show SharePoint step log</button>
+      <div class="log-body" id="spLog">${logItems}</div>`;
   }
 
   // ── Runners ────────────────────────────────────────────────────────────────
@@ -646,9 +537,11 @@
     const panelId  = loop === 'agentic' ? 'agenticBody' : 'computerBody';
     const label    = loop === 'agentic' ? 'Agentic Loop' : 'Computer Loop';
     const endpoint = '/api/' + loop;
+    const btnId    = loop === 'agentic' ? 'btnAgentic' : 'btnComputer';
 
     setLoading(panelId, label);
-    setBtnsDisabled(true);
+    document.getElementById(btnId).disabled = true;
+    document.getElementById('btnAll').disabled = true;
     setStatus('Running ' + label + ' against Cora ADO (' + branch + ')…');
     state[loop] = null;
     document.getElementById('comparePanel').style.display = 'none';
@@ -670,81 +563,22 @@
       setError(panelId, e.message);
       setStatus(label + ' failed: ' + e.message);
     } finally {
-      setBtnsDisabled(false);
+      document.getElementById(btnId).disabled = false;
+      document.getElementById('btnAll').disabled = false;
       checkShowCompare();
+      checkShowSynthesize();
     }
   }
 
-  async function runBoth() {
-    const query  = getQuery();
-    const branch = getBranch();
-    if (!query)  { setStatus('Please enter a question first.'); return; }
-    if (!branch) { setStatus('Please select a branch first.'); return; }
-    setBtnsDisabled(true);
-    state.agentic = null; state.computer = null;
-    document.getElementById('comparePanel').style.display = 'none';
-    document.getElementById('btnCompare').style.display   = 'none';
-    await Promise.all([runLoop('agentic'), runLoop('computer')]);
-    setBtnsDisabled(false);
-    checkShowCompare();
-  }
-
-  // ── SharePoint renderer ────────────────────────────────────────────────────
-  function renderSharePoint(result) {
-    const steps = result.steps || [];
-
-    const logItems = steps.map(s => {
-      const searches = (s.searches || []).map(sr =>
-        `<div class="sp-log-result">🔎 "${esc(sr.term)}" → ${sr.error
-          ? `<span style="color:#f87171">error: ${esc(sr.error)}</span>`
-          : `${sr.hits} hit(s), ${sr.new_unique} new`
-        }</div>`
-      ).join('');
-      const results = (s.results || []).map(r =>
-        `<div class="sp-log-result">📄 <strong>${esc(r.title)}</strong>
-           <span style="color:#374151;font-size:.7rem"> · ${esc(r.file_type || '')}</span>
-         </div>`
-      ).join('');
-      const preview = s.content_preview
-        ? `<div class="sp-log-preview">"${esc(s.content_preview)}"</div>` : '';
-      return `<div class="sp-log-item">
-        <div class="sp-log-label">Step ${s.step}</div>
-        <div class="sp-log-detail">${esc(s.action)}</div>
-        ${s.url ? `<div class="sp-log-url">↳ <a href="${esc(s.url)}" target="_blank" style="color:#0078d4">${esc(s.url)}</a></div>` : ''}
-        ${searches}${results}${preview}
-        ${s.chars_read ? `<div class="sp-log-detail">${s.chars_read.toLocaleString()} chars read</div>` : ''}
-      </div>`;
-    }).join('');
-
-    document.getElementById('spMeta').innerHTML =
-      `📁 <a href="${esc(result.folder)}" target="_blank" style="color:#3b82f6">${esc(result.folder)}</a>`;
-
-    document.getElementById('spBody').innerHTML = `
-      <div class="sp-stats">
-        <div class="sp-stat">🔎 Files found: <strong>${result.results_found}</strong></div>
-        <div class="sp-stat">📄 Files read: <strong>${result.files_read}</strong></div>
-        <div class="sp-stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
-      </div>
-      <div class="sp-answer-label">
-        <span>📋 Answer</span>
-        <span class="pill">SharePoint — Confluence Content for AI</span>
-      </div>
-      <div class="sp-body">${md(result.answer)}</div>
-      <button class="log-toggle" style="margin-top:16px;border-color:#1a3a5c;color:#3b82f6"
-              data-label=" SharePoint step log" onclick="toggleLog('spLog')">▸ Show SharePoint step log</button>
-      <div class="log-body" id="spLog">${logItems}</div>`;
-  }
-
-  // ── SharePoint runner ──────────────────────────────────────────────────────
   async function runSharePoint() {
     const query = getQuery();
     if (!query) { setStatus('Please enter a question first.'); return; }
 
-    const panel = document.getElementById('spPanel');
-    panel.style.display = 'block';
     document.getElementById('spBody').innerHTML =
       `<div class="state-loading"><div class="spinner"></div><span>Searching SharePoint knowledge base…</span></div>`;
-    document.getElementById('spMeta').textContent = '';
+    const metaEl = document.getElementById('spMeta');
+    metaEl.style.display = 'none';
+    metaEl.textContent = '';
     document.getElementById('btnSharePoint').disabled = true;
     setStatus('Searching SharePoint Confluence Content for AI folder…');
 
@@ -756,6 +590,7 @@
       });
       const data = await resp.json();
       if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
+      state.sharepoint = data.result;
       renderSharePoint(data.result);
       setStatus('SharePoint search complete.');
     } catch (e) {
@@ -764,13 +599,82 @@
       setStatus('SharePoint search failed: ' + e.message);
     } finally {
       document.getElementById('btnSharePoint').disabled = false;
+      checkShowSynthesize();
     }
+  }
+
+  async function runAll() {
+    const query  = getQuery();
+    const branch = getBranch();
+    if (!query)  { setStatus('Please enter a question first.'); return; }
+    if (!branch) { setStatus('Please select a branch first.'); return; }
+
+    setAllAdoBtnsDisabled(true);
+    document.getElementById('btnSharePoint').disabled = true;
+    state.agentic = null;
+    state.computer = null;
+    document.getElementById('comparePanel').style.display = 'none';
+    document.getElementById('btnCompare').style.display   = 'none';
+    setStatus('Running all three searches simultaneously…');
+
+    await Promise.all([
+      runLoop('agentic'),
+      runLoop('computer'),
+      runSharePoint(),
+    ]);
+
+    setAllAdoBtnsDisabled(false);
+    document.getElementById('btnSharePoint').disabled = false;
+    checkShowCompare();
+    setStatus('All searches complete.');
   }
 
   function checkShowCompare() {
     if (state.agentic && state.computer) {
       document.getElementById('btnCompare').style.display = 'flex';
-      setStatus('Both loops finished — click "Compare Results" for analysis.');
+    }
+    checkShowSynthesize();
+  }
+
+  function checkShowSynthesize() {
+    const hasAny = state.agentic || state.computer || state.sharepoint;
+    if (hasAny) {
+      document.getElementById('btnSynthesize').style.display = 'flex';
+    }
+  }
+
+  async function runSynthesize() {
+    const hasAny = state.agentic || state.computer || state.sharepoint;
+    if (!hasAny) return;
+    const panel = document.getElementById('synthesisPanel');
+    panel.style.display = 'block';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('synthesisText').innerHTML = '';
+    document.getElementById('synthesisLoading').style.display = 'flex';
+    document.getElementById('btnSynthesize').disabled = true;
+    setStatus('Synthesizing all search results…');
+    try {
+      const resp = await fetch('/api/synthesize', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          query:           getQuery(),
+          agentic_result:  state.agentic  || null,
+          computer_result: state.computer || null,
+          sp_result:       state.sharepoint || null,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
+      document.getElementById('synthesisText').innerHTML = md(data.synthesis);
+      setStatus('Synthesis complete.');
+    } catch (e) {
+      document.getElementById('synthesisText').innerHTML =
+        `<div class="state-error">⚠️ ${esc(e.message)}</div>`;
+      setStatus('Synthesis failed: ' + e.message);
+    } finally {
+      document.getElementById('synthesisLoading').style.display = 'none';
+      document.getElementById('btnSynthesize').disabled = false;
     }
   }
 

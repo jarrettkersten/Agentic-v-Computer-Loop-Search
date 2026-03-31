@@ -304,25 +304,45 @@ def select_relevant_files(query: str, candidates: list, client, max_files: int =
 
 
 def _clean_answer(text: str) -> str:
-    """Strip internal MISSING_FILE: directives from the user-facing answer.
+    """Sanitise the user-facing answer by stripping internal directives and
+    raw Python data structures that should never appear in output.
 
-    These tags are used as signals between synthesis passes and should never
-    appear in the final response shown to the user. If unfound files are noted,
-    a clean plain-language footnote replaces the raw tags.
+    Handles:
+      - MISSING_FILE: directives (internal fetch signals)
+      - Raw Python dict / list repr leaking from iterations_log formatting
+        e.g.  {'type': 'read_file', 'file_path': '...', 'content_length': ...}
     """
     import re
+
+    # ── Strip MISSING_FILE: lines ─────────────────────────────────────────────
     missing_files = [
         line.replace("MISSING_FILE:", "").strip()
         for line in text.splitlines()
         if "MISSING_FILE:" in line
     ]
-    # Remove every MISSING_FILE: line (with or without trailing newline)
     cleaned = re.sub(r"^MISSING_FILE:.*$\n?", "", text, flags=re.MULTILINE).strip()
-    # Also collapse any section heading that only exists to introduce the list
     cleaned = re.sub(
         r"(?m)^(#+\s*Missing Files.*|What You Actually Need.*)\n+$", "", cleaned
     ).strip()
 
+    # ── Strip raw Python dict/list tool-call representations ─────────────────
+    # Matches lines like: {'type': 'read_file', 'file_path': '...', ...}
+    cleaned = re.sub(
+        r"^\{['\"]type['\"]\s*:.*\}\s*$\n?",
+        "",
+        cleaned,
+        flags=re.MULTILINE,
+    ).strip()
+    # Also strip standalone lines that look like dict key-value pairs leaked
+    # from str(iterations_log) formatting
+    cleaned = re.sub(
+        r"^['\"](?:type|file_path|content_length|query|results|preview)['\"].*$\n?",
+        "",
+        cleaned,
+        flags=re.MULTILINE,
+    ).strip()
+
+    # ── Add footnote if files were flagged as missing ─────────────────────────
     if missing_files:
         names = ", ".join(f"`{p.rsplit('/', 1)[-1]}`" for p in missing_files[:5])
         suffix = "…" if len(missing_files) > 5 else ""
@@ -331,6 +351,51 @@ def _clean_answer(text: str) -> str:
             f"files that could not be located in the searched branch: {names}{suffix}"
         )
     return cleaned
+
+
+def assess_confidence(query: str, answer: str, files_read: int, loop_name: str) -> dict:
+    """Quick confidence assessment for a loop answer.
+    Returns {"level": "High"|"Medium"|"Low", "reason": "one sentence"}
+    """
+    import json as _json
+    client = get_client()
+    try:
+        resp = client.messages.create(
+            model=MODEL,
+            max_tokens=120,
+            system=(
+                "You evaluate the confidence level of Cora PPM search answers. "
+                "Respond ONLY with a valid JSON object, no extra text:\n"
+                '{"level": "High", "reason": "One sentence."}\n'
+                "Levels:\n"
+                "  High   — multiple relevant files read, answer covers all key layers\n"
+                "  Medium — some relevant files found, coverage may be incomplete\n"
+                "  Low    — limited or no matching files; answer is partial or inferred"
+            ),
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Search method: {loop_name}\n"
+                    f"Files read: {files_read}\n"
+                    f"Question: {query}\n\n"
+                    f"Answer preview (first 400 chars):\n{answer[:400]}\n\n"
+                    "Rate the confidence in this answer."
+                ),
+            }],
+        )
+        text = resp.content[0].text.strip()
+        # Strip markdown fences if present
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+            text = text.strip()
+        parsed = _json.loads(text)
+        # Normalise level capitalisation
+        parsed["level"] = parsed.get("level", "Medium").capitalize()
+        return parsed
+    except Exception:
+        return {"level": "Medium", "reason": "Confidence could not be assessed automatically."}
 
 
 def extract_file_paths_from_text(text: str) -> list:
@@ -435,20 +500,22 @@ def run_agentic_loop(query, branch):
         "  6. Any SQL stored procedures or queries referenced\n"
         "Read ALL layers — an answer that only covers the UI without the business logic is incomplete.\n\n"
         "═══ ANSWER REQUIREMENTS ═══\n"
-        "Your final answer MUST include ALL of the following sections:\n\n"
-        "## Overview\n"
-        "Plain-language summary of what the feature/function does and why it exists.\n\n"
-        "## How It Works — Step by Step\n"
-        "Walk through the COMPLETE execution flow: user action → page event → service call → "
-        "data access → database → return path. Name each method and file at every step.\n"
-        "Format: 'When X happens, `FileName.vb` calls `MethodName()` which does Y, then passes to...'\n\n"
-        "## Key Code\n"
-        "Show the most important method(s) with file path and brief explanation.\n"
-        "Use: `FileName.vb` → `MethodName()` — what it does\n\n"
-        "## Files Involved\n"
-        "List every file you read, with its role: UI / CodeBehind / Service / Repository / Helper.\n\n"
+        "Your final answer MUST use EXACTLY this two-section structure:\n\n"
+        "## Answer\n"
+        "Write a complete, professional, concise response for the end user who asked the question. "
+        "Use plain language — no file paths, no code snippets, no method names. "
+        "Explain WHAT the feature does, HOW it works conceptually, and any important business rules. "
+        "A non-technical stakeholder should fully understand this section.\n\n"
+        "---\n\n"
+        "## Technical Reference\n"
+        "*For dev/product team review*\n\n"
+        "Provide full technical depth for developers to verify and confirm the answer:\n"
+        "  - Complete execution flow naming every method, file, and layer in order\n"
+        "  - Key code snippets (actual method bodies in fenced code blocks) with file paths\n"
+        "  - File inventory: list every file read with its role (UI / CodeBehind / Service / Repository / Helper / SQL)\n"
+        "  - Any architecture notes, edge cases, or gaps in coverage\n\n"
         "NEVER use general knowledge. Only answer from files you have read. "
-        "If you cannot find a file you need, say which file and why it matters, then continue "
+        "If you cannot find a file you need, note it in the Technical Reference section, then continue "
         "with what you have rather than stopping early."
     )
 
@@ -457,12 +524,37 @@ def run_agentic_loop(query, branch):
         f"Question: {query}\n\n"
         f"Remember: extract the KEY TECHNICAL TERMS first, then search with those short terms."
     )}]
-    iterations_log = []
-    iteration      = 0
-    final_answer   = ""
+    iterations_log   = []
+    iteration        = 0
+    final_answer     = ""
+    # Track full file contents separately so fallback synthesis has real context,
+    # not just metadata dicts from the iterations log.
+    accumulated_files = {}   # file_path -> full content string
+
+    # How many iterations before the cap to inject a "wrap up" warning
+    WRAP_UP_THRESHOLD = 3
 
     while iteration < MAX_AGENTIC_ITERATIONS:
         iteration += 1
+
+        # ── Warn Claude to start synthesising when close to the cap ──────────
+        remaining = MAX_AGENTIC_ITERATIONS - iteration
+        if remaining == WRAP_UP_THRESHOLD and any(
+            tc.get("type") == "read_file"
+            for it in iterations_log
+            for tc in it.get("tool_calls", [])
+        ):
+            messages.append({
+                "role":    "user",
+                "content": (
+                    f"SYSTEM NOTE: You have {remaining} iterations remaining before the search "
+                    f"cap. You have already read {len(accumulated_files)} file(s). "
+                    "Do NOT make any more tool calls unless a single critical file is still missing. "
+                    "Write your complete structured answer NOW using the files you have. "
+                    "Follow the required format: Overview → How It Works (Step by Step) → "
+                    "Key Code → Files Involved."
+                ),
+            })
 
         response = client.messages.create(
             model=MODEL,
@@ -508,6 +600,7 @@ def run_agentic_loop(query, branch):
                 try:
                     content = ado_read_file(fp, branch)
                     result_content = content
+                    accumulated_files[fp] = content   # ← store full content
                     tool_calls_this_turn.append({
                         "type":           "read_file",
                         "file_path":      fp,
@@ -542,37 +635,49 @@ def run_agentic_loop(query, branch):
                 final_answer = _clean_answer(text)
             break
 
-    # Fallback synthesis if iteration cap hit without final text
+    # ── Fallback synthesis if iteration cap hit without final text ────────────
+    # Build context from ACTUAL file contents (not metadata dicts) so Claude
+    # can write a real answer rather than regurgitating internal tool call data.
     if not final_answer:
-        context = "\n\n".join(
-            "Iteration " + str(it["iteration"]) + ":\n" +
-            "\n".join(str(tc) for tc in it.get("tool_calls", []))
-            for it in iterations_log
-        )
+        if accumulated_files:
+            context = "\n\n".join(
+                f"### File: {path}\n{content}"
+                for path, content in accumulated_files.items()
+            )
+        else:
+            context = (
+                "No files were successfully read from the repository. "
+                "The searches ran but returned no accessible content."
+            )
         fallback = client.messages.create(
             model=MODEL,
             max_tokens=5000,
             system=(
                 "You are a senior Cora PPM code analyst. Answer ONLY from the ADO repository "
                 "context provided — never from general knowledge.\n\n"
-                "Your answer MUST follow this structure:\n\n"
-                "## Overview\n"
-                "Plain-language summary of what the feature/function does.\n\n"
-                "## How It Works — Step by Step\n"
-                "Trace the COMPLETE execution flow naming every method and file at each step.\n\n"
-                "## Key Code\n"
-                "Show the most important method bodies with file paths in fenced code blocks.\n\n"
-                "## Files Involved\n"
-                "List every file referenced with its role (UI / CodeBehind / Service / Repository).\n\n"
+                "Your answer MUST use EXACTLY this two-section structure:\n\n"
+                "## Answer\n"
+                "Write a complete, professional, concise response for the end user who asked the question. "
+                "Use plain language — no file paths, no code snippets, no method names. "
+                "Explain WHAT the feature does, HOW it works conceptually, and any important business rules. "
+                "A non-technical stakeholder should fully understand this section.\n\n"
+                "---\n\n"
+                "## Technical Reference\n"
+                "*For dev/product team review*\n\n"
+                "Provide full technical depth for developers to verify and confirm the answer:\n"
+                "  - Complete execution flow naming every method and file at each step\n"
+                "  - Key code snippets (actual method bodies in fenced code blocks) with file paths\n"
+                "  - File inventory: every file read with its role (UI / CodeBehind / Service / Repository)\n\n"
                 "If context is insufficient to cover all layers, state clearly which layer is missing "
                 "and what additional files would be needed."
             ),
             messages=[{
                 "role":    "user",
                 "content": (
-                    "Based ONLY on the following ADO repository context, answer in full detail:\n\n"
+                    "Using ONLY the following files read from the Cora PPM ADO repository "
+                    "(branch: " + branch + "), answer this question with full detail:\n\n"
                     "Question: " + query + "\n\n"
-                    "ADO context gathered:\n" + context
+                    "Repository files:\n" + context
                 ),
             }],
         )
@@ -581,8 +686,11 @@ def run_agentic_loop(query, branch):
     total_searches   = sum(1 for it in iterations_log for tc in it.get("tool_calls", []) if tc.get("type") == "search")
     total_files_read = sum(1 for it in iterations_log for tc in it.get("tool_calls", []) if tc.get("type") == "read_file")
 
+    confidence = assess_confidence(query, final_answer, total_files_read, "Agentic Loop")
+
     return {
         "answer":           final_answer,
+        "confidence":       confidence,
         "iterations":       iterations_log,
         "total_iterations": iteration,
         "total_searches":   total_searches,
@@ -685,21 +793,23 @@ def run_computer_loop(query, branch):
     SYNTH_SYSTEM = (
         "You are a senior Cora PPM code analyst. Answer EXCLUSIVELY from the repository files "
         "provided — never from general knowledge.\n\n"
-        "Your answer MUST follow this structure:\n\n"
-        "## Overview\n"
-        "1-2 sentence plain-language summary of what the feature/function does and why it exists.\n\n"
-        "## How It Works — Step by Step\n"
-        "Trace the COMPLETE execution flow from user action to database and back:\n"
-        "  - Name EVERY method called, in order, with the file it lives in\n"
-        "  - Describe what each step does, not just what it's named\n"
-        "  - Example: 'Clicking Save triggers `btnSave_Click` in `Timesheet.aspx.vb`, which calls "
-        "`TimesheetService.SaveTimesheet()`, which validates hours via `ValidateHours()` then "
-        "calls `TimesheetRepository.Insert()` which executes `sp_InsertTimesheetRow`'\n\n"
-        "## Key Code\n"
-        "Quote the most important method bodies (the actual code, not paraphrases), each preceded by "
-        "its file path. Use fenced code blocks.\n\n"
-        "## Files Involved\n"
-        "List every file you read with its role: UI / CodeBehind / Service / Repository / Helper / SQL.\n\n"
+        "Your answer MUST use EXACTLY this two-section structure:\n\n"
+        "## Answer\n"
+        "Write a complete, professional, concise response for the end user who asked the question. "
+        "Use plain language — no file paths, no code snippets, no method names. "
+        "Explain WHAT the feature does, HOW it works conceptually, and any important business rules. "
+        "A non-technical stakeholder should fully understand this section.\n\n"
+        "---\n\n"
+        "## Technical Reference\n"
+        "*For dev/product team review*\n\n"
+        "Provide full technical depth for developers to verify and confirm the answer:\n"
+        "  - Complete execution flow: name every method, file, and layer in order\n"
+        "    Example: 'Clicking Save triggers `btnSave_Click` in `Timesheet.aspx.vb`, which calls "
+        "`TimesheetService.SaveTimesheet()`, which validates via `ValidateHours()` then calls "
+        "`TimesheetRepository.Insert()` executing `sp_InsertTimesheetRow`'\n"
+        "  - Key code snippets: quote the most important method bodies (actual code) in fenced code blocks, "
+        "each preceded by its file path\n"
+        "  - File inventory: every file read with its role (UI / CodeBehind / Service / Repository / Helper / SQL)\n\n"
         "DEPTH REQUIREMENT: A shallow answer that only covers the UI layer without the business logic "
         "and data layer is NOT acceptable. Cover all layers you have files for.\n\n"
         "MISSING FILES: If key files are absent, list each on its own line as:\n"
@@ -774,8 +884,11 @@ def run_computer_loop(query, branch):
         # No missing files flagged — first pass is the answer
         final_answer = _clean_answer(first_text)
 
+    confidence = assess_confidence(query, final_answer, len(file_contents), "Computer Loop")
+
     return {
         "answer":        final_answer,
+        "confidence":    confidence,
         "steps":         steps_log,
         "total_steps":   len(steps_log),
         "results_found": len(search_results),
@@ -1282,19 +1395,26 @@ def run_sharepoint_loop(query: str) -> dict:
 
     synthesis = client.messages.create(
         model=MODEL,
-        max_tokens=3000,
+        max_tokens=4000,
         system=(
             "You are a Cora PPM documentation analyst. "
             "Answer EXCLUSIVELY from the SharePoint documents provided below. "
             "Do NOT use general knowledge or external sources.\n\n"
-            "Your answer MUST:\n"
-            "1. Explain the topic clearly in plain language — write like a help article\n"
-            "2. Use markdown headers (##), bullet points, and clear sections\n"
-            "3. Include relevant quotes or specific details from the source documents\n"
-            "4. After each key claim, note the document title it came from in parentheses\n"
-            "5. End with a '## Sources' section listing each document title as a "
-            "   markdown link using its Source URL\n\n"
-            "If the documents do not contain enough information, say so explicitly."
+            "Your answer MUST use EXACTLY this two-section structure:\n\n"
+            "## Answer\n"
+            "Write a complete, professional, concise response for the end user who asked the question. "
+            "Use plain language — no technical jargon unless necessary. "
+            "Explain WHAT the feature does, HOW it works, and any important details from the documentation. "
+            "A non-technical stakeholder should fully understand this section.\n\n"
+            "---\n\n"
+            "## Technical Reference\n"
+            "*For dev/product team review*\n\n"
+            "Provide detailed source references for the team to verify and confirm the answer:\n"
+            "  - Specific details and quotes from the source documents (with document title in parentheses)\n"
+            "  - Step-by-step procedures or technical processes described in the documentation\n"
+            "  - Any configuration details, field names, or system behaviour noted in the documents\n"
+            "  - Sources section: list each document title as a markdown link using its Source URL\n\n"
+            "If the documents do not contain enough information, say so explicitly in both sections."
         ),
         messages=[{
             "role":    "user",
@@ -1307,14 +1427,96 @@ def run_sharepoint_loop(query: str) -> dict:
         }],
     )
 
+    sp_answer = _clean_answer(synthesis.content[0].text)
+    confidence = assess_confidence(query, sp_answer, len(file_contents), "SharePoint Loop")
+
     return {
-        "answer":        _clean_answer(synthesis.content[0].text),
+        "answer":        sp_answer,
+        "confidence":    confidence,
         "steps":         steps_log,
         "total_steps":   len(steps_log),
         "results_found": len(all_results),
         "files_read":    len(file_contents),
         "folder":        SP_FOLDER_FULL,
     }
+
+
+# ---------------------------------------------------------------------------
+# 4. MASTER SYNTHESIS
+#    Combines answers from all three loops into one comprehensive response.
+# ---------------------------------------------------------------------------
+
+def synthesize_all(query: str, agentic_result: dict, computer_result: dict, sp_result: dict) -> str:
+    """Synthesize answers from all three search loops into one authoritative answer."""
+    client = get_client()
+
+    parts = []
+    if agentic_result and agentic_result.get("answer"):
+        branch = agentic_result.get("branch", "")
+        files  = agentic_result.get("total_files_read", 0)
+        parts.append(
+            f"=== AGENTIC LOOP (ADO Repository{', branch: ' + branch if branch else ''}, "
+            f"{files} file(s) read) ===\n{agentic_result['answer']}"
+        )
+    if computer_result and computer_result.get("answer"):
+        branch = computer_result.get("branch", "")
+        files  = computer_result.get("files_read", 0)
+        parts.append(
+            f"=== COMPUTER LOOP (ADO Repository{', branch: ' + branch if branch else ''}, "
+            f"{files} file(s) read) ===\n{computer_result['answer']}"
+        )
+    if sp_result and sp_result.get("answer"):
+        files = sp_result.get("files_read", 0)
+        parts.append(
+            f"=== SHAREPOINT KB (Confluence Documentation, {files} document(s) read) ===\n"
+            f"{sp_result['answer']}"
+        )
+
+    if not parts:
+        return "No search results available to synthesize."
+
+    combined = "\n\n".join(parts)
+
+    resp = client.messages.create(
+        model=MODEL,
+        max_tokens=6000,
+        system=(
+            "You are a senior Cora PPM analyst synthesizing answers from multiple search sources "
+            "into a single, definitive response.\n\n"
+            "You have been given answers from up to three sources:\n"
+            "  1. Agentic Loop — Claude-driven iterative search of the ADO codebase\n"
+            "  2. Computer Loop — fixed-step browse of the ADO codebase\n"
+            "  3. SharePoint KB — Confluence documentation exports\n\n"
+            "Synthesize these into the MOST COMPLETE and ACCURATE answer possible. "
+            "Where sources agree, consolidate into one clear statement. "
+            "Where they add different details, combine them. "
+            "Where they conflict, note the discrepancy and favour the more specific/code-backed source.\n\n"
+            "Your answer MUST use EXACTLY this two-section structure:\n\n"
+            "## Answer\n"
+            "Write a complete, professional, authoritative response for the end user. "
+            "Use plain language — no file paths, no code snippets, no method names. "
+            "Draw on ALL available sources to give the most complete picture possible. "
+            "A non-technical stakeholder should fully understand this section.\n\n"
+            "---\n\n"
+            "## Technical Reference\n"
+            "*For dev/product team review*\n\n"
+            "Full technical synthesis for developers to verify:\n"
+            "  - Complete execution flow from ADO sources combined (every method, file, layer in order)\n"
+            "  - Key code snippets in fenced code blocks with file paths\n"
+            "  - File inventory across all ADO sources\n"
+            "  - Relevant documentation references from SharePoint (document titles as links)\n"
+            "  - Any conflicts or gaps identified between sources"
+        ),
+        messages=[{
+            "role": "user",
+            "content": (
+                f"Synthesize the following answers into one comprehensive, authoritative response.\n\n"
+                f"Question: {query}\n\n"
+                f"{combined}"
+            ),
+        }],
+    )
+    return _clean_answer(resp.content[0].text)
 
 
 # ---------------------------------------------------------------------------
@@ -1429,6 +1631,24 @@ def api_sharepoint():
     try:
         result = run_sharepoint_loop(query)
         return jsonify({"success": True, "result": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/synthesize", methods=["POST"])
+def api_synthesize():
+    data     = request.get_json() or {}
+    query    = data.get("query", "").strip()
+    agentic  = data.get("agentic_result")
+    computer = data.get("computer_result")
+    sp       = data.get("sp_result")
+    if not query:
+        return jsonify({"error": "No query provided."}), 400
+    if not any([agentic, computer, sp]):
+        return jsonify({"error": "At least one search result is required."}), 400
+    try:
+        synthesis = synthesize_all(query, agentic or {}, computer or {}, sp or {})
+        return jsonify({"success": True, "synthesis": synthesis})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
