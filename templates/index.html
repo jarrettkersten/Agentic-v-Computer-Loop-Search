@@ -14,7 +14,6 @@
   --error:#b91c1c;--error-bg:#fff5f5;
   --warn:#d97706;--warn-bg:#fffbeb;
   --agentic:#2563eb;--agentic-bg:#eff6ff;--agentic-border:#bfdbfe;
-  --computer:#7c3aed;--computer-bg:#f5f3ff;--computer-border:#ddd6fe;
   --hybrid:#0d9488;--hybrid-bg:#f0fdfa;--hybrid-border:#99f6e4;
   --sharepoint:#0078d4;--sharepoint-bg:#eff6ff;--sharepoint-border:#bae6fd;
   --radius:14px;--shadow:0 2px 16px rgba(26,37,53,.07),0 1px 4px rgba(26,37,53,.05);
@@ -65,8 +64,6 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .btn-sm{padding:7px 15px;font-size:.82rem;border-radius:7px}
 .btn-agentic{background:var(--agentic);color:#fff}
 .btn-agentic:hover:not(:disabled){background:#1d4ed8}
-.btn-computer{background:var(--computer);color:#fff}
-.btn-computer:hover:not(:disabled){background:#6d28d9}
 .btn-hybrid{background:var(--hybrid);color:#fff}
 .btn-hybrid:hover:not(:disabled){background:#0f766e}
 .btn-sp{background:var(--sharepoint);color:#fff}
@@ -82,7 +79,6 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .panel-header h2{font-size:.93rem;font-weight:700;flex:1;color:var(--text)}
 .badge{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;letter-spacing:.04em}
 .badge-agentic{background:var(--agentic-bg);color:var(--agentic);border:1px solid var(--agentic-border)}
-.badge-computer{background:var(--computer-bg);color:var(--computer);border:1px solid var(--computer-border)}
 .badge-hybrid{background:var(--hybrid-bg);color:var(--hybrid);border:1px solid var(--hybrid-border)}
 .badge-sp{background:var(--sharepoint-bg);color:var(--sharepoint);border:1px solid var(--sharepoint-border)}
 .panel-body{padding:18px 20px;flex:1}
@@ -144,7 +140,7 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .log-item{background:var(--bg);border-left:3px solid var(--border);border-radius:0 6px 6px 0;margin-bottom:6px;padding:9px 13px;font-size:.76rem}
 .log-item .log-label{font-weight:700;margin-bottom:3px}
 .log-item .log-label.search{color:var(--agentic)}
-.log-item .log-label.file{color:var(--computer)}
+.log-item .log-label.file{color:var(--agentic)}
 .log-item .log-label.step{color:var(--brand-light)}
 .log-item .log-detail{color:var(--muted);margin-bottom:3px}
 .log-result-item{color:var(--muted);margin-bottom:2px;padding-left:10px;border-left:2px solid var(--border);font-size:.74rem}
@@ -310,7 +306,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 @media(max-width:700px){.adm-breakdown-row{grid-template-columns:1fr}}
 .adm-breakdown-card{background:var(--card);border-radius:var(--radius);padding:18px 22px;box-shadow:var(--shadow);border-top:3px solid var(--border)}
 .adm-breakdown-card.agentic{border-color:#2563eb}
-.adm-breakdown-card.computer{border-color:#7c3aed}
 .adm-breakdown-card.sharepoint{border-color:#0078d4}
 .adm-breakdown-card .bc-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:7px}
 .adm-breakdown-card .bc-stat{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;padding:5px 0;border-bottom:1px solid var(--border)}
@@ -343,7 +338,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-conf-medium{color:var(--warn);font-weight:600}
 .adm-conf-low{color:var(--error);font-weight:600}
 .adm-loop-agentic{color:#2563eb;font-weight:600}
-.adm-loop-computer{color:#7c3aed;font-weight:600}
 .adm-loop-sharepoint{color:#0078d4;font-weight:600}
 .adm-row-count{font-size:.78rem;color:var(--muted);padding:12px 20px;border-top:1px solid var(--border)}
 .adm-empty-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
@@ -449,11 +443,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <button class="btn btn-run-all" id="btnAll" onclick="runWithClarify('all')">▶▶ Run All</button>
       <span style="width:1px;height:28px;background:var(--border);display:inline-block;margin:0 4px;flex-shrink:0"></span>
       <button class="btn btn-agentic btn-sm" id="btnAgentic" onclick="runWithClarify('agentic')">⚡ Agentic Loop</button>
-      <button class="btn btn-computer btn-sm" id="btnComputer" onclick="runWithClarify('computer')">🖥 Computer Loop</button>
       <button class="btn btn-hybrid btn-sm" id="btnHybrid" onclick="runWithClarify('hybrid')">🔀 Hybrid Loop</button>
       <button class="btn btn-sp btn-sm" id="btnSharePoint" onclick="runWithClarify('sharepoint')">🔷 SharePoint KB</button>
       <span style="width:1px;height:28px;background:var(--border);display:inline-block;margin:0 4px;flex-shrink:0"></span>
-      <button class="btn btn-compare" id="btnCompare" style="display:none" onclick="runCompare()">🔍 Compare ADO</button>
       <button class="btn" id="btnSynthesize" style="display:none;background:#475569;color:#fff" onclick="runSynthesize()">✨ Synthesize All</button>
     </div>
     <!-- ── Clarifying question card (shown only when needed) ── -->
@@ -486,23 +478,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <div class="state-idle">
           <span class="icon">⚡</span>
           <span>Claude iteratively searches the ADO repo,<br>deciding what to look for next across up to 12 rounds.<br><em style="font-size:.8rem">Results come only from CoraSystems/PPM</em></span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Computer Loop -->
-    <div class="panel" id="panelComputer">
-      <div class="panel-resize-handle" id="resizeComputer"></div>
-      <div class="panel-header" onclick="togglePanel('panelComputer', event)">
-        <h2>🖥 Computer Loop</h2>
-        <span class="badge badge-computer">ADO Browse Steps</span>
-        <button class="btn-panel-info" title="How Computer Loop works" onclick="openInfoModal('computer',event)">ℹ</button>
-        <span class="chevron">▼</span>
-      </div>
-      <div class="panel-body" id="computerBody">
-        <div class="state-idle">
-          <span class="icon">🖥</span>
-          <span>Fixed browse steps against the ADO API —<br>search → read top files → synthesize.<br><em style="font-size:.8rem">Results come only from CoraSystems/PPM</em></span>
         </div>
       </div>
     </div>
@@ -542,21 +517,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div id="spMeta" style="padding:0 20px 10px;display:none"></div>
     </div>
 
-  </div>
-
-  <!-- ── Compare panel (shown after both ADO loops complete) ── -->
-  <div class="compare-panel collapsible-panel" id="comparePanel">
-    <div class="cp-header compare-header" onclick="toggleCpPanel('comparePanel')">
-      <h2>🔍 Comparison Analysis — Agentic Loop vs Computer Loop</h2>
-      <span class="chevron" style="color:#92400e">▼</span>
-    </div>
-    <div class="cp-body">
-      <div class="compare-loading" id="compareLoading">
-        <div class="spinner"></div>
-        <span>Claude is comparing both answers…</span>
-      </div>
-      <div class="compare-body" id="compareText"></div>
-    </div>
   </div>
 
   <!-- ── Master synthesis panel ── -->
@@ -694,15 +654,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-ag-tokens">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-ag-errors">—</span></div>
     </div>
-    <div class="adm-breakdown-card computer">
-      <div class="bc-label">🖥 Computer Loop</div>
-      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="adm-cp-runs">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Files Read</span><span class="bc-val" id="adm-cp-files">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Searches</span><span class="bc-val" id="adm-cp-searches">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-cp-time">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-cp-tokens">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-cp-errors">—</span></div>
-    </div>
     <div class="adm-breakdown-card sharepoint">
       <div class="bc-label">🔷 SharePoint Loop</div>
       <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="adm-sp-runs">—</span></div>
@@ -760,7 +711,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     document.getElementById(id).classList.toggle('collapsed');
   }
 
-  const state = { agentic: null, computer: null, hybrid: null, sharepoint: null };
+  const state = { agentic: null, hybrid: null, sharepoint: null };
 
   // ── Branch loader ──────────────────────────────────────────────────────────
   function getBranch() {
@@ -864,7 +815,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   // ── Clarification state ─────────────────────────────────────────────────────
   let _clarifyDone    = false;   // true once user answered/skipped for this session
   let _clarifyContext = '';      // extra context appended to query after clarification
-  let _pendingAction  = null;    // 'all' | 'agentic' | 'computer' | 'sharepoint'
+  let _pendingAction  = null;    // 'all' | 'agentic' | 'hybrid' | 'sharepoint'
 
   function getQuery() {
     const raw = document.getElementById('queryInput').value.trim();
@@ -925,7 +876,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   function _executePendingAction() {
     if      (_pendingAction === 'all')        runAll();
     else if (_pendingAction === 'agentic')    runLoop('agentic');
-    else if (_pendingAction === 'computer')   runLoop('computer');
     else if (_pendingAction === 'hybrid')     runLoop('hybrid');
     else if (_pendingAction === 'sharepoint') runSharePoint();
   }
@@ -935,7 +885,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   let _followups = [];   // [{q, a}]
 
   function checkShowFollowup() {
-    if (state.agentic || state.computer || state.sharepoint) {
+    if (state.agentic || state.hybrid || state.sharepoint) {
       document.getElementById('followupSection').style.display = 'block';
     }
   }
@@ -962,7 +912,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         body:    JSON.stringify({
           question:        q,
           agentic_result:  state.agentic   || null,
-          computer_result: state.computer  || null,
           hybrid_result:   state.hybrid    || null,
           sp_result:       state.sharepoint || null,
         }),
@@ -1027,7 +976,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         body:    JSON.stringify({
           query:           q,
           agentic_result:  state.agentic   || null,
-          computer_result: state.computer  || null,
           hybrid_result:   state.hybrid    || null,
           sp_result:       state.sharepoint || null,
           followups:       _followups,
@@ -1053,7 +1001,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   function setStatus(m){ document.getElementById('statusBar').textContent = m; }
 
   function setAllAdoBtnsDisabled(v) {
-    ['btnAll','btnAgentic','btnComputer','btnHybrid','btnSharePoint'].forEach(id => {
+    ['btnAll','btnAgentic','btnHybrid','btnSharePoint'].forEach(id => {
       document.getElementById(id).disabled = v;
     });
   }
@@ -1145,51 +1093,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <span id="agAnswer" style="display:none">${esc(result.answer)}</span>
       <button class="log-toggle" data-label=" ADO tool call log" onclick="toggleLog('agLog')">▸ Show ADO tool call log</button>
       <div class="log-body" id="agLog">${logItems}</div>`;
-  }
-
-  // ── Computer renderer ──────────────────────────────────────────────────────
-  function renderComputer(result) {
-    const steps = result.steps || [];
-    const logItems = steps.map(s => {
-      const rows = (s.results || []).map(r =>
-        `<div class="log-result-item">📄 <strong>${esc(r.file_name)}</strong> — <span>${esc(r.file_path)}</span></div>`
-      ).join('');
-      const searches = (s.searches || []).map(sr =>
-        `<div class="log-result-item">🔎 "${esc(sr.term)}" → ${sr.error
-          ? '<span style="color:var(--error)">error</span>'
-          : `${sr.hits} hit(s), ${sr.new_unique} new`
-        }</div>`
-      ).join('');
-      const preview = s.content_preview ? `<div class="log-preview">"${esc(s.content_preview)}"</div>` : '';
-      return `<div class="log-item">
-        <div class="log-label step">Step ${s.step}</div>
-        <div class="log-detail">${esc(s.action)}</div>
-        ${s.url ? `<div class="log-url">↳ ${esc(s.url)}</div>` : ''}
-        ${searches}${rows}${preview}
-        ${s.chars_read ? `<div class="log-detail">${s.chars_read.toLocaleString()} chars read</div>` : ''}
-      </div>`;
-    }).join('');
-
-    document.getElementById('computerBody').innerHTML = `
-      <div class="stats-row">
-        <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
-        <div class="stat">🔎 Found: <strong>${result.results_found}</strong></div>
-        <div class="stat">📄 Files: <strong>${result.files_read}</strong></div>
-        <div class="branch-tag">🌿 ${esc(result.branch)}</div>
-      </div>
-      ${renderConfidence(result.confidence)}
-      <div class="answer-label">
-        <span>Answer</span>
-        <span class="pill">ADO Repository Only</span>
-      </div>
-      <div class="answer-body">${md(result.answer)}</div>
-      <div class="export-row">
-        <button class="btn-copy" onclick="copyAnswer('cpAnswer',this)">📋 Copy</button>
-        <button class="btn-export-md" onclick="downloadMd('cpAnswer','Computer Loop')">⬇️ .md</button>
-      </div>
-      <span id="cpAnswer" style="display:none">${esc(result.answer)}</span>
-      <button class="log-toggle" data-label=" ADO browse step log" onclick="toggleLog('cpLog')">▸ Show ADO browse step log</button>
-      <div class="log-body" id="cpLog">${logItems}</div>`;
   }
 
   // ── Hybrid renderer ───────────────────────────────────────────────────────
@@ -1312,17 +1215,15 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     if (!query)  { setStatus('Please enter a question first.'); return; }
     if (!branch) { setStatus('Please select a branch first.'); return; }
 
-    const panelId = loop === 'agentic' ? 'agenticBody' : loop === 'hybrid' ? 'hybridBody' : 'computerBody';
-    const label   = loop === 'agentic' ? 'Agentic Loop' : loop === 'hybrid' ? 'Hybrid Loop' : 'Computer Loop';
-    const btnId   = loop === 'agentic' ? 'btnAgentic' : loop === 'hybrid' ? 'btnHybrid' : 'btnComputer';
+    const panelId = loop === 'agentic' ? 'agenticBody' : 'hybridBody';
+    const label   = loop === 'agentic' ? 'Agentic Loop' : 'Hybrid Loop';
+    const btnId   = loop === 'agentic' ? 'btnAgentic' : 'btnHybrid';
 
     setLoading(panelId, label);
     document.getElementById(btnId).disabled = true;
     document.getElementById('btnAll').disabled = true;
     setStatus('Running ' + label + ' against Cora ADO (' + branch + ')…');
     state[loop] = null;
-    document.getElementById('comparePanel').style.display = 'none';
-    document.getElementById('btnCompare').style.display   = 'none';
 
     try {
       if (loop === 'agentic') {
@@ -1394,7 +1295,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           setTimeout(doPoll, 2000);
         });
       } else {
-        // ── Computer / Hybrid loop: simple POST ────────────────────────────
+        // ── Hybrid loop: simple POST ─────────────────────────────────────────
         const resp = await fetch('/api/' + loop, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1403,8 +1304,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         const data = await resp.json();
         if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
         state[loop] = data.result;
-        if (loop === 'hybrid') renderHybrid(data.result);
-        else renderComputer(data.result);
+        renderHybrid(data.result);
         setStatus(label + ' complete.');
       }
     } catch (e) {
@@ -1414,7 +1314,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       document.getElementById(btnId).disabled = false;
       document.getElementById('btnAll').disabled = false;
       document.getElementById('pauseDialog').style.display = 'none';
-      checkShowCompare();
       checkShowSynthesize();
     }
   }
@@ -1460,15 +1359,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     setAllAdoBtnsDisabled(true);
     state.agentic = null;
-    state.computer = null;
     state.hybrid = null;
-    document.getElementById('comparePanel').style.display = 'none';
-    document.getElementById('btnCompare').style.display   = 'none';
-    setStatus('Running all four searches simultaneously…');
+    setStatus('Running all three searches simultaneously…');
 
     await Promise.all([
       runLoop('agentic'),
-      runLoop('computer'),
       runLoop('hybrid'),
       runSharePoint(),
     ]);
@@ -1478,15 +1373,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     setStatus('All searches complete.');
   }
 
-  function checkShowCompare() {
-    if (state.agentic && state.computer) {
-      document.getElementById('btnCompare').style.display = 'flex';
-    }
-    checkShowSynthesize();
-  }
-
   function checkShowSynthesize() {
-    const hasAny = state.agentic || state.computer || state.hybrid || state.sharepoint;
+    const hasAny = state.agentic || state.hybrid || state.sharepoint;
     if (hasAny) {
       document.getElementById('btnSynthesize').style.display = 'flex';
       checkShowFollowup();
@@ -1494,7 +1382,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   }
 
   async function runSynthesize() {
-    const hasAny = state.agentic || state.computer || state.sharepoint;
+    const hasAny = state.agentic || state.hybrid || state.sharepoint;
     if (!hasAny) return;
     const panel = document.getElementById('synthesisPanel');
     panel.style.display = 'block';
@@ -1509,8 +1397,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           query:           getQuery(),
-          agentic_result:  state.agentic  || null,
-          computer_result: state.computer || null,
+          agentic_result:  state.agentic    || null,
+          hybrid_result:   state.hybrid     || null,
           sp_result:       state.sharepoint || null,
         }),
       });
@@ -1527,35 +1415,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     } finally {
       document.getElementById('synthesisLoading').style.display = 'none';
       document.getElementById('btnSynthesize').disabled = false;
-    }
-  }
-
-  async function runCompare() {
-    if (!state.agentic || !state.computer) return;
-    const panel = document.getElementById('comparePanel');
-    panel.style.display = 'block';
-    document.getElementById('compareText').innerHTML = '';
-    document.getElementById('compareLoading').style.display = 'flex';
-    setStatus('Generating comparison…');
-    try {
-      const resp = await fetch('/api/compare', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          query:           getQuery(),
-          agentic_result:  state.agentic,
-          computer_result: state.computer,
-          hybrid_result:   state.hybrid || null,
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
-      document.getElementById('compareText').innerHTML = md(data.comparison);
-      setStatus('Comparison ready.');
-    } catch (e) {
-      document.getElementById('compareText').textContent = 'Comparison failed: ' + e.message;
-    } finally {
-      document.getElementById('compareLoading').style.display = 'none';
     }
   }
 
@@ -1756,7 +1615,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       document.getElementById(errorsEl).textContent = rows.filter(r => r.status === 'error').length;
     }
     loopStats('agentic',    'adm-ag-runs', 'adm-ag-files', 'adm-ag-iters', 'iterations', 'adm-ag-time', 'adm-ag-tokens', 'adm-ag-errors');
-    loopStats('computer',   'adm-cp-runs', 'adm-cp-files', 'adm-cp-searches', 'searches', 'adm-cp-time', 'adm-cp-tokens', 'adm-cp-errors');
     loopStats('sharepoint', 'adm-sp-runs', 'adm-sp-files', 'adm-sp-time', 'duration_sec', 'adm-sp-time', 'adm-sp-tokens', 'adm-sp-errors');
   }
 
@@ -1815,8 +1673,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           return `<td class="${cls}">${admEsc(val)}</td>`;
         }
         if (c === 'loop_type') {
-          const cls = { agentic: 'adm-loop-agentic', computer: 'adm-loop-computer', sharepoint: 'adm-loop-sharepoint' }[val] || '';
-          const icon = { agentic: '⚡', computer: '🖥', sharepoint: '🔷' }[val] || '';
+          const cls = { agentic: 'adm-loop-agentic', hybrid: 'adm-loop-hybrid', sharepoint: 'adm-loop-sharepoint' }[val] || '';
+          const icon = { agentic: '⚡', hybrid: '🔀', sharepoint: '🔷' }[val] || '';
           return `<td class="${cls}">${icon} ${admEsc(val)}</td>`;
         }
         if (c === 'confidence_level' && val) {
@@ -1879,84 +1737,49 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <p>Exclusively the <strong>CoraSystems/PPM</strong> repo on the branch you selected. No external sources, documentation, or web results.</p>
 
         <hr class="info-divider"/>
-        <h4>Agentic Loop vs Computer Loop</h4>
+        <h4>Agentic vs Hybrid Loop</h4>
         <table class="compare-table">
-          <thead><tr><th></th><th>⚡ Agentic</th><th>🖥 Computer</th></tr></thead>
+          <thead><tr><th></th><th>⚡ Agentic</th><th>🔀 Hybrid</th></tr></thead>
           <tbody>
-            <tr><td><strong>Strategy</strong></td><td>Iterative — Claude decides each next step</td><td>Fixed — search → rank → read → synthesize</td></tr>
-            <tr><td><strong>Adaptability</strong></td><td>High — pivots if initial results are incomplete</td><td>Low — set sequence, can't course-correct mid-run</td></tr>
-            <tr><td><strong>Coverage</strong></td><td>Broader — follows thread across files and layers</td><td>Narrower — limited to top-ranked files from 3–4 queries</td></tr>
-            <tr><td><strong>Speed</strong></td><td>Slower — 60–120 s typical</td><td>Faster — 20–45 s typical</td></tr>
-            <tr><td><strong>Consistency</strong></td><td>Variable — depends on what Claude finds</td><td>Predictable — same steps every run</td></tr>
-            <tr><td><strong>Best for</strong></td><td>Complex, multi-layer questions; tracing flows</td><td>Quick lookups; single-feature questions</td></tr>
+            <tr><td><strong>Strategy</strong></td><td>Fully iterative — Claude decides each step</td><td>Structured search, then adaptive reading</td></tr>
+            <tr><td><strong>Adaptability</strong></td><td>Highest — can pivot at any step</td><td>High — adaptive in Phase 2 with upfront candidate pool</td></tr>
+            <tr><td><strong>Coverage</strong></td><td>Deep — follows full reference chain</td><td>Broad + deep — layer enforcement + reference chain</td></tr>
+            <tr><td><strong>Speed</strong></td><td>Slower — 60–120 s typical</td><td>Medium — 40–80 s typical</td></tr>
+            <tr><td><strong>Best for</strong></td><td>Complex, multi-layer traces where search terms are unclear</td><td>Most questions — balanced depth, speed, and coverage</td></tr>
           </tbody>
         </table>
-        <p style="font-size:.8rem;color:var(--muted)">Both loops use the same underlying ADO Code Search and file-reading APIs against the same repository branch.</p>
-      `
-    },
-    computer: {
-      title: '🖥 Computer Loop — How it works',
-      body: `
-        <h4>Overview</h4>
-        <p>The Computer Loop follows a <strong>deterministic, fixed sequence</strong> of browse steps against the ADO API. It is faster and more predictable than the Agentic Loop, at the cost of adaptability.</p>
-
-        <h4>Step-by-step process</h4>
-        <ul>
-          <li><strong>Step 1 — Query expansion:</strong> Claude generates 3–4 targeted search terms from your question (e.g. class name, method name, feature keyword).</li>
-          <li><strong>Step 2 — Search &amp; rank:</strong> Each term is fired at ADO Code Search. Results are de-duplicated and ranked by relevance using file path and snippet signals.</li>
-          <li><strong>Step 3 — Layer coverage check:</strong> For WebForms features, the loop proactively searches for all four layers — UI (<code>.aspx</code>), CodeBehind (<code>.aspx.vb</code>), Service, and Repository — and adds any missing layers to the read list.</li>
-          <li><strong>Step 4 — Read files:</strong> The top 6 ranked files are read in full (up to 15,000 chars each). For truncated files, ADO snippets at the match location are injected into the synthesis context.</li>
-          <li><strong>Step 5 — Synthesize:</strong> Claude combines all file contents and snippets into a structured answer.</li>
-        </ul>
-
-        <h4>What it searches</h4>
-        <p>Exclusively the <strong>CoraSystems/PPM</strong> repo on the branch you selected. No external sources.</p>
-
-        <hr class="info-divider"/>
-        <h4>Agentic Loop vs Computer Loop</h4>
-        <table class="compare-table">
-          <thead><tr><th></th><th>⚡ Agentic</th><th>🖥 Computer</th></tr></thead>
-          <tbody>
-            <tr><td><strong>Strategy</strong></td><td>Iterative — Claude decides each next step</td><td>Fixed — search → rank → read → synthesize</td></tr>
-            <tr><td><strong>Adaptability</strong></td><td>High — pivots if initial results are incomplete</td><td>Low — set sequence, can't course-correct mid-run</td></tr>
-            <tr><td><strong>Coverage</strong></td><td>Broader — follows thread across files and layers</td><td>Narrower — limited to top-ranked files from 3–4 queries</td></tr>
-            <tr><td><strong>Speed</strong></td><td>Slower — 60–120 s typical</td><td>Faster — 20–45 s typical</td></tr>
-            <tr><td><strong>Consistency</strong></td><td>Variable — depends on what Claude finds</td><td>Predictable — same steps every run</td></tr>
-            <tr><td><strong>Best for</strong></td><td>Complex, multi-layer questions; tracing flows</td><td>Quick lookups; single-feature questions</td></tr>
-          </tbody>
-        </table>
-        <p style="font-size:.8rem;color:var(--muted)">Both loops use the same underlying ADO Code Search and file-reading APIs against the same repository branch.</p>
+        <p style="font-size:.8rem;color:var(--muted)">Both loops use the same ADO Code Search and file-reading APIs against the same repository branch.</p>
       `
     },
     hybrid: {
       title: '🔀 Hybrid Loop — How it works',
       body: `
         <h4>Overview</h4>
-        <p>The Hybrid Loop combines the <strong>best of both worlds</strong>: the Computer Loop's broad structured search to build a candidate pool, followed by the Agentic Loop's adaptive reference-chain reading — then a single clean synthesis pass.</p>
+        <p>The Hybrid Loop combines <strong>structured multi-term search</strong> to build a candidate pool with the <strong>Agentic Loop's adaptive reference-chain reading</strong> — then a single clean synthesis pass.</p>
 
         <h4>Step-by-step process</h4>
         <ul>
-          <li><strong>Phase 1 — Structured search:</strong> Claude extracts 4–7 search terms and runs them all against ADO Code Search with camelCase fallbacks and layer-coverage enforcement (same as the Computer Loop).</li>
+          <li><strong>Phase 1 — Structured search:</strong> Claude extracts 4–7 search terms and runs them all against ADO Code Search with camelCase fallbacks and layer-coverage enforcement .</li>
           <li><strong>Phase 2 — Adaptive reading (up to 10 files):</strong> Claude is shown the ranked candidate pool and reads one file at a time. After each file, it examines the code for imports, method calls, and class names, then decides: <em>read a known candidate</em>, <em>search for a newly discovered class</em>, or <em>stop</em>. This follows the actual call chain rather than guessing file names upfront.</li>
           <li><strong>Phase 3 — Single synthesis:</strong> Once the reference chain is covered, one structured synthesis pass produces the final answer.</li>
         </ul>
 
         <h4>Why this matters</h4>
-        <p>The Computer Loop's weakness is that it picks files before seeing any code — so it often misses the Service or Repository layer. The Agentic Loop is great at following references but can over-search. The Hybrid Loop gets broad coverage upfront <em>and</em> follows the call chain precisely, with a hard cap that prevents over-searching.</p>
+        <p>Picking files before reading code often misses the Service or Repository layer. The Hybrid Loop solves this: broad coverage from Phase 1, precise call-chain reading in Phase 2, and a hard cap that prevents over-searching.</p>
 
         <hr class="info-divider"/>
-        <h4>Comparison: all three ADO loops</h4>
+        <h4>Agentic vs Hybrid</h4>
         <table class="compare-table">
-          <thead><tr><th></th><th>⚡ Agentic</th><th>🖥 Computer</th><th>🔀 Hybrid</th></tr></thead>
+          <thead><tr><th></th><th>⚡ Agentic</th><th>🔀 Hybrid</th></tr></thead>
           <tbody>
-            <tr><td><strong>Search strategy</strong></td><td>Reactive — searches based on what it reads</td><td>Upfront — all terms decided before any reading</td><td>Upfront broad search, then adaptive follow-up</td></tr>
-            <tr><td><strong>Reading strategy</strong></td><td>Adaptive — picks next file based on code content</td><td>Batch — picks all files from metadata before reading</td><td>Adaptive — follows reference chain one file at a time</td></tr>
-            <tr><td><strong>Layer coverage</strong></td><td>High — follows imports and method calls</td><td>Medium — layer enforcement helps, but no reference-following</td><td>High — reference chain + layer enforcement</td></tr>
-            <tr><td><strong>Speed</strong></td><td>Slower (60–120 s)</td><td>Fastest (20–45 s)</td><td>Medium (40–80 s)</td></tr>
-            <tr><td><strong>Best for</strong></td><td>Deep, multi-layer traces</td><td>Quick single-feature lookups</td><td>Most questions — balances depth and speed</td></tr>
+            <tr><td><strong>Search strategy</strong></td><td>Reactive — searches based on what it reads</td><td>Upfront broad search, then adaptive follow-up</td></tr>
+            <tr><td><strong>Reading strategy</strong></td><td>Adaptive — picks next file based on code content</td><td>Adaptive — follows reference chain one file at a time</td></tr>
+            <tr><td><strong>Layer coverage</strong></td><td>High — follows imports and method calls</td><td>High — reference chain + layer enforcement</td></tr>
+            <tr><td><strong>Speed</strong></td><td>Slower (60–120 s)</td><td>Medium (40–80 s)</td></tr>
+            <tr><td><strong>Best for</strong></td><td>Deep, multi-layer traces where search direction is unclear</td><td>Most questions — balances depth, speed, and coverage</td></tr>
           </tbody>
         </table>
-        <p style="font-size:.8rem;color:var(--muted)">All three loops use the same ADO Code Search and file-reading APIs against the same repository branch.</p>
+        <p style="font-size:.8rem;color:var(--muted)">Both loops use the same ADO Code Search and file-reading APIs against the same repository branch.</p>
       `
     },
     sharepoint: {
@@ -1985,7 +1808,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
         <hr class="info-divider"/>
         <h4>How it compares to the ADO loops</h4>
-        <p>The Agentic and Computer loops both search the <strong>source code repository</strong> and are best for implementation questions. The SharePoint KB loop searches <strong>documentation</strong> and is best for functional or user-facing questions. Running all three and using <strong>Synthesize All</strong> gives the most complete picture.</p>
+        <p>The Agentic and Hybrid loops both search the <strong>source code repository</strong> and are best for implementation questions. The SharePoint KB loop searches <strong>documentation</strong> and is best for functional or user-facing questions. Running all and using <strong>Synthesize All</strong> gives the most complete picture.</p>
       `
     }
   };

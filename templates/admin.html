@@ -35,7 +35,6 @@ main{max-width:1600px;margin:28px auto;padding:0 24px}
 @media(max-width:700px){.breakdown-row{grid-template-columns:1fr}}
 .breakdown-card{background:var(--card);border-radius:var(--radius);padding:18px 22px;box-shadow:var(--shadow);border-top:3px solid var(--border)}
 .breakdown-card.agentic{border-color:#2563eb}
-.breakdown-card.computer{border-color:#7c3aed}
 .breakdown-card.hybrid{border-color:#0d9488}
 .breakdown-card.sharepoint{border-color:#0078d4}
 .breakdown-card .bc-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:7px}
@@ -73,7 +72,6 @@ tr:hover td{background:#f8fafc}
 .conf-medium{color:var(--warn);font-weight:600}
 .conf-low{color:var(--error);font-weight:600}
 .loop-agentic{color:#2563eb;font-weight:600}
-.loop-computer{color:#7c3aed;font-weight:600}
 .loop-hybrid{color:#0d9488;font-weight:600}
 .loop-sharepoint{color:#0078d4;font-weight:600}
 .row-count{font-size:.78rem;color:var(--muted);padding:12px 20px;border-top:1px solid var(--border)}
@@ -137,14 +135,6 @@ footer{text-align:center;padding:32px 0;color:var(--muted);font-size:.74rem}
       <div class="bc-stat"><span class="bc-key">Avg Iterations</span><span class="bc-val" id="ag-iters">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="ag-time">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="ag-errors">—</span></div>
-    </div>
-    <div class="breakdown-card computer">
-      <div class="bc-label">🖥 Computer Loop</div>
-      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="cp-runs">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Files Read</span><span class="bc-val" id="cp-files">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Searches</span><span class="bc-val" id="cp-searches">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="cp-time">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="cp-errors">—</span></div>
     </div>
     <div class="breakdown-card hybrid">
       <div class="bc-label">🔀 Hybrid Loop</div>
@@ -273,7 +263,6 @@ function updateSummary() {
     document.getElementById(errorsEl).textContent = errors;
   }
   loopStats('agentic',    'ag-runs', 'ag-files', 'ag-iters',    'iterations',  'ag-time', 'ag-errors');
-  loopStats('computer',   'cp-runs', 'cp-files', 'cp-searches', 'searches',    'cp-time', 'cp-errors');
   loopStats('hybrid',     'hy-runs', 'hy-files', 'hy-searches', 'searches',    'hy-time', 'hy-errors');
   loopStats('sharepoint', 'sp-runs', 'sp-files', 'sp-time',     'duration_sec','sp-time', 'sp-errors');
 }
@@ -345,8 +334,8 @@ function renderTable() {
         return `<td class="${cls}">${esc(val)}</td>`;
       }
       if (c === 'loop_type') {
-        const cls = { agentic: 'loop-agentic', computer: 'loop-computer', hybrid: 'loop-hybrid', sharepoint: 'loop-sharepoint' }[val] || '';
-        const icon = { agentic: '⚡', computer: '🖥', hybrid: '🔀', sharepoint: '🔷' }[val] || '';
+        const cls = { agentic: 'loop-agentic', hybrid: 'loop-hybrid', sharepoint: 'loop-sharepoint' }[val] || '';
+        const icon = { agentic: '⚡', hybrid: '🔀', sharepoint: '🔷' }[val] || '';
         return `<td class="${cls}">${icon} ${esc(val)}</td>`;
       }
       if (c === 'confidence_level' && val) {

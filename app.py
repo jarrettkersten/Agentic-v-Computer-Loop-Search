@@ -3,7 +3,6 @@ Loop Comparison App — Cora ADO Edition
 Compares two search approaches for querying the CoraSystems/PPM Azure DevOps repository:
   1. Agentic Loop  — Claude iteratively drives search strategy via tool calls
                      (ado_code_search + ado_read_file), deciding WHAT to look for next
-  2. Computer Loop — Fixed browse steps: search → select top files → read → synthesize,
                      mimicking a human navigating the ADO web interface
 
 ALL answers come EXCLUSIVELY from the Cora PPM ADO repository.
@@ -500,7 +499,7 @@ def select_relevant_files(query: str, candidates: list, client, max_files: int =
     ask Claude to rank them by likely relevance to the question and return the
     top `max_files` in priority order.
 
-    This prevents the Computer Loop from blindly reading the top-ranked ADO
+    This prevents the Hybrid Loop from blindly reading the top-ranked ADO
     results (which may be irrelevant) and instead reads the files most likely
     to contain the answer.
     """
@@ -651,7 +650,7 @@ def extract_file_paths_from_text(text: str) -> list:
     """Parse a synthesis response for any ADO-style file paths Claude mentioned.
 
     Looks for patterns like /code/inetpub/..., /src/..., or Helpers/Foo.cs
-    so the Computer Loop can fetch files Claude said it needed but didn't have.
+    so the Hybrid Loop can fetch files Claude said it needed but didn't have.
     """
     import re
     # Match Unix-style paths that end with a known code extension
@@ -1018,375 +1017,11 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
 
 
 # ---------------------------------------------------------------------------
-# 2. COMPUTER LOOP
-#    Fixed step-by-step browse pattern against the ADO API — mirrors a human
-#    navigating the ADO web interface. Code drives all decisions (not Claude).
-#    Pattern: search ADO -> inspect results -> read top files -> synthesize.
-# ---------------------------------------------------------------------------
-
-def run_computer_loop(query, branch):
-    steps_log = []
-    client    = get_client()
-
-    # Step 1 — Extract ADO-friendly search terms from the question
-    search_terms = extract_search_terms(query, client)
-    steps_log.append({
-        "step":         1,
-        "action":       "Extracted ADO search terms from question: " + ", ".join(f'"{t}"' for t in search_terms),
-        "search_terms": search_terms,
-        "url":          "https://dev.azure.com/" + ADO_ORG + "/" + ADO_PROJECT + "/_search?type=code&text=" + requests.utils.quote(search_terms[0]),
-    })
-
-    # Step 2 — Run ADO Code Search for each term, deduplicate results
-    # When a term returns 0 hits, automatically try shorter fallback variants
-    # (split camelCase, strip suffix) before giving up on that term.
-    all_results = []
-    seen_paths  = set()
-    search_log  = []
-
-    def _camel_split(s):
-        """Split a PascalCase/camelCase string into its component words."""
-        import re
-        parts = re.sub(r'([A-Z][a-z]+)', r' \1', re.sub(r'([A-Z]+)(?=[A-Z][a-z])', r' \1', s)).split()
-        return [p for p in parts if len(p) >= 3]
-
-    def _search_and_add(term, label=None):
-        """Run one search term, add new hits to all_results, return log entry."""
-        hits = ado_code_search(term, branch, top=MAX_SEARCH_RESULTS)
-        new_hits = [r for r in hits if r.get("file_path") not in seen_paths]
-        for r in new_hits:
-            seen_paths.add(r.get("file_path"))
-            all_results.append(r)
-        return {"term": label or term, "hits": len(hits), "new_unique": len(new_hits)}
-
-    for term in search_terms:
-        try:
-            entry = _search_and_add(term)
-            search_log.append(entry)
-
-            # If this term returned nothing, try shorter fallbacks before moving on
-            if entry["hits"] == 0:
-                fallbacks_tried = []
-                # 1. Split camelCase and try each component word
-                for part in _camel_split(term):
-                    if part not in search_terms and part not in fallbacks_tried:
-                        fallbacks_tried.append(part)
-                        try:
-                            fb = _search_and_add(part, label=f"{term}→{part}")
-                            search_log.append(fb)
-                            if fb["hits"] > 0:
-                                break   # found something — stop trying fallbacks for this term
-                        except Exception:
-                            pass
-                # 2. If still nothing, try just the first 4+ chars (catches naming variants)
-                if entry["hits"] == 0 and not any(s.get("hits", 0) > 0 for s in search_log[-len(fallbacks_tried):]):
-                    stem = term[:max(4, len(term) - 3)]
-                    if len(stem) >= 4 and stem not in search_terms and stem not in fallbacks_tried:
-                        try:
-                            fb = _search_and_add(stem, label=f"{term}→{stem}(stem)")
-                            search_log.append(fb)
-                        except Exception:
-                            pass
-        except Exception as e:
-            search_log.append({"term": term, "error": str(e)})
-
-    search_results = all_results
-    search_summary = ", ".join(
-        '"' + sl["term"] + '": ' + str(sl.get("hits", 0)) + " hit(s)"
-        for sl in search_log
-    )
-    steps_log.append({
-        "step":       2,
-        "action":     (
-            "Ran " + str(len(search_terms)) + " ADO search(es) — "
-            + search_summary
-            + " — " + str(len(search_results)) + " unique file(s) found"
-        ),
-        "searches":   search_log,
-        "results":    search_results,
-    })
-
-    # Step 3 — Claude selects the most relevant files from all search results
-    prioritised = select_relevant_files(query, search_results, client, max_files=MAX_FILES_TO_READ)
-
-    # Step 3b — Layer coverage enforcement
-    # Check that all four key layers of a WebForms feature are represented.
-    # If a layer is entirely absent from the selected set, run a targeted ADO
-    # search for it so the synthesis has the full picture.
-    _LAYER_SIGNALS = {
-        "UI":         lambda p: any(p.endswith(e) for e in (".aspx", ".ascx", ".html", ".htm")),
-        "CodeBehind": lambda p: any(p.endswith(e) for e in (".aspx.vb", ".aspx.cs", ".ascx.vb", ".ascx.cs")),
-        "Service":    lambda p: "service" in p.lower() or "Service" in p,
-        "Repository": lambda p: any(x in p for x in ("Repository", "Repo", "DataAccess", "DA.", "_DA")),
-    }
-    covered = {layer: any(fn(r.get("file_path", "")) for r in prioritised)
-               for layer, fn in _LAYER_SIGNALS.items()}
-
-    # For any missing layer, try a focused search using the first search term + layer suffix
-    if not all(covered.values()):
-        base_term = search_terms[0] if search_terms else ""
-        missing_layers = [l for l, ok in covered.items() if not ok]
-        layer_suffix_map = {
-            "Service":    ["Service"],
-            "Repository": ["Repository", "Repo"],
-        }
-        for layer in missing_layers:
-            if layer not in layer_suffix_map:
-                continue   # UI / CodeBehind gaps are less actionable programmatically
-            for suffix in layer_suffix_map[layer]:
-                try:
-                    extra = _search_and_add(base_term + suffix, label=f"layer:{layer}")
-                    search_log.append(extra)
-                    if extra["hits"] > 0:
-                        break
-                except Exception:
-                    pass
-        # Re-rank the now-expanded candidate pool so coverage picks go in order
-        if any(covered[l] is False for l in layer_suffix_map):
-            prioritised = select_relevant_files(query, all_results, client,
-                                                max_files=MAX_FILES_TO_READ + 2)
-        layer_note = "all layers present" if all(covered.values()) else (
-            "missing layers: " + ", ".join(l for l, ok in covered.items() if not ok)
-            + " — ran targeted layer searches"
-        )
-    else:
-        layer_note = "all layers present"
-
-    selected_paths = [r.get("file_path", "") for r in prioritised]
-    steps_log.append({
-        "step":    3,
-        "action":  "Claude ranked candidates (" + layer_note + ") — reading: " + ", ".join(
-            p.rsplit("/", 1)[-1] for p in selected_paths if p
-        ),
-        "results": prioritised,
-    })
-
-    # Step 4 — Read the selected files
-    file_contents = []
-    read_paths    = set()
-
-    def _read_and_log(fp, step_label):
-        if not fp or fp in read_paths:
-            return
-        read_paths.add(fp)
-        try:
-            content = ado_read_file(fp, branch)
-            file_contents.append({"file_path": fp, "content": content})
-            steps_log.append({
-                "step":            step_label,
-                "action":          "Opened and read file: " + fp,
-                "url":             "https://dev.azure.com/" + ADO_ORG + "/" + ADO_PROJECT
-                                   + "/_git/" + ADO_REPO + "?path=" + fp + "&version=GB" + branch,
-                "content_preview": content[:250] + "..." if len(content) > 250 else content,
-                "chars_read":      len(content),
-            })
-        except Exception as e:
-            steps_log.append({"step": step_label, "action": f"Could not open {fp}: {e}"})
-
-    for i, result in enumerate(prioritised, start=1):
-        _read_and_log(result.get("file_path", ""), f"4.{i}")
-
-    # Step 5 — First synthesis pass
-    steps_log.append({"step": 5, "action": "First synthesis pass — checking if all needed files are present"})
-
-    SYNTH_SYSTEM = (
-        "You are a senior Cora PPM code analyst. Answer EXCLUSIVELY from the repository files "
-        "provided — never from general knowledge.\n\n"
-        "Your answer MUST follow this structure:\n\n"
-        "## Overview\n"
-        "1-2 sentence plain-language summary of what the feature/function does and why it exists.\n\n"
-        "## How It Works — Step by Step\n"
-        "Trace the COMPLETE execution flow from user action to database and back:\n"
-        "  - Name EVERY method called, in order, with the file it lives in\n"
-        "  - Describe what each step does, not just what it's named\n"
-        "  - Example: 'Clicking Save triggers `btnSave_Click` in `Timesheet.aspx.vb`, which calls "
-        "`TimesheetService.SaveTimesheet()`, which validates hours via `ValidateHours()` then "
-        "calls `TimesheetRepository.Insert()` which executes `sp_InsertTimesheetRow`'\n\n"
-        "## Key Code\n"
-        "Quote the most important method bodies (the actual code, not paraphrases), each preceded by "
-        "its file path. Use fenced code blocks.\n\n"
-        "## Files Involved\n"
-        "List every file you read with its role: UI / CodeBehind / Service / Repository / Helper / SQL.\n\n"
-        "DEPTH REQUIREMENT: A shallow answer that only covers the UI layer without the business logic "
-        "and data layer is NOT acceptable. Cover all layers you have files for.\n\n"
-        "MISSING FILES: Only declare a file missing if (a) you are certain it exists because "
-        "you saw its exact path or filename cited in code you have already read, AND (b) it is "
-        "critical to answering the question. Do NOT speculatively list files that might exist. "
-        "Maximum 3 missing files. Format: MISSING_FILE: /full/repo/path/FileName.ext"
-    )
-
-    def _build_context(fc_list):
-        if not fc_list:
-            return (
-                "ADO Code Search for terms ["
-                + ", ".join(f'"{t}"' for t in search_terms)
-                + "] returned no readable files."
-            )
-        parts = []
-        for fc in fc_list:
-            parts.append("### File: " + fc["file_path"] + "\n" + fc["content"])
-
-        # Append ADO search snippets for files that were NOT fully read.
-        # This gives the synthesis pass visibility into content that would have
-        # been missed by the top-N file read cutoff or by file truncation.
-        # Each snippet shows the actual matching lines at their char offset,
-        # so Claude can reference real code even from files it didn't fully read.
-        already_read = {fc["file_path"] for fc in fc_list}
-        snippet_sections = []
-        for r in search_results:
-            fp = r.get("file_path", "")
-            snips = r.get("snippets", [])
-            if not snips:
-                continue
-            if fp in already_read:
-                # For a file that WAS fully read but might be truncated, include
-                # snippets that fall beyond the truncation point (offset > MAX_FILE_CHARS).
-                deep_snips = [s for s in snips if s.get("offset", 0) > MAX_FILE_CHARS]
-                if not deep_snips:
-                    continue
-                section = (
-                    f"### Search Snippets (deep in truncated file): {fp}\n"
-                    + "\n---\n".join(
-                        f"[offset ~{s['offset']:,}]\n{s['content']}"
-                        for s in deep_snips
-                    )
-                )
-            else:
-                section = (
-                    f"### Search Snippet (not fully read): {fp}\n"
-                    + "\n---\n".join(
-                        f"[offset ~{s.get('offset',0):,}]\n{s['content']}"
-                        for s in snips
-                    )
-                )
-            snippet_sections.append(section)
-
-        if snippet_sections:
-            parts.append(
-                "---\n"
-                "## Additional Code Snippets from ADO Search\n"
-                "(These are matching excerpts from files not fully read above. "
-                "Reference them when constructing your answer.)\n\n"
-                + "\n\n".join(snippet_sections)
-            )
-
-        return "\n\n".join(parts)
-
-    comp_input_tokens  = 0
-    comp_output_tokens = 0
-
-    first_pass = client.messages.create(
-        model=MODEL,
-        max_tokens=5000,
-        system=SYNTH_SYSTEM,
-        messages=[{
-            "role":    "user",
-            "content": (
-                "Using ONLY the following files from the Cora PPM ADO repository "
-                "(branch: " + branch + "), answer this question with full detail:\n\n"
-                "Question: " + query + "\n\n"
-                "Repository files:\n" + _build_context(file_contents)
-            ),
-        }],
-    )
-    comp_input_tokens  += getattr(getattr(first_pass, "usage", None), "input_tokens",  0)
-    comp_output_tokens += getattr(getattr(first_pass, "usage", None), "output_tokens", 0)
-    first_text = first_pass.content[0].text
-
-    # Step 6 — Second pass: fetch any files Claude said were missing
-    missing_paths = extract_file_paths_from_text(
-        "\n".join(
-            line.replace("MISSING_FILE:", "").strip()
-            for line in first_text.splitlines()
-            if "MISSING_FILE:" in line
-        )
-    )
-
-    if missing_paths:
-        steps_log.append({
-            "step":   6,
-            "action": "Resolving " + str(len(missing_paths)) + " missing file(s) via ADO search: "
-                      + ", ".join(p.rsplit("/", 1)[-1] for p in missing_paths),
-        })
-        for j, fp in enumerate(missing_paths[:4], start=1):   # resolve up to 4 extra files
-            filename  = fp.rsplit("/", 1)[-1]          # e.g. "Popup_ProjectForecasting.aspx.vb"
-            classname = filename.rsplit(".", 1)[0] if "." in filename else filename
-            # Build a cascade of search terms to maximise the chance of finding the file.
-            # ADO Code Search tokenises on word boundaries, so a full dotted filename like
-            # "IProjectForecastUiBuilder.vb" often returns 0 hits while "ProjectForecast"
-            # or "ForecastUiBuilder" reliably finds it.
-            search_cascade = [filename, classname] + _camel_split(classname)
-            resolved_path = None   # only set if we find an exact filename match
-            for s_term in search_cascade:
-                if len(s_term) < 4:
-                    continue
-                try:
-                    hits = ado_code_search(s_term, branch, top=5)
-                    if hits:
-                        # Only accept hits where the filename actually matches — never
-                        # fall through to a generic hit which could be a completely wrong file.
-                        exact = [h for h in hits if h.get("file_path", "").endswith(filename)]
-                        if exact:
-                            resolved_path = exact[0]["file_path"]
-                            steps_log.append({
-                                "step":   f"6.{j}.resolve",
-                                "action": f"Resolved '{filename}' via '{s_term}' → {resolved_path}",
-                            })
-                            break
-                except Exception:
-                    pass
-            if resolved_path is None:
-                steps_log.append({
-                    "step":   f"6.{j}.resolve",
-                    "action": f"'{filename}' not found in repository — skipping (no exact match found)",
-                })
-                continue   # don't read a wrong file
-            _read_and_log(resolved_path, f"6.{j}")
-
-        # Re-synthesise with the full context
-        steps_log.append({"step": "6.final", "action": "Re-synthesising with complete file set"})
-        final_pass = client.messages.create(
-            model=MODEL,
-            max_tokens=5000,
-            system=SYNTH_SYSTEM,
-            messages=[{
-                "role":    "user",
-                "content": (
-                    "Using ONLY the following files from the Cora PPM ADO repository "
-                    "(branch: " + branch + "), answer this question with full detail:\n\n"
-                    "Question: " + query + "\n\n"
-                    "Repository files:\n" + _build_context(file_contents)
-                ),
-            }],
-        )
-        comp_input_tokens  += getattr(getattr(final_pass, "usage", None), "input_tokens",  0)
-        comp_output_tokens += getattr(getattr(final_pass, "usage", None), "output_tokens", 0)
-        final_answer = _clean_answer(final_pass.content[0].text)
-    else:
-        # No missing files flagged — first pass is the answer
-        final_answer = _clean_answer(first_text)
-
-    confidence = assess_confidence(query, final_answer, len(file_contents), "Computer Loop")
-
-    return {
-        "answer":        final_answer,
-        "confidence":    confidence,
-        "steps":         steps_log,
-        "total_steps":   len(steps_log),
-        "results_found": len(search_results),
-        "files_read":    len(file_contents),
-        "branch":        branch,
-        "input_tokens":  comp_input_tokens,
-        "output_tokens": comp_output_tokens,
-    }
-
-
-# ---------------------------------------------------------------------------
-# 2b. HYBRID LOOP  (structured search  +  adaptive iterative reading)
+# 2. HYBRID LOOP  (structured search  +  adaptive iterative reading)
 # ---------------------------------------------------------------------------
 
 def run_hybrid_loop(query, branch):
-    """Phase 1 — Computer-loop-style structured search (multi-term, layer coverage).
+    """Phase 1 — Structured multi-term search with layer coverage.
     Phase 2 — Agentic-loop-style adaptive reading: Claude reads one file at a time,
                follows the reference chain, stops when it has all layers.
     Phase 3 — Single structured synthesis pass.
@@ -1687,30 +1322,104 @@ def run_hybrid_loop(query, branch):
         "## How It Works — Step by Step\n"
         "Trace the COMPLETE execution flow from user action to database and back:\n"
         "  - Name EVERY method called, in order, with the file it lives in\n"
-        "  - Describe what each step does, not just what it's named\n"
+        "  - Describe what each step does in concrete terms — parameters passed, conditions checked, "
+        "data transformed\n"
+        "  - Do NOT group files together or summarise at a high level. Go file by file, layer by layer.\n"
         "  - Example: 'Clicking Save triggers `btnSave_Click` in `Timesheet.aspx.vb`, which calls "
         "`TimesheetService.SaveTimesheet()`, which validates hours via `ValidateHours()` then "
         "calls `TimesheetRepository.Insert()` which executes `sp_InsertTimesheetRow`'\n\n"
         "## Key Code\n"
         "Quote the most important method bodies (the actual code, not paraphrases), each preceded by "
-        "its file path. Use fenced code blocks.\n\n"
+        "its file path. Use fenced code blocks. Include at least one code block per layer.\n\n"
         "## Files Involved\n"
         "List every file you read with its role: UI / CodeBehind / Service / Repository / Helper / SQL.\n\n"
-        "DEPTH REQUIREMENT: A shallow answer that only covers the UI layer without the business logic "
-        "and data layer is NOT acceptable. Cover all layers you have files for."
+        "DEPTH REQUIREMENT: You have been given multiple files across multiple layers. You MUST go deep "
+        "on each one — cite specific method signatures, parameters, conditional logic, and return values. "
+        "A shallow answer that only covers the UI layer or summarises without specifics is NOT acceptable. "
+        "The more files you were given, the more detailed your answer should be, not less.\n\n"
+        "MISSING FILES: Only declare a file missing if (a) you are certain it exists because "
+        "you saw its exact path or filename cited in code you have already read, AND (b) it is "
+        "genuinely absent from the files provided. Do NOT speculate about files you haven't seen referenced."
     )
 
-    def _build_context(fc_list):
+    def _build_context(fc_list, window=3500, top_per_file=2):
+        """Build synthesis context using relevance-windowed extraction.
+
+        Rather than dumping full file content (up to 15 k chars × 10 files = 150 k chars,
+        which causes shallow per-file synthesis), this extracts the top-N non-overlapping
+        windows most dense in query keywords per file — keeping total context tight so
+        Claude can reason deeply on each section.
+
+        Files shorter than `window` chars are included in full (no windowing needed).
+        """
         if not fc_list:
             return (
                 "ADO Code Search for terms ["
                 + ", ".join(f'"{t}"' for t in search_terms)
                 + "] returned no readable files."
             )
-        return "\n\n".join(
-            "### File: " + fc["file_path"] + "\n" + fc["content"]
-            for fc in fc_list
-        )
+
+        import re as _re
+
+        # Build a set of query keywords (3+ char alpha tokens, lowercased)
+        raw_kws = _re.findall(r'\b[A-Za-z][A-Za-z0-9_]{2,}\b', query)
+        # Also include each search term and its camelCase sub-words
+        for t in search_terms:
+            raw_kws.extend(_re.findall(r'[A-Z][a-z]+|[a-z]+', t))
+        kws = set(w.lower() for w in raw_kws if len(w) >= 3)
+
+        parts = []
+        for fc in fc_list:
+            content = fc["content"]
+            fp      = fc["file_path"]
+
+            # ── Small file: include in full ──────────────────────────────────
+            if len(content) <= window:
+                parts.append(f"### File: {fp}\n{content}")
+                continue
+
+            # ── Large file: score overlapping windows ────────────────────────
+            step = window // 2           # 50 % overlap so boundary code isn't missed
+            scored = []
+            for start in range(0, len(content) - 100, step):
+                chunk      = content[start : start + window]
+                chunk_low  = chunk.lower()
+                score      = sum(chunk_low.count(kw) for kw in kws)
+                scored.append((score, start, chunk))
+
+            # Select top-N non-overlapping windows by score
+            scored.sort(key=lambda x: -x[0])
+            selected: list[tuple[int, str]] = []   # (start, chunk)
+            used_spans: list[tuple[int, int]] = []
+            for score, start, chunk in scored:
+                end = start + window
+                if any(max(a, start) < min(b, end) for a, b in used_spans):
+                    continue                          # overlaps an already-selected window
+                selected.append((start, chunk))
+                used_spans.append((start, end))
+                if len(selected) >= top_per_file:
+                    break
+
+            # Sort in document order for coherent reading
+            selected.sort(key=lambda x: x[0])
+
+            # Join with ellipsis markers between non-adjacent spans
+            file_parts: list[str] = []
+            prev_end = None
+            for start, chunk in selected:
+                if prev_end is not None and start > prev_end + 10:
+                    file_parts.append("[...]\n")
+                file_parts.append(chunk)
+                prev_end = start + len(chunk)
+
+            n_shown  = len(selected)
+            note     = (
+                f" [showing {n_shown} most query-relevant section(s) "
+                f"of {len(content):,} total chars — focus your analysis on these sections]"
+            )
+            parts.append(f"### File: {fp}{note}\n" + "\n".join(file_parts))
+
+        return "\n\n".join(parts)
 
     steps_log.append({
         "step":   4,
@@ -1719,7 +1428,7 @@ def run_hybrid_loop(query, branch):
 
     synth_resp = client.messages.create(
         model=MODEL,
-        max_tokens=5000,
+        max_tokens=8000,
         system=SYNTH_SYSTEM,
         messages=[{
             "role":    "user",
@@ -1748,42 +1457,6 @@ def run_hybrid_loop(query, branch):
         "input_tokens":  h_input_tokens,
         "output_tokens": h_output_tokens,
     }
-
-
-# ---------------------------------------------------------------------------
-# 3. COMPARISON
-# ---------------------------------------------------------------------------
-
-def compare_results(query, agentic, computer):
-    client = get_client()
-    resp   = client.messages.create(
-        model=MODEL,
-        max_tokens=1200,
-        messages=[{
-            "role":    "user",
-            "content": (
-                "Two different approaches searched the Cora PPM ADO repository for the "
-                "same question. Compare them:\n"
-                "1. **Key similarities** — where both agree\n"
-                "2. **Key differences** — details one found that the other missed\n"
-                "3. **Completeness** — which is more thorough and why\n"
-                "4. **Verdict** — which approach found better evidence for this question\n\n"
-                "**Question:** " + query + "\n"
-                "**Branch:** " + agentic.get("branch", "unknown") + "\n\n"
-                "**Agentic Loop** "
-                "(" + str(agentic.get("total_iterations", "?")) + " iterations, "
-                + str(agentic.get("total_searches", "?")) + " searches, "
-                + str(agentic.get("total_files_read", "?")) + " files read):\n"
-                + agentic["answer"] + "\n\n"
-                "**Computer Loop** "
-                "(" + str(computer.get("total_steps", "?")) + " steps, "
-                + str(computer.get("results_found", "?")) + " results, "
-                + str(computer.get("files_read", "?")) + " files read):\n"
-                + computer["answer"]
-            ),
-        }],
-    )
-    return resp.content[0].text
 
 
 # ---------------------------------------------------------------------------
@@ -2158,7 +1831,7 @@ def extract_doc_search_terms(query: str, client) -> list:
 def run_sharepoint_loop(query: str) -> dict:
     """Search the SharePoint 'Confluence Content for AI' folder and synthesize an answer.
 
-    Pattern mirrors the Computer Loop:
+    Pattern mirrors the Hybrid Loop:
       Step 1 — Extract doc-search terms from question
       Step 2 — Search SharePoint for each term, deduplicate
       Step 3 — Download and read top files (docx / pdf / txt)
@@ -2225,7 +1898,7 @@ def run_sharepoint_loop(query: str) -> dict:
                 "**Error:** " + block_msg + "\n\n"
                 "**What this means:** The Railway deployment's IP/identity does not satisfy the Conditional "
                 "Access requirements for the Cora SharePoint tenant. This is an infrastructure issue, not a "
-                "query issue. The ADO-based loops (Agentic and Computer) are unaffected.\n\n"
+                "query issue. The ADO-based loops (Agentic and Hybrid) are unaffected.\n\n"
                 "**To fix:** A tenant admin needs to exclude the SharePoint service account from the "
                 "blocking Conditional Access policy, or add an allowed IP range for the Railway server.\n\n"
                 "---\n\n"
@@ -2332,7 +2005,7 @@ def run_sharepoint_loop(query: str) -> dict:
 #    Combines answers from all three loops into one comprehensive response.
 # ---------------------------------------------------------------------------
 
-def synthesize_all(query: str, agentic_result: dict, computer_result: dict,
+def synthesize_all(query: str, agentic_result: dict,
                    hybrid_result: dict, sp_result: dict) -> str:
     """Synthesize answers from all search loops into one authoritative answer."""
     client = get_client()
@@ -2344,13 +2017,6 @@ def synthesize_all(query: str, agentic_result: dict, computer_result: dict,
         parts.append(
             f"=== AGENTIC LOOP (ADO Repository{', branch: ' + branch if branch else ''}, "
             f"{files} file(s) read) ===\n{agentic_result['answer']}"
-        )
-    if computer_result and computer_result.get("answer"):
-        branch = computer_result.get("branch", "")
-        files  = computer_result.get("files_read", 0)
-        parts.append(
-            f"=== COMPUTER LOOP (ADO Repository{', branch: ' + branch if branch else ''}, "
-            f"{files} file(s) read) ===\n{computer_result['answer']}"
         )
     if hybrid_result and hybrid_result.get("answer"):
         branch = hybrid_result.get("branch", "")
@@ -2379,7 +2045,7 @@ def synthesize_all(query: str, agentic_result: dict, computer_result: dict,
             "into a single, definitive response.\n\n"
             "You have been given answers from up to three sources:\n"
             "  1. Agentic Loop — Claude-driven iterative search of the ADO codebase\n"
-            "  2. Computer Loop — fixed-step browse of the ADO codebase\n"
+            "  2. Hybrid Loop — structured search + adaptive reading of the ADO codebase\n"
             "  3. SharePoint KB — Confluence documentation exports\n\n"
             "Synthesize these into the MOST COMPLETE and ACCURATE answer possible. "
             "Where sources agree, consolidate into one clear statement. "
@@ -2719,33 +2385,6 @@ def api_agentic():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/computer", methods=["POST"])
-def api_computer():
-    data   = request.get_json() or {}
-    query  = data.get("query",  "").strip()
-    branch = data.get("branch", "").strip()
-    if not query:
-        return jsonify({"error": "No query provided."}), 400
-    if not branch:
-        return jsonify({"error": "Please select a branch first."}), 400
-    t0 = time.time()
-    try:
-        result = run_computer_loop(query, branch)
-        track_search_event(
-            "computer", query, branch, "success",
-            time.time() - t0,
-            result.get("files_read",    0),
-            0,
-            result.get("results_found", 0),
-            result.get("confidence", {}).get("level", ""),
-            input_tokens=result.get("input_tokens",  0),
-            output_tokens=result.get("output_tokens", 0),
-        )
-        return jsonify({"success": True, "result": result})
-    except Exception as e:
-        track_search_event("computer", query, branch, "error", time.time() - t0,
-                           error_message=str(e))
-        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/hybrid", methods=["POST"])
@@ -2777,19 +2416,6 @@ def api_hybrid():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/compare", methods=["POST"])
-def api_compare():
-    data     = request.get_json() or {}
-    query    = data.get("query", "").strip()
-    agentic  = data.get("agentic_result")
-    computer = data.get("computer_result")
-    if not query or not agentic or not computer:
-        return jsonify({"error": "Missing query or results."}), 400
-    try:
-        comparison = compare_results(query, agentic, computer)
-        return jsonify({"success": True, "comparison": comparison})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/sharepoint", methods=["POST"])
@@ -2822,23 +2448,21 @@ def api_synthesize():
     data     = request.get_json() or {}
     query    = data.get("query", "").strip()
     agentic  = data.get("agentic_result")
-    computer = data.get("computer_result")
     hybrid   = data.get("hybrid_result")
     sp       = data.get("sp_result")
     if not query:
         return jsonify({"error": "No query provided."}), 400
-    if not any([agentic, computer, hybrid, sp]):
+    if not any([agentic, hybrid, sp]):
         return jsonify({"error": "At least one search result is required."}), 400
     sources_used = ", ".join(filter(None, [
-        "Agentic"   if agentic  else "",
-        "Computer"  if computer else "",
-        "Hybrid"    if hybrid   else "",
+        "Agentic"    if agentic else "",
+        "Hybrid"     if hybrid  else "",
         "SharePoint" if sp      else "",
     ]))
     t0 = time.time()
     try:
         synthesis, synth_in, synth_out = synthesize_all(
-            query, agentic or {}, computer or {}, hybrid or {}, sp or {}
+            query, agentic or {}, hybrid or {}, sp or {}
         )
         track_synthesis_event(query, sources_used, time.time() - t0, "success",
                               input_tokens=synth_in, output_tokens=synth_out)
@@ -2909,7 +2533,7 @@ def api_followup():
     data              = request.get_json() or {}
     original_question = data.get("original_question", "").strip()
     followup_question = data.get("followup_question", "").strip()
-    answers           = data.get("answers", {})          # {agentic, computer, sharepoint, synthesis}
+    answers           = data.get("answers", {})          # {agentic, hybrid, sharepoint, synthesis}
     previous_followups = data.get("previous_followups", [])  # [{q, a}, ...]
 
     if not followup_question:
@@ -2920,7 +2544,6 @@ def api_followup():
     for key, label in [
         ("synthesis",   "Comprehensive Synthesis (all sources)"),
         ("agentic",     "Agentic Loop answer"),
-        ("computer",    "Computer Loop answer"),
         ("sharepoint",  "SharePoint KB answer"),
     ]:
         ans = answers.get(key)
@@ -3007,7 +2630,7 @@ def api_session_export():
     for key, label, icon in [
         ("synthesis",  "Comprehensive Synthesis",  "✨"),
         ("agentic",    "Agentic Loop",              "⚡"),
-        ("computer",   "Computer Loop",             "🖥"),
+
         ("sharepoint", "SharePoint KB",             "🔷"),
     ]:
         ans = answers.get(key)
