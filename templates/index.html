@@ -29,7 +29,7 @@ header{background:var(--brand);color:#fff;padding:0 36px;height:58px;display:fle
 .source-badge .dot{width:7px;height:7px;background:#4ade80;border-radius:50%;flex-shrink:0}
 
 /* ── Main layout ── */
-main{max-width:1600px;margin:28px auto;padding:0 24px;display:flex;flex-direction:column;gap:18px}
+main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direction:column;gap:18px}
 
 /* ── Cards ── */
 .card{background:var(--card);border-radius:var(--radius);padding:24px 28px;box-shadow:var(--shadow)}
@@ -182,11 +182,31 @@ main{max-width:1600px;margin:28px auto;padding:0 24px;display:flex;flex-directio
 .synthesis-header{padding:16px 22px;display:flex;align-items:center;gap:10px;background:var(--brand);color:#fff}
 .synthesis-header h2{font-size:.97rem;font-weight:700;flex:1}
 .synthesis-header .badge{background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25)}
+.synthesis-header .chevron{margin-left:0!important}
 .synthesis-body{padding:22px 26px}
 .synthesis-loading{display:none;align-items:center;gap:10px;color:var(--muted);font-size:.86rem;margin-bottom:12px}
 
+/* ── Collapse / expand ── */
+.chevron{margin-left:auto;font-size:.75rem;color:var(--muted);transition:transform .22s;flex-shrink:0;cursor:pointer;padding:2px 4px}
+.collapsed .chevron{transform:rotate(-90deg)}
+/* card collapse */
+.card.collapsible .card-title{cursor:pointer;user-select:none;margin-bottom:0}
+.card.collapsible .card-body{overflow:hidden;transition:none}
+.card.collapsed .card-body{display:none}
+.card.collapsible:not(.collapsed) .card-title{margin-bottom:18px}
+/* panel collapse */
+.panel-header{cursor:pointer;user-select:none}
+.panel.collapsed .panel-body,.panel.collapsed #spMeta{display:none!important}
+.panel.collapsed .panel-header{border-bottom:none}
+/* compare / synthesis collapse */
+.collapsible-panel .cp-header{cursor:pointer;user-select:none;display:flex;align-items:center;gap:10px}
+.collapsible-panel.collapsed .cp-body{display:none!important}
+.collapsible-panel .cp-header{margin-bottom:0}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
+.card-body,.panel-body,.cp-body{animation:fadeIn .18s ease}
+
 footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem}
-@media(max-width:640px){main{padding:0 14px}.card{padding:18px 16px}header{padding:0 18px}}
+@media(max-width:640px){main{width:96%}.card{padding:18px 16px}header{padding:0 18px}}
 </style>
 </head>
 <body>
@@ -197,17 +217,21 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     <div class="sep"></div>
     Loop Comparison Search
   </div>
-  <div class="source-badge">
-    <span class="dot"></span>
-    CoraSystems / PPM — no external sources
+  <div style="display:flex;align-items:center;gap:12px">
+    <div class="source-badge">
+      <span class="dot"></span>
+      CoraSystems / PPM — no external sources
+    </div>
+    <a href="/admin" style="color:rgba(255,255,255,.8);text-decoration:none;font-size:.82rem;padding:5px 13px;border-radius:6px;border:1px solid rgba(255,255,255,.22);transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.12)'" onmouseout="this.style.background=''">Admin</a>
   </div>
 </header>
 
 <main>
 
   <!-- ── Top: Query + Branch ── -->
-  <div class="card query-card">
-    <div class="card-title">Ask a question about the Cora PPM codebase</div>
+  <div class="card query-card collapsible" id="queryCard">
+    <div class="card-title" onclick="toggleCard('queryCard')">Ask a question about the Cora PPM codebase <span class="chevron">▼</span></div>
+    <div class="card-body">
     <div class="query-layout">
       <div>
         <label class="field-label" for="branchSelect">Branch</label>
@@ -224,22 +248,28 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     </div>
 
     <div class="action-row">
-      <button class="btn btn-run-all" id="btnAll" onclick="runAll()">▶▶ Run All Searches</button>
-      <button class="btn btn-compare" id="btnCompare" style="display:none" onclick="runCompare()">🔍 Compare ADO Results</button>
-      <button class="btn" id="btnSynthesize" style="display:none;background:#475569;color:#fff" onclick="runSynthesize()">✨ Synthesize All Results</button>
+      <button class="btn btn-run-all" id="btnAll" onclick="runAll()">▶▶ Run All</button>
+      <span style="width:1px;height:28px;background:var(--border);display:inline-block;margin:0 4px;flex-shrink:0"></span>
+      <button class="btn btn-agentic btn-sm" id="btnAgentic" onclick="runLoop('agentic')">⚡ Agentic Loop</button>
+      <button class="btn btn-computer btn-sm" id="btnComputer" onclick="runLoop('computer')">🖥 Computer Loop</button>
+      <button class="btn btn-sp btn-sm" id="btnSharePoint" onclick="runSharePoint()">🔷 SharePoint KB</button>
+      <span style="width:1px;height:28px;background:var(--border);display:inline-block;margin:0 4px;flex-shrink:0"></span>
+      <button class="btn btn-compare" id="btnCompare" style="display:none" onclick="runCompare()">🔍 Compare ADO</button>
+      <button class="btn" id="btnSynthesize" style="display:none;background:#475569;color:#fff" onclick="runSynthesize()">✨ Synthesize All</button>
     </div>
     <div class="status-bar" id="statusBar"></div>
+    </div><!-- end card-body -->
   </div>
 
   <!-- ── Three-column result panels ── -->
   <div class="results-grid">
 
     <!-- Agentic Loop -->
-    <div class="panel">
-      <div class="panel-header">
+    <div class="panel" id="panelAgentic">
+      <div class="panel-header" onclick="togglePanel('panelAgentic', event)">
         <h2>⚡ Agentic Loop</h2>
         <span class="badge badge-agentic">ADO Tool Use</span>
-        <button class="btn btn-agentic btn-sm" id="btnAgentic" onclick="runLoop('agentic')">Run</button>
+        <span class="chevron">▼</span>
       </div>
       <div class="panel-body" id="agenticBody">
         <div class="state-idle">
@@ -250,11 +280,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     </div>
 
     <!-- Computer Loop -->
-    <div class="panel">
-      <div class="panel-header">
+    <div class="panel" id="panelComputer">
+      <div class="panel-header" onclick="togglePanel('panelComputer', event)">
         <h2>🖥 Computer Loop</h2>
         <span class="badge badge-computer">ADO Browse Steps</span>
-        <button class="btn btn-computer btn-sm" id="btnComputer" onclick="runLoop('computer')">Run</button>
+        <span class="chevron">▼</span>
       </div>
       <div class="panel-body" id="computerBody">
         <div class="state-idle">
@@ -265,11 +295,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     </div>
 
     <!-- SharePoint Loop -->
-    <div class="panel">
-      <div class="panel-header">
+    <div class="panel" id="panelSP">
+      <div class="panel-header" onclick="togglePanel('panelSP', event)">
         <h2>🔷 SharePoint KB</h2>
         <span class="badge badge-sp">Confluence Content for AI</span>
-        <button class="btn btn-sp btn-sm" id="btnSharePoint" onclick="runSharePoint()">Run</button>
+        <span class="chevron">▼</span>
       </div>
       <div class="panel-body" id="spBody">
         <div class="state-idle">
@@ -283,24 +313,28 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   </div>
 
   <!-- ── Compare panel (shown after both ADO loops complete) ── -->
-  <div class="compare-panel" id="comparePanel">
-    <div class="compare-header">
+  <div class="compare-panel collapsible-panel" id="comparePanel">
+    <div class="cp-header compare-header" onclick="toggleCpPanel('comparePanel')">
       <h2>🔍 Comparison Analysis — Agentic Loop vs Computer Loop</h2>
+      <span class="chevron" style="color:#92400e">▼</span>
     </div>
-    <div class="compare-loading" id="compareLoading">
-      <div class="spinner"></div>
-      <span>Claude is comparing both answers…</span>
+    <div class="cp-body">
+      <div class="compare-loading" id="compareLoading">
+        <div class="spinner"></div>
+        <span>Claude is comparing both answers…</span>
+      </div>
+      <div class="compare-body" id="compareText"></div>
     </div>
-    <div class="compare-body" id="compareText"></div>
   </div>
 
   <!-- ── Master synthesis panel ── -->
-  <div class="synthesis-panel" id="synthesisPanel">
-    <div class="synthesis-header">
+  <div class="synthesis-panel collapsible-panel" id="synthesisPanel">
+    <div class="cp-header synthesis-header" onclick="toggleCpPanel('synthesisPanel')">
       <h2>✨ Comprehensive Synthesis</h2>
       <span class="badge">All Sources Combined</span>
+      <span class="chevron" style="color:rgba(255,255,255,.7);margin-left:auto">▼</span>
     </div>
-    <div class="synthesis-body">
+    <div class="cp-body synthesis-body">
       <div class="synthesis-loading" id="synthesisLoading">
         <div class="spinner" style="border-top-color:#fff"></div>
         <span style="color:var(--muted)">Synthesizing all search results into a single answer…</span>
@@ -315,6 +349,21 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
 <script>
   marked.setOptions({ breaks: true, gfm: true });
+
+  // ── Collapse / expand helpers ──────────────────────────────────────────────
+  function toggleCard(id) {
+    document.getElementById(id).classList.toggle('collapsed');
+  }
+
+  function togglePanel(id, event) {
+    // Don't collapse when the Run button inside the header is clicked
+    if (event && event.target.closest('button')) return;
+    document.getElementById(id).classList.toggle('collapsed');
+  }
+
+  function toggleCpPanel(id) {
+    document.getElementById(id).classList.toggle('collapsed');
+  }
 
   const state = { agentic: null, computer: null, sharepoint: null };
 
@@ -353,7 +402,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   function setStatus(m){ document.getElementById('statusBar').textContent = m; }
 
   function setAllAdoBtnsDisabled(v) {
-    ['btnAll','btnAgentic','btnComputer'].forEach(id => {
+    ['btnAll','btnAgentic','btnComputer','btnSharePoint'].forEach(id => {
       document.getElementById(id).disabled = v;
     });
   }
@@ -610,7 +659,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     if (!branch) { setStatus('Please select a branch first.'); return; }
 
     setAllAdoBtnsDisabled(true);
-    document.getElementById('btnSharePoint').disabled = true;
     state.agentic = null;
     state.computer = null;
     document.getElementById('comparePanel').style.display = 'none';
@@ -624,7 +672,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     ]);
 
     setAllAdoBtnsDisabled(false);
-    document.getElementById('btnSharePoint').disabled = false;
     checkShowCompare();
     setStatus('All searches complete.');
   }

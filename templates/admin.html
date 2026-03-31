@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Admin Dashboard — Loop Comparison Search</title>
+<style>
+:root{
+  --brand:#1a2535;--brand-light:#1e6fd4;--brand-dark:#0f1c2b;
+  --bg:#f2f4f8;--card:#fff;--border:#e2e8f0;--text:#1a2535;--muted:#64748b;
+  --success:#16a34a;--success-bg:#f0fdf4;--error:#b91c1c;--error-bg:#fff5f5;
+  --warn:#d97706;--radius:14px;--shadow:0 2px 16px rgba(26,37,53,.07),0 1px 4px rgba(26,37,53,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+header{background:var(--brand);color:#fff;padding:0 36px;height:58px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+.logo{display:flex;align-items:center;gap:14px;font-size:1rem;font-weight:600;letter-spacing:.01em}
+.logo .sep{width:1px;height:22px;background:rgba(255,255,255,.25)}
+.header-nav{display:flex;align-items:center;gap:8px}
+.header-nav a{color:rgba(255,255,255,.85);text-decoration:none;font-size:.85rem;padding:5px 14px;border-radius:6px;transition:all .15s}
+.header-nav a:hover{background:rgba(255,255,255,.12)}
+main{max-width:1600px;margin:28px auto;padding:0 24px}
+
+/* Summary cards */
+.summary-row{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:1100px){.summary-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.summary-row{grid-template-columns:1fr}}
+.summary-card{background:var(--card);border-radius:var(--radius);padding:20px 24px;box-shadow:var(--shadow)}
+.summary-card .label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.summary-card .value{font-size:1.8rem;font-weight:800;color:var(--brand)}
+.summary-card .sub{font-size:.78rem;color:var(--muted);margin-top:4px}
+
+/* Loop breakdown row */
+.breakdown-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:700px){.breakdown-row{grid-template-columns:1fr}}
+.breakdown-card{background:var(--card);border-radius:var(--radius);padding:18px 22px;box-shadow:var(--shadow);border-top:3px solid var(--border)}
+.breakdown-card.agentic{border-color:#2563eb}
+.breakdown-card.computer{border-color:#7c3aed}
+.breakdown-card.sharepoint{border-color:#0078d4}
+.breakdown-card .bc-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.breakdown-card .bc-stat{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;padding:5px 0;border-bottom:1px solid var(--border)}
+.breakdown-card .bc-stat:last-child{border-bottom:none}
+.breakdown-card .bc-stat .bc-key{color:var(--muted)}
+.breakdown-card .bc-stat .bc-val{font-weight:700;color:var(--text)}
+
+/* Tabs */
+.tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--card);padding:4px;border-radius:10px;box-shadow:var(--shadow);width:fit-content}
+.tab{padding:10px 22px;border-radius:8px;border:none;background:transparent;font-size:.88rem;font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;font-family:inherit}
+.tab.active{background:var(--brand);color:#fff}
+.tab:hover:not(.active){background:var(--bg);color:var(--text)}
+
+/* Table card */
+.table-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.table-header h2{font-size:.95rem;font-weight:700;color:var(--text)}
+.table-actions{display:flex;gap:8px;align-items:center}
+.btn-export{padding:7px 16px;border-radius:7px;border:1.5px solid var(--border);background:#fff;color:var(--text);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;display:flex;align-items:center;gap:5px}
+.btn-export:hover{background:var(--bg);border-color:#b0bfd0}
+.table-filter{padding:7px 12px;border-radius:7px;border:1.5px solid var(--border);font-size:.82rem;font-family:inherit;color:var(--text);min-width:200px}
+.table-filter:focus{outline:none;border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
+.table-wrap{overflow-x:auto;max-height:60vh;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{background:#f8fafc;padding:10px 14px;text-align:left;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1.5px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;position:sticky;top:0}
+th:hover{background:#eef1f6}
+th .sort-arrow{font-size:.6rem;margin-left:4px;opacity:.4}
+th.sorted .sort-arrow{opacity:1}
+td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--text);max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:hover td{background:#f8fafc}
+.status-success{color:var(--success);font-weight:600}
+.status-error{color:var(--error);font-weight:600}
+.conf-high{color:var(--success);font-weight:600}
+.conf-medium{color:var(--warn);font-weight:600}
+.conf-low{color:var(--error);font-weight:600}
+.loop-agentic{color:#2563eb;font-weight:600}
+.loop-computer{color:#7c3aed;font-weight:600}
+.loop-sharepoint{color:#0078d4;font-weight:600}
+.row-count{font-size:.78rem;color:var(--muted);padding:12px 20px;border-top:1px solid var(--border)}
+.empty-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
+.loading-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
+
+footer{text-align:center;padding:32px 0;color:var(--muted);font-size:.74rem}
+@media(max-width:768px){main{padding:0 14px}header{padding:0 18px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <img src="https://corasystems.com/_next/static/media/cora-logo-white.3ac9db11.svg" alt="Cora" height="22" style="display:block"/>
+    <div class="sep"></div>
+    Loop Comparison — Admin
+  </div>
+  <div class="header-nav">
+    <a href="/">← Back to Search</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- Summary cards -->
+  <div class="summary-row">
+    <div class="summary-card">
+      <div class="label">Total Searches</div>
+      <div class="value" id="stat-total">—</div>
+      <div class="sub" id="stat-total-sub"></div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Unique Questions</div>
+      <div class="value" id="stat-unique">—</div>
+      <div class="sub" id="stat-unique-sub"></div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Avg Response Time</div>
+      <div class="value" id="stat-time">—</div>
+      <div class="sub" id="stat-time-sub"></div>
+    </div>
+    <div class="summary-card">
+      <div class="label">High Confidence</div>
+      <div class="value" id="stat-confidence">—</div>
+      <div class="sub" id="stat-confidence-sub"></div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Syntheses Run</div>
+      <div class="value" id="stat-synth">—</div>
+      <div class="sub" id="stat-synth-sub"></div>
+    </div>
+  </div>
+
+  <!-- Per-loop breakdown -->
+  <div class="breakdown-row">
+    <div class="breakdown-card agentic">
+      <div class="bc-label">⚡ Agentic Loop</div>
+      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="ag-runs">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Files Read</span><span class="bc-val" id="ag-files">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Iterations</span><span class="bc-val" id="ag-iters">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="ag-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="ag-errors">—</span></div>
+    </div>
+    <div class="breakdown-card computer">
+      <div class="bc-label">🖥 Computer Loop</div>
+      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="cp-runs">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Files Read</span><span class="bc-val" id="cp-files">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Searches</span><span class="bc-val" id="cp-searches">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="cp-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="cp-errors">—</span></div>
+    </div>
+    <div class="breakdown-card sharepoint">
+      <div class="bc-label">🔷 SharePoint Loop</div>
+      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="sp-runs">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Docs Read</span><span class="bc-val" id="sp-files">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="sp-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="sp-errors">—</span></div>
+      <div class="bc-stat"><span class="bc-key">&nbsp;</span><span class="bc-val"></span></div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab(event,'search_events')">Search Events</button>
+    <button class="tab" onclick="switchTab(event,'synthesis_events')">Synthesis Events</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-card">
+    <div class="table-header">
+      <h2 id="table-title">Search Events</h2>
+      <div class="table-actions">
+        <input type="text" class="table-filter" id="table-filter" placeholder="Filter rows…" oninput="applyFilter()"/>
+        <button class="btn-export" onclick="exportCurrent()"><span>📥</span> Export CSV</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead id="table-head"></thead>
+        <tbody id="table-body"><tr><td class="loading-msg" colspan="99">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="row-count" id="row-count"></div>
+  </div>
+
+</main>
+<footer>Cora Systems — Loop Comparison Admin</footer>
+
+<script>
+const TABLE_LABELS = {
+  search_events:    'Search Events',
+  synthesis_events: 'Synthesis Events'
+};
+
+const COLUMN_LABELS = {
+  id: 'ID', ran_at: 'Time', loop_type: 'Loop', query: 'Query', branch: 'Branch',
+  status: 'Status', duration_sec: 'Time (s)', files_read: 'Files',
+  iterations: 'Iterations', searches: 'Searches', confidence_level: 'Confidence',
+  error_message: 'Error', sources_used: 'Sources Used'
+};
+
+let currentTable = 'search_events';
+let tableData    = {};
+let sortCol      = null;
+let sortAsc      = true;
+
+async function loadAll() {
+  for (const t of ['search_events', 'synthesis_events']) {
+    try {
+      const res  = await fetch(`/admin/data/${t}`);
+      const data = await res.json();
+      tableData[t] = data.rows || [];
+    } catch (e) {
+      tableData[t] = [];
+    }
+  }
+  updateSummary();
+  renderTable();
+}
+
+function avg(arr) {
+  if (!arr.length) return null;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function updateSummary() {
+  const searches  = tableData.search_events    || [];
+  const synths    = tableData.synthesis_events || [];
+
+  // ── Top summary cards ──────────────────────────────────────────────────────
+  document.getElementById('stat-total').textContent = searches.length;
+  const uniqueQ = new Set(searches.map(r => (r.query || '').trim().toLowerCase())).size;
+  document.getElementById('stat-unique').textContent = uniqueQ;
+  document.getElementById('stat-unique-sub').textContent =
+    uniqueQ === searches.length ? 'all unique' : `of ${searches.length} total`;
+
+  const times = searches.filter(r => r.duration_sec).map(r => r.duration_sec);
+  if (times.length) {
+    const a = avg(times);
+    document.getElementById('stat-time').textContent = a.toFixed(1) + 's';
+    document.getElementById('stat-time-sub').textContent = `across ${times.length} run${times.length !== 1 ? 's' : ''}`;
+  } else {
+    document.getElementById('stat-time').textContent = '—';
+  }
+
+  const highConf = searches.filter(r => (r.confidence_level || '').toLowerCase() === 'high').length;
+  document.getElementById('stat-confidence').textContent =
+    searches.length ? Math.round(highConf / searches.length * 100) + '%' : '—';
+  document.getElementById('stat-confidence-sub').textContent =
+    searches.length ? `${highConf} of ${searches.length} runs` : '';
+
+  document.getElementById('stat-synth').textContent = synths.length;
+  const synthOK = synths.filter(r => r.status === 'success').length;
+  document.getElementById('stat-synth-sub').textContent =
+    synths.length ? `${synthOK} success` : 'none yet';
+
+  // ── Per-loop breakdown ─────────────────────────────────────────────────────
+  function loopStats(type, runsEl, filesEl, thirdEl, thirdKey, timeEl, errorsEl) {
+    const rows   = searches.filter(r => r.loop_type === type);
+    const errors = rows.filter(r => r.status === 'error').length;
+    document.getElementById(runsEl).textContent = rows.length || '0';
+    const fAvg = avg(rows.filter(r => r.files_read).map(r => r.files_read));
+    document.getElementById(filesEl).textContent = fAvg != null ? fAvg.toFixed(1) : '—';
+    const tAvg = avg(rows.filter(r => r[thirdKey]).map(r => r[thirdKey]));
+    document.getElementById(thirdEl).textContent = tAvg != null ? tAvg.toFixed(1) : '—';
+    const dAvg = avg(rows.filter(r => r.duration_sec).map(r => r.duration_sec));
+    document.getElementById(timeEl).textContent = dAvg != null ? dAvg.toFixed(1) + 's' : '—';
+    document.getElementById(errorsEl).textContent = errors;
+  }
+  loopStats('agentic',    'ag-runs', 'ag-files', 'ag-iters', 'iterations', 'ag-time', 'ag-errors');
+  loopStats('computer',   'cp-runs', 'cp-files', 'cp-searches', 'searches',  'cp-time', 'cp-errors');
+  loopStats('sharepoint', 'sp-runs', 'sp-files', 'sp-time', 'duration_sec', 'sp-time', 'sp-errors');
+}
+
+function switchTab(event, table) {
+  currentTable = table;
+  sortCol = null;
+  sortAsc = true;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('table-title').textContent = TABLE_LABELS[table];
+  document.getElementById('table-filter').value = '';
+  renderTable();
+}
+
+function renderTable() {
+  const rows = tableData[currentTable] || [];
+  const head = document.getElementById('table-head');
+  const body = document.getElementById('table-body');
+
+  if (rows.length === 0) {
+    head.innerHTML = '';
+    body.innerHTML = '<tr><td class="empty-msg" colspan="99">No data yet</td></tr>';
+    document.getElementById('row-count').textContent = '0 rows';
+    return;
+  }
+
+  const columns = Object.keys(rows[0]);
+
+  // Sort
+  let sorted = [...rows];
+  if (sortCol !== null && columns.includes(sortCol)) {
+    sorted.sort((a, b) => {
+      const va = a[sortCol], vb = b[sortCol];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return sortAsc ? va - vb : vb - va;
+      return sortAsc
+        ? String(va).localeCompare(String(vb))
+        : String(vb).localeCompare(String(va));
+    });
+  }
+
+  // Filter
+  const filter = document.getElementById('table-filter').value.toLowerCase();
+  if (filter) {
+    sorted = sorted.filter(row =>
+      columns.some(c => String(row[c] || '').toLowerCase().includes(filter))
+    );
+  }
+
+  // Header
+  head.innerHTML = '<tr>' + columns.map(c => {
+    const label    = COLUMN_LABELS[c] || c;
+    const isSorted = sortCol === c;
+    const arrow    = isSorted ? (sortAsc ? '▲' : '▼') : '▽';
+    return `<th class="${isSorted ? 'sorted' : ''}" onclick="sortBy('${c}')">${esc(label)} <span class="sort-arrow">${arrow}</span></th>`;
+  }).join('') + '</tr>';
+
+  // Body
+  body.innerHTML = sorted.map(row =>
+    '<tr>' + columns.map(c => {
+      let val = row[c];
+      if (val === null || val === undefined) val = '';
+
+      if (c === 'status') {
+        const cls = val === 'success' ? 'status-success' : 'status-error';
+        return `<td class="${cls}">${esc(val)}</td>`;
+      }
+      if (c === 'loop_type') {
+        const cls = { agentic: 'loop-agentic', computer: 'loop-computer', sharepoint: 'loop-sharepoint' }[val] || '';
+        const icon = { agentic: '⚡', computer: '🖥', sharepoint: '🔷' }[val] || '';
+        return `<td class="${cls}">${icon} ${esc(val)}</td>`;
+      }
+      if (c === 'confidence_level' && val) {
+        const cls = { high: 'conf-high', medium: 'conf-medium', low: 'conf-low' }[val.toLowerCase()] || '';
+        return `<td class="${cls}">${esc(val)}</td>`;
+      }
+      if (typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T?/)) {
+        val = new Date(val).toLocaleString();
+      }
+      if (typeof val === 'number' && !Number.isInteger(val)) {
+        val = val.toFixed(2);
+      }
+      return `<td title="${esc(String(val))}">${esc(String(val))}</td>`;
+    }).join('') + '</tr>'
+  ).join('');
+
+  document.getElementById('row-count').textContent =
+    `${sorted.length} of ${rows.length} row${rows.length !== 1 ? 's' : ''}`;
+}
+
+function sortBy(col) {
+  if (sortCol === col) { sortAsc = !sortAsc; }
+  else { sortCol = col; sortAsc = true; }
+  renderTable();
+}
+
+function applyFilter() { renderTable(); }
+
+function exportCurrent() {
+  window.location.href = `/admin/export/${currentTable}`;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadAll();
+</script>
+</body>
+</html>

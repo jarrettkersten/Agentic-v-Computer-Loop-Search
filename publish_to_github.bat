@@ -9,8 +9,10 @@ echo ============================================================
 echo.
 
 :: ── Clear any stale git lock files ───────────────────────────
-if exist ".git\index.lock"  del /f /q ".git\index.lock"
-if exist ".git\config.lock" del /f /q ".git\config.lock"
+if exist ".git\index.lock"              del /f /q ".git\index.lock"
+if exist ".git\config.lock"             del /f /q ".git\config.lock"
+if exist ".git\HEAD.lock"               del /f /q ".git\HEAD.lock"
+if exist ".git\objects\maintenance.lock" del /f /q ".git\objects\maintenance.lock"
 
 :: ── First-time setup: wipe any broken .git and reinitialise ────
 if exist ".git\config" (
