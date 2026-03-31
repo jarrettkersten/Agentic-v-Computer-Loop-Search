@@ -456,32 +456,26 @@ def extract_search_terms(query: str, client) -> list[str]:
         max_tokens=350,
         system=(
             "You are a search-term extractor for a large C#/VB.NET/ASP.NET WebForms codebase "
-            "stored in Azure DevOps (Cora PPM). ADO Code Search does exact token matching — "
-            "long or invented phrases return ZERO results. Short, real identifiers always win.\n\n"
-            "CRITICAL RULES:\n"
-            "  - Use ONLY short (1-2 word) stems that will literally appear in file names or class names\n"
-            "  - NEVER invent compound terms that sound logical but may not exist (e.g. 'ForecastingScreen',\n"
-            "    'IEACService', 'EACRepository' — these return 0 hits if not the real class name)\n"
-            "  - ALWAYS include the bare short noun form (e.g. 'EAC', 'Timesheet', 'Forecast', 'Budget')\n"
-            "  - ALWAYS include the most likely .aspx page stem (e.g. 'ProjectForecasting', 'TimesheetEntry')\n"
-            "  - For buttons/actions, search for the button label word, not the full action description\n\n"
-            "Think in layers — SHORT stem first, then variations:\n"
-            "  1. Core noun: the 1-word topic (e.g. 'EAC', 'Timesheet', 'Forecast')\n"
-            "  2. Page/screen file prefix (e.g. 'ProjectForecasting', 'TimesheetGrid', 'Popup_Project')\n"
-            "  3. The button or feature keyword exactly as it likely appears in code (e.g. 'btnSubmit', 'Submit')\n"
-            "  4. Likely service class prefix — real name only (e.g. 'ForecastService', 'TimesheetService')\n"
-            "  5. Alternate casing/spelling (e.g. 'EacSubmit', 'eacSubmit', 'Eac')\n"
-            "  6. Any SQL prefix if data access is involved (e.g. 'sp_EAC', 'sp_Forecast')\n\n"
-            "Good example for 'EAC Submit button on Project Forecasting':\n"
-            "  ['EAC', 'ProjectForecasting', 'btnSubmit', 'ForecastService', 'EacSubmit', 'sp_EAC']\n"
-            "Bad example (these would all return 0 hits):\n"
-            "  ['EACSubmit', 'ForecastingScreen', 'IEACService', 'EACRepository', 'sp_EACSubmit']"
+            "stored in Azure DevOps (Cora PPM). ADO Code Search works on exact token matches — "
+            "long natural-language phrases return zero results.\n\n"
+            "Think in layers:\n"
+            "  1. The PRIMARY feature name as it appears in file names (e.g. 'TimesheetGrid', 'EACSubmit')\n"
+            "  2. The SHORT keyword — just the core noun (e.g. 'Timesheet', 'EAC', 'Forecast')\n"
+            "  3. Related SERVICE / REPOSITORY class names (e.g. 'ITimesheetService', 'TimesheetRepository')\n"
+            "  4. Related CONTROLLER or CODEBEHIND patterns (e.g. 'TimesheetController', 'Timesheet.aspx')\n"
+            "  5. Any ENUM, CONSTANT, or SQL stored-proc name likely involved (e.g. 'sp_GetTimesheets')\n"
+            "  6. Alternative naming variants used in older parts of the codebase (e.g. 'TimeSheet' vs 'Timesheet')\n\n"
+            "Rules:\n"
+            "  - Each term must be 1-3 tokens, no spaces longer than one word, no punctuation except underscores\n"
+            "  - Never use the full user question as a term\n"
+            "  - Include BOTH PascalCase compound AND short standalone variants"
         ),
         messages=[{
             "role":    "user",
             "content": (
-                "Extract 3-5 search terms that together will find ALL files relevant to this question "
-                "in the Cora PPM ADO repository. Prioritise SHORT real identifier stems over invented compounds.\n\n"
+                "Extract 4-7 search terms that together will find ALL files relevant to this question "
+                "in the Cora PPM ADO repository. Cover the page/control, the business logic, "
+                "the service/repository layer, and any helpers.\n\n"
                 "Return ONLY a JSON array of strings, nothing else.\n\n"
                 f"Question: {query}"
             ),
@@ -495,7 +489,7 @@ def extract_search_terms(query: str, client) -> list[str]:
     try:
         terms = json.loads(raw)
         if isinstance(terms, list) and terms:
-            return [str(t).strip() for t in terms[:5] if str(t).strip()]
+            return [str(t).strip() for t in terms[:7] if str(t).strip()]
     except Exception:
         pass
     return [query[:40]]
