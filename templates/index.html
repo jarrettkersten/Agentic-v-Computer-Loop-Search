@@ -1211,51 +1211,72 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     try {
       if (loop === 'agentic') {
-        // ── Use SSE stream for agentic loop (supports mid-search pause) ────
-        await new Promise((resolve, reject) => {
-          const es = new EventSource('/api/agentic/stream?' + new URLSearchParams({ dummy: '1' }));
-          // The stream endpoint needs a POST body — use fetch + ReadableStream instead
-          es.close();
-
-          // Use fetch with streaming (ReadableStream) since EventSource can't POST
-          fetch('/api/agentic/stream', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ query, branch }),
-          }).then(async resp => {
-            const reader = resp.body.getReader();
-            const decoder = new TextDecoder();
-            let buf = '';
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buf += decoder.decode(value, { stream: true });
-              const lines = buf.split('\n');
-              buf = lines.pop();
-              for (const line of lines) {
-                if (!line.startsWith('data:')) continue;
-                try {
-                  const evt = JSON.parse(line.slice(5).trim());
-                  if (evt.type === 'started') {
-                    _pauseJobId = evt.job_id;
-                  } else if (evt.type === 'pause_prompt') {
-                    showPausePrompt(evt);
-                  } else if (evt.type === 'done') {
-                    const result = evt.result;
-                    state.agentic = result;
-                    renderAgentic(result);
-                    setStatus('Agentic Loop complete.');
-                    resolve();
-                  } else if (evt.type === 'error') {
-                    setError(panelId, evt.message);
-                    setStatus('Agentic Loop failed: ' + evt.message);
-                    reject(new Error(evt.message));
-                  }
-                } catch (_) {}
-              }
+        // ── Polling approach: immune to Railway's ~300 s proxy timeout ──────
+        // 1. POST /api/agentic/start → job_id (returns instantly)
+        // 2. Poll /api/agentic/poll/<job_id> every 2 s for events
+        // 3. Stop when "done" or "error" event received
+        await new Promise(async (resolve, reject) => {
+          let jobId = null;
+          try {
+            const startResp = await fetch('/api/agentic/start', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ query, branch }),
+            });
+            const startData = await startResp.json();
+            if (!startResp.ok || startData.error) {
+              reject(new Error(startData.error || 'Failed to start agentic job'));
+              return;
             }
-            resolve();
-          }).catch(reject);
+            jobId = startData.job_id;
+            _pauseJobId = jobId;
+          } catch (e) {
+            reject(e);
+            return;
+          }
+
+          // Poll loop — 2 s interval
+          const MAX_POLLS = 300;  // 300 × 2 s = 10 min hard ceiling
+          let polls = 0;
+          const doPoll = async () => {
+            polls++;
+            if (polls > MAX_POLLS) {
+              reject(new Error('Agentic loop timed out after 10 minutes.'));
+              return;
+            }
+            try {
+              const pollResp = await fetch('/api/agentic/poll/' + jobId);
+              const pollData = await pollResp.json();
+              let finished = false;
+              for (const evt of (pollData.events || [])) {
+                if (evt.type === 'pause_prompt') {
+                  showPausePrompt(evt);
+                } else if (evt.type === 'done') {
+                  const result = evt.result;
+                  state.agentic = result;
+                  renderAgentic(result);
+                  setStatus('Agentic Loop complete.');
+                  finished = true;
+                  resolve();
+                  break;
+                } else if (evt.type === 'error') {
+                  setError(panelId, evt.message);
+                  setStatus('Agentic Loop failed: ' + evt.message);
+                  finished = true;
+                  reject(new Error(evt.message));
+                  break;
+                }
+                // ping / progress events — just keep polling
+              }
+              if (!finished) {
+                setTimeout(doPoll, 2000);
+              }
+            } catch (e) {
+              // Network blip — keep retrying up to the ceiling
+              setTimeout(doPoll, 2000);
+            }
+          };
+          setTimeout(doPoll, 2000);
         });
       } else {
         // ── Computer loop: simple POST ─────────────────────────────────────

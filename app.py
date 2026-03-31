@@ -54,8 +54,8 @@ ADO_SEARCH_URL    = (
 
 MAX_AGENTIC_ITERATIONS = 999   # effectively uncapped — time limits govern instead
 MAX_SEARCH_RESULTS     = 12    # broader initial candidate pool per search term
-MAX_FILE_CHARS         = 15000 # read more of each file — key methods are often deep
-MAX_FILES_TO_READ      = 10    # read more files before synthesising
+MAX_FILE_CHARS         = 40000 # Cora PPM VB.NET files are large — need full method bodies
+MAX_FILES_TO_READ      = 12    # read more files before synthesising
 
 # Time-based search control ─────────────────────────────────────────────────
 # Agentic loop pauses at these elapsed-second marks and asks the user whether
@@ -1597,6 +1597,42 @@ def run_sharepoint_loop(query: str) -> dict:
         "results":  all_results,
     })
 
+    # ── Early exit: detect complete auth failure ───────────────────────────────
+    all_errors   = [sl for sl in search_log if "error" in sl]
+    auth_blocked = any(
+        "AADSTS53003" in sl.get("error", "") or
+        "Conditional Access" in sl.get("error", "") or
+        "authentication failed" in sl.get("error", "").lower()
+        for sl in all_errors
+    )
+    if auth_blocked and len(all_results) == 0:
+        block_msg = (all_errors[0].get("error", "Authentication blocked") if all_errors else "Authentication blocked")
+        return {
+            "answer":         (
+                "## Answer\n\n"
+                "SharePoint KB is currently unavailable — the search service account is being blocked by "
+                "a Microsoft Conditional Access policy on this server.\n\n"
+                "**Error:** " + block_msg + "\n\n"
+                "**What this means:** The Railway deployment's IP/identity does not satisfy the Conditional "
+                "Access requirements for the Cora SharePoint tenant. This is an infrastructure issue, not a "
+                "query issue. The ADO-based loops (Agentic and Computer) are unaffected.\n\n"
+                "**To fix:** A tenant admin needs to exclude the SharePoint service account from the "
+                "blocking Conditional Access policy, or add an allowed IP range for the Railway server.\n\n"
+                "---\n\n"
+                "## Technical Reference\n\n"
+                "**Auth error:** `AADSTS53003` — Blocked by Conditional Access policy.\n"
+                "**Service account:** " + SP_USERNAME + "\n"
+                "**SharePoint site:** " + SP_SITE_URL
+            ),
+            "confidence":     "none",
+            "confidence_reason": "SharePoint authentication blocked by Conditional Access policy (AADSTS53003).",
+            "results_found":  0,
+            "files_read":     0,
+            "total_steps":    len(steps_log),
+            "steps":          steps_log,
+            "folder":         SP_FOLDER_FULL,
+        }
+
     # ── Step 3: Download and read top files ───────────────────────────────────
     file_contents = []
     for i, result in enumerate(all_results[:MAX_FILES_TO_READ], start=1):
@@ -1957,6 +1993,76 @@ def api_agentic_stream():
             "Access-Control-Allow-Origin": "*",
         },
     )
+
+
+@app.route("/api/agentic/start", methods=["POST"])
+def api_agentic_start():
+    """
+    Polling-friendly replacement for /api/agentic/stream.
+    Starts the agentic loop in a background thread and immediately returns
+    a job_id.  The frontend then polls /api/agentic/poll/<job_id> every ~2 s.
+    This avoids Railway's ~300 s HTTP proxy timeout that kills long SSE streams.
+    """
+    data   = request.get_json() or {}
+    query  = data.get("query",  "").strip()
+    branch = data.get("branch", "").strip()
+    if not query:
+        return jsonify({"error": "No query provided."}), 400
+    if not branch:
+        return jsonify({"error": "Please select a branch first."}), 400
+
+    job_id = str(uuid.uuid4())
+    _job_create(job_id)
+    job = _job_get(job_id)
+    t0  = time.time()
+
+    def _run():
+        try:
+            result = run_agentic_loop(query, branch, job_id=job_id)
+            track_search_event(
+                "agentic", query, branch, "success",
+                time.time() - t0,
+                result.get("total_files_read", 0),
+                result.get("total_iterations",  0),
+                result.get("total_searches",    0),
+                result.get("confidence", {}).get("level", ""),
+                input_tokens=result.get("input_tokens",  0),
+                output_tokens=result.get("output_tokens", 0),
+            )
+        except Exception as e:
+            track_search_event("agentic", query, branch, "error",
+                               time.time() - t0, error_message=str(e))
+            job["event_queue"].put({"type": "error", "message": str(e)})
+        finally:
+            # Keep job alive for 5 minutes after completion so the frontend
+            # can drain the last events even if a poll arrives a bit late.
+            threading.Timer(300, lambda: _job_remove(job_id)).start()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/api/agentic/poll/<job_id>", methods=["GET"])
+def api_agentic_poll(job_id):
+    """
+    Drain all queued events for a running/completed agentic job.
+    Returns {"events": [...]} — frontend calls this every ~2 s.
+    Stops polling when it receives a "done" or "error" event.
+    """
+    job = _job_get(job_id)
+    if not job:
+        return jsonify({"events": [{"type": "error",
+                                    "message": "Job not found or expired."}]})
+    events = []
+    try:
+        while True:
+            evt = job["event_queue"].get_nowait()
+            events.append(evt)
+            if evt.get("type") in ("done", "error"):
+                break
+    except queue.Empty:
+        pass
+    return jsonify({"events": events})
 
 
 @app.route("/api/agentic/continue", methods=["POST"])
