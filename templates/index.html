@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Cora PPM — Loop Comparison Search</title>
+<title>Cora PPM — Agentic Search</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <style>
 :root{
@@ -64,10 +64,6 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .btn-sm{padding:7px 15px;font-size:.82rem;border-radius:7px}
 .btn-agentic{background:var(--agentic);color:#fff}
 .btn-agentic:hover:not(:disabled){background:#1d4ed8}
-.btn-hybrid{background:var(--hybrid);color:#fff}
-.btn-hybrid:hover:not(:disabled){background:#0f766e}
-.btn-sp{background:var(--sharepoint);color:#fff}
-.btn-sp:hover:not(:disabled){background:#005ba1}
 
 /* ── Three-column grid ── */
 .results-grid{display:flex;flex-direction:row;gap:16px;align-items:start}
@@ -372,7 +368,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   <div class="logo">
     <img src="https://corasystems.com/_next/static/media/cora-logo-white.3ac9db11.svg" alt="Cora" height="22" style="display:block"/>
     <div class="sep"></div>
-    Loop Comparison Search
+    Agentic Search
   </div>
   <div style="display:flex;align-items:center;gap:12px">
     <div class="source-badge">
@@ -436,13 +432,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     </div>
 
     <div class="action-row">
-      <button class="btn btn-run-all" id="btnAll" onclick="runWithClarify('all')">▶▶ Run All</button>
-      <span style="width:1px;height:28px;background:var(--border);display:inline-block;margin:0 4px;flex-shrink:0"></span>
-      <button class="btn btn-agentic btn-sm" id="btnAgentic" onclick="runWithClarify('agentic')">⚡ Agentic Loop</button>
-      <button class="btn btn-hybrid btn-sm" id="btnHybrid" onclick="runWithClarify('hybrid')">🔀 Hybrid Loop</button>
-      <button class="btn btn-sp btn-sm" id="btnSharePoint" onclick="runWithClarify('sharepoint')">🔷 SharePoint KB</button>
-      <span style="width:1px;height:28px;background:var(--border);display:inline-block;margin:0 4px;flex-shrink:0"></span>
-      <button class="btn" id="btnSynthesize" style="display:none;background:#475569;color:#fff" onclick="runSynthesize()">✨ Synthesize All</button>
+      <button class="btn btn-run-all" id="btnSearch" onclick="runWithClarify('agentic')">🔍 Search</button>
     </div>
     <!-- ── Clarifying question card (shown only when needed) ── -->
     <div id="clarifyCard" class="clarify-card" style="display:none">
@@ -461,79 +451,54 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   <!-- ── Three-column result panels ── -->
   <div class="results-grid">
 
-    <!-- Agentic Loop -->
-    <div class="panel" id="panelAgentic">
-      <div class="panel-resize-handle" id="resizeAgentic"></div>
-      <div class="panel-header" onclick="togglePanel('panelAgentic', event)">
-        <h2>⚡ Agentic Loop</h2>
-        <span class="badge badge-agentic">ADO Tool Use</span>
-        <button class="btn-panel-info" title="How Agentic Loop works" onclick="openInfoModal('agentic',event)">ℹ</button>
+    <!-- Overview -->
+    <div class="panel" id="panelOverview">
+      <div class="panel-resize-handle" id="resizeOverview"></div>
+      <div class="panel-header" onclick="togglePanel('panelOverview', event)">
+        <h2>📋 Overview</h2>
+        <span class="badge badge-agentic">Plain English</span>
         <span class="chevron">▼</span>
       </div>
-      <div class="panel-body" id="agenticBody">
+      <div class="panel-body" id="overviewBody">
         <div class="state-idle">
-          <span class="icon">⚡</span>
-          <span>Claude iteratively searches the ADO repo,<br>deciding what to look for next across up to 12 rounds.<br><em style="font-size:.8rem">Results come only from CoraSystems/PPM</em></span>
+          <span class="icon">📋</span>
+          <span>A clear, non-technical explanation<br>of the feature and how it works.</span>
         </div>
       </div>
     </div>
 
-    <!-- Hybrid Loop -->
-    <div class="panel" id="panelHybrid">
-      <div class="panel-resize-handle" id="resizeHybrid"></div>
-      <div class="panel-header" onclick="togglePanel('panelHybrid', event)">
-        <h2>🔀 Hybrid Loop</h2>
-        <span class="badge badge-hybrid">Search + Adaptive Read</span>
-        <button class="btn-panel-info" title="How Hybrid Loop works" onclick="openInfoModal('hybrid',event)">ℹ</button>
+    <!-- User Guide -->
+    <div class="panel" id="panelUserGuide">
+      <div class="panel-resize-handle" id="resizeUserGuide"></div>
+      <div class="panel-header" onclick="togglePanel('panelUserGuide', event)">
+        <h2>📘 User Guide</h2>
+        <span class="badge" style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0">Step-by-Step</span>
         <span class="chevron">▼</span>
       </div>
-      <div class="panel-body" id="hybridBody">
+      <div class="panel-body" id="userGuideBody">
         <div class="state-idle">
-          <span class="icon">🔀</span>
-          <span>Structured ADO search followed by adaptive<br>reference-chain reading — best of both loops.<br><em style="font-size:.8rem">Results come only from CoraSystems/PPM</em></span>
+          <span class="icon">📘</span>
+          <span>Step-by-step instructions for using<br>or configuring the feature in Cora PPM.</span>
         </div>
       </div>
     </div>
 
-    <!-- SharePoint Loop -->
-    <div class="panel" id="panelSP">
-      <div class="panel-resize-handle" id="resizeSP"></div>
-      <div class="panel-header" onclick="togglePanel('panelSP', event)">
-        <h2>🔷 SharePoint KB</h2>
-        <span class="badge badge-sp">Confluence Content for AI</span>
-        <button class="btn-panel-info" title="How SharePoint KB works" onclick="openInfoModal('sharepoint',event)">ℹ</button>
+    <!-- Technical Reference -->
+    <div class="panel" id="panelTechRef">
+      <div class="panel-resize-handle" id="resizeTechRef"></div>
+      <div class="panel-header" onclick="togglePanel('panelTechRef', event)">
+        <h2>🔧 Technical Reference</h2>
+        <span class="badge" style="background:#fef3c7;color:#d97706;border:1px solid #fde68a">Dev Detail</span>
         <span class="chevron">▼</span>
       </div>
-      <div class="panel-body" id="spBody">
+      <div class="panel-body" id="techRefBody">
         <div class="state-idle">
-          <span class="icon">🔷</span>
-          <span>Searches the PS Confluence knowledge base<br>exported to SharePoint.<br><em style="font-size:.8rem">Results come only from the KB documents</em></span>
+          <span class="icon">🔧</span>
+          <span>Full technical detail for developers:<br>execution flow, code snippets, file inventory.</span>
         </div>
       </div>
-      <div id="spMeta" style="padding:0 20px 10px;display:none"></div>
     </div>
 
-  </div>
-
-  <!-- ── Master synthesis panel ── -->
-  <div class="synthesis-panel collapsible-panel" id="synthesisPanel">
-    <div class="cp-header synthesis-header" onclick="toggleCpPanel('synthesisPanel')">
-      <h2>✨ Comprehensive Synthesis</h2>
-      <span class="badge">All Sources Combined</span>
-      <span class="chevron" style="color:rgba(255,255,255,.7);margin-left:auto">▼</span>
-    </div>
-    <div class="cp-body synthesis-body">
-      <div class="synthesis-loading" id="synthesisLoading">
-        <div class="spinner" style="border-top-color:#fff"></div>
-        <span style="color:var(--muted)">Synthesizing all search results into a single answer…</span>
-      </div>
-      <div class="answer-body" id="synthesisText"></div>
-      <div class="export-row" id="synthesisExportRow" style="display:none">
-        <button class="btn-copy" onclick="copyAnswer('synthesisRaw',this)">📋 Copy</button>
-        <button class="btn-export-md" onclick="downloadMd('synthesisRaw','Synthesis')">⬇️ .md</button>
-      </div>
-      <span id="synthesisRaw" style="display:none"></span>
-    </div>
   </div>
 
 </main>
@@ -555,7 +520,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   <div class="pause-dialog">
     <div class="pd-icon">⏸️</div>
     <div class="pd-title">Still searching…</div>
-    <div class="pd-msg" id="pauseMsg">The Agentic Loop is still running. Continue searching for more files?</div>
+    <div class="pd-msg" id="pauseMsg">The search is still running. Continue searching for more files?</div>
     <div class="pd-btns">
       <button class="pd-continue" onclick="pauseDecision('continue')">▶ Continue searching</button>
       <button class="pd-stop"     onclick="pauseDecision('stop')">⏹ Stop &amp; answer now</button>
@@ -592,11 +557,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div class="value" id="adm-stat-confidence">—</div>
       <div class="sub" id="adm-stat-confidence-sub"></div>
     </div>
-    <div class="adm-summary-card">
-      <div class="label">Syntheses Run</div>
-      <div class="value" id="adm-stat-synth">—</div>
-      <div class="sub" id="adm-stat-synth-sub"></div>
-    </div>
+
   </div>
 
   <!-- Token & cost summary row -->
@@ -635,21 +596,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div class="bc-stat"><span class="bc-key">Avg Cost</span><span class="bc-val" id="adm-ag-cost" style="color:#6d28d9">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-ag-errors">—</span></div>
     </div>
-    <div class="adm-breakdown-card sharepoint">
-      <div class="bc-label">🔷 SharePoint Loop</div>
-      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="adm-sp-runs">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Docs Read</span><span class="bc-val" id="adm-sp-files">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-sp-time">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-sp-tokens">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Cost</span><span class="bc-val" id="adm-sp-cost" style="color:#6d28d9">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-sp-errors">—</span></div>
-    </div>
+
   </div>
 
   <!-- Tabs -->
   <div class="adm-tabs">
     <button class="adm-tab active" onclick="admSwitchTab(event,'search_events')">Search Events</button>
-    <button class="adm-tab" onclick="admSwitchTab(event,'synthesis_events')">Synthesis Events</button>
     <button class="adm-tab" onclick="admSwitchTab(event,'flagged_queries')">🚩 Flagged Queries</button>
   </div>
 
@@ -686,7 +638,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 </main>
 </div><!-- /view-admin -->
 
-<footer>Cora PPM Loop Comparison · All answers sourced exclusively from CoraSystems/PPM Azure DevOps</footer>
+<footer>Cora PPM Agentic Search · All answers sourced exclusively from CoraSystems/PPM Azure DevOps</footer>
 
 <script>
   marked.setOptions({ breaks: true, gfm: true });
@@ -706,7 +658,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     document.getElementById(id).classList.toggle('collapsed');
   }
 
-  const state = { agentic: null, hybrid: null, sharepoint: null };
+  const state = { agentic: null };
 
   // ── Branch loader ──────────────────────────────────────────────────────────
   function getBranch() {
@@ -846,7 +798,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   // ── Clarification state ─────────────────────────────────────────────────────
   let _clarifyDone    = false;   // true once user answered/skipped for this session
   let _clarifyContext = '';      // extra context appended to query after clarification
-  let _pendingAction  = null;    // 'all' | 'agentic' | 'hybrid' | 'sharepoint'
+  let _pendingAction  = null;    // always 'agentic'
 
   function getQuery() {
     const raw = document.getElementById('queryInput').value.trim();
@@ -905,19 +857,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   }
 
   function _executePendingAction() {
-    if      (_pendingAction === 'all')        runAll();
-    else if (_pendingAction === 'agentic')    runLoop('agentic');
-    else if (_pendingAction === 'hybrid')     runLoop('hybrid');
-    else if (_pendingAction === 'sharepoint') runSharePoint();
+    runSearch();
   }
 
   // getBranch() is defined in the branch loader section above
   function setStatus(m){ document.getElementById('statusBar').textContent = m; }
 
   function setAllAdoBtnsDisabled(v) {
-    ['btnAll','btnAgentic','btnHybrid','btnSharePoint'].forEach(id => {
-      document.getElementById(id).disabled = v;
-    });
+    document.getElementById('btnSearch').disabled = v;
   }
 
   function setLoading(panelId, label) {
@@ -960,6 +907,36 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   }
 
   // ── Agentic renderer ───────────────────────────────────────────────────────
+  function splitSections(answer) {
+    // Split the agentic answer into 3 sections: Overview, User Guide, Technical Reference
+    const sections = { overview: '', userGuide: '', techRef: '' };
+    const text = answer || '';
+    
+    // Try to split on ## headings
+    const overviewMatch = text.match(/## Overview\s*\n([\s\S]*?)(?=\n---\s*\n|\n## User Guide|$)/i);
+    const guideMatch    = text.match(/## User Guide\s*\n([\s\S]*?)(?=\n---\s*\n|\n## Technical Reference|$)/i);
+    const techMatch     = text.match(/## Technical Reference\s*\n([\s\S]*?)$/i);
+    
+    if (overviewMatch) sections.overview  = overviewMatch[1].trim();
+    if (guideMatch)    sections.userGuide = guideMatch[1].trim();
+    if (techMatch)     sections.techRef   = techMatch[1].trim();
+    
+    // Fallback: if no sections found, put everything in overview
+    if (!sections.overview && !sections.userGuide && !sections.techRef) {
+      // Try old format: ## Answer / ## Technical Reference
+      const oldAnswer = text.match(/## Answer\s*\n([\s\S]*?)(?=\n---\s*\n|\n## Technical Reference|$)/i);
+      const oldTech   = text.match(/## Technical Reference\s*\n([\s\S]*?)$/i);
+      if (oldAnswer) {
+        sections.overview = oldAnswer[1].trim();
+        if (oldTech) sections.techRef = oldTech[1].trim();
+      } else {
+        sections.overview = text;
+      }
+    }
+    
+    return sections;
+  }
+
   function renderAgentic(result) {
     const iters = result.iterations || [];
     const logItems = iters.map(it => {
@@ -994,7 +971,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     const agTok = (result.input_tokens || 0) + (result.output_tokens || 0);
     const agCost = calcCost(result.input_tokens, result.output_tokens);
-    document.getElementById('agenticBody').innerHTML = `
+    const sections = splitSections(result.answer);
+    const branch = result.branch;
+
+    // ── Overview panel ──
+    document.getElementById('overviewBody').innerHTML = `
       <div class="stats-row">
         <div class="stat">⚡ Iterations: <strong>${result.total_iterations}</strong></div>
         <div class="stat">🔎 Searches: <strong>${result.total_searches}</strong></div>
@@ -1002,13 +983,13 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         ${agTok ? `<div class="stat">🪙 <strong>${formatTokens(agTok)}</strong> tok</div>` : ''}
         ${agCost ? `<div class="stat">💲 <strong>${formatCost(agCost)}</strong></div>` : ''}
         ${result.elapsed_seconds != null ? `<div class="stat">⏱ <strong>${formatTime(result.elapsed_seconds)}</strong></div>` : ''}
-        <div class="branch-tag">🌿 ${esc(result.branch)}</div>
+        <div class="branch-tag">🌿 ${esc(branch)}</div>
       </div>
       ${renderConfidence(result.confidence)}
-      <div class="answer-body">${linkifyFilePaths(md(result.answer), result.branch)}</div>
+      <div class="answer-body">${linkifyFilePaths(md(sections.overview), branch)}</div>
       <div class="export-row">
-        <button class="btn-copy" onclick="copyAnswer('agAnswer',this)" data-answer="${esc(result.answer)}">📋 Copy</button>
-        <button class="btn-export-md" onclick="downloadMd('agAnswer','Agentic Loop')">⬇️ .md</button>
+        <button class="btn-copy" onclick="copyAnswer('agAnswer',this)" data-answer="${esc(result.answer)}">📋 Copy All</button>
+        <button class="btn-export-md" onclick="downloadMd('agAnswer','Cora PPM Search')">⬇️ .md</button>
         <button class="btn-flag" onclick="showFlagForm('agentic')">🚩 Flag as unhelpful</button>
       </div>
       <div class="flag-form" id="flagFormAgentic" style="display:none">
@@ -1022,120 +1003,16 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <span id="agAnswer" style="display:none">${esc(result.answer)}</span>
       <button class="log-toggle" data-label=" ADO tool call log" onclick="toggleLog('agLog')">▸ Show ADO tool call log</button>
       <div class="log-body" id="agLog">${logItems}</div>`;
-  }
 
-  // ── Hybrid renderer ───────────────────────────────────────────────────────
-  function renderHybrid(result) {
-    const steps = result.steps || [];
-    const logItems = steps.map(s => {
-      const rows = (s.results || []).map(r =>
-        `<div class="log-result-item">📄 <strong>${esc(r.file_name || r.file_path?.split('/').pop() || '')}</strong> — <span>${esc(r.file_path || '')}</span></div>`
-      ).join('');
-      const searches = (s.searches || []).map(sr =>
-        `<div class="log-result-item">🔎 "${esc(sr.term)}" → ${sr.error
-          ? '<span style="color:var(--error)">error</span>'
-          : `${sr.hits} hit(s), ${sr.new_unique} new`
-        }${sr.triggered_by === 'hybrid_nav' ? ' <em style="color:var(--hybrid);font-size:.7rem">(navigation)</em>' : ''}</div>`
-      ).join('');
-      const preview = s.content_preview ? `<div class="log-preview">"${esc(s.content_preview)}"</div>` : '';
-      return `<div class="log-item">
-        <div class="log-label step" style="background:var(--hybrid-bg);color:var(--hybrid);border-color:var(--hybrid-border)">Step ${s.step}</div>
-        <div class="log-detail">${esc(s.action)}</div>
-        ${s.url ? `<div class="log-url">↳ ${esc(s.url)}</div>` : ''}
-        ${searches}${rows}${preview}
-        ${s.chars_read ? `<div class="log-detail">${s.chars_read.toLocaleString()} chars read</div>` : ''}
-      </div>`;
-    }).join('');
+    // ── User Guide panel ──
+    document.getElementById('userGuideBody').innerHTML = sections.userGuide
+      ? `<div class="answer-body">${linkifyFilePaths(md(sections.userGuide), branch)}</div>`
+      : `<div class="state-idle"><span class="icon">📘</span><span>No user guide section in this response.</span></div>`;
 
-    const hybTok = (result.input_tokens || 0) + (result.output_tokens || 0);
-    const hybCost = calcCost(result.input_tokens, result.output_tokens);
-    document.getElementById('hybridBody').innerHTML = `
-      <div class="stats-row">
-        <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
-        <div class="stat">🔎 Found: <strong>${result.results_found}</strong></div>
-        <div class="stat">📄 Files: <strong>${result.files_read}</strong></div>
-        ${hybTok ? `<div class="stat">🪙 <strong>${formatTokens(hybTok)}</strong> tok</div>` : ''}
-        ${hybCost ? `<div class="stat">💲 <strong>${formatCost(hybCost)}</strong></div>` : ''}
-        ${result.elapsed_seconds != null ? `<div class="stat">⏱ <strong>${formatTime(result.elapsed_seconds)}</strong></div>` : ''}
-        <div class="branch-tag">🌿 ${esc(result.branch)}</div>
-      </div>
-      ${renderConfidence(result.confidence)}
-      <div class="answer-body">${linkifyFilePaths(md(result.answer), result.branch)}</div>
-      <div class="export-row">
-        <button class="btn-copy" onclick="copyAnswer('hybridAnswer',this)">📋 Copy</button>
-        <button class="btn-export-md" onclick="downloadMd('hybridAnswer','Hybrid Loop')">⬇️ .md</button>
-        <button class="btn-flag" onclick="showFlagForm('hybrid')">🚩 Flag as unhelpful</button>
-      </div>
-      <div class="flag-form" id="flagFormHybrid" style="display:none">
-        <textarea id="flagExplHybrid" placeholder="What was incorrect or missing?" rows="3"></textarea>
-        <div style="display:flex;gap:8px;margin-top:6px">
-          <button class="flag-submit" onclick="submitFlag('hybrid')">Submit</button>
-          <button class="flag-cancel" onclick="hideFlagForm('hybrid')">Cancel</button>
-        </div>
-        <div class="flag-success" id="flagSuccessHybrid" style="display:none">✅ Flagged for admin review</div>
-      </div>
-      <span id="hybridAnswer" style="display:none">${esc(result.answer)}</span>
-      <button class="log-toggle" data-label=" hybrid step log" onclick="toggleLog('hybridLog')">▸ Show hybrid step log</button>
-      <div class="log-body" id="hybridLog">${logItems}</div>`;
-  }
-
-  // ── SharePoint renderer ────────────────────────────────────────────────────
-  function renderSharePoint(result) {
-    const steps = result.steps || [];
-    const logItems = steps.map(s => {
-      const searches = (s.searches || []).map(sr =>
-        `<div class="sp-log-result">🔎 "${esc(sr.term)}" → ${sr.error
-          ? `<span style="color:var(--error)">error: ${esc(sr.error)}</span>`
-          : `${sr.hits} hit(s), ${sr.new_unique} new`
-        }</div>`
-      ).join('');
-      const results = (s.results || []).map(r =>
-        `<div class="sp-log-result">📄 <strong>${esc(r.title)}</strong>
-           <span style="font-size:.7rem"> · ${esc(r.file_type || '')}</span>
-         </div>`
-      ).join('');
-      const preview = s.content_preview ? `<div class="sp-log-preview">"${esc(s.content_preview)}"</div>` : '';
-      return `<div class="sp-log-item">
-        <div class="sp-log-label">Step ${s.step}</div>
-        <div class="sp-log-detail">${esc(s.action)}</div>
-        ${s.url ? `<div class="sp-log-url">↳ <a href="${esc(s.url)}" target="_blank">${esc(s.url)}</a></div>` : ''}
-        ${searches}${results}${preview}
-        ${s.chars_read ? `<div class="sp-log-detail">${s.chars_read.toLocaleString()} chars read</div>` : ''}
-      </div>`;
-    }).join('');
-
-    const metaEl = document.getElementById('spMeta');
-    metaEl.style.display = 'block';
-    metaEl.innerHTML = `📁 <a href="${esc(result.folder)}" target="_blank">${esc(result.folder)}</a>`;
-
-    const spTok = (result.input_tokens || 0) + (result.output_tokens || 0);
-    const spCost = calcCost(result.input_tokens, result.output_tokens);
-    document.getElementById('spBody').innerHTML = `
-      <div class="stats-row">
-        <div class="stat">🔎 Found: <strong>${result.results_found}</strong></div>
-        <div class="stat">📄 Files: <strong>${result.files_read}</strong></div>
-        <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
-        ${spTok ? `<div class="stat">🪙 <strong>${formatTokens(spTok)}</strong> tok</div>` : ''}
-        ${spCost ? `<div class="stat">💲 <strong>${formatCost(spCost)}</strong></div>` : ''}
-      </div>
-      ${renderConfidence(result.confidence)}
-      <div class="answer-body">${md(result.answer)}</div>
-      <div class="export-row">
-        <button class="btn-copy" onclick="copyAnswer('spAnswer',this)">📋 Copy</button>
-        <button class="btn-export-md" onclick="downloadMd('spAnswer','SharePoint Loop')">⬇️ .md</button>
-        <button class="btn-flag" onclick="showFlagForm('sharepoint')">🚩 Flag as unhelpful</button>
-      </div>
-      <div class="flag-form" id="flagFormSharepoint" style="display:none">
-        <textarea id="flagExplSharepoint" placeholder="What was incorrect or missing?" rows="3"></textarea>
-        <div style="display:flex;gap:8px;margin-top:6px">
-          <button class="flag-submit" onclick="submitFlag('sharepoint')">Submit</button>
-          <button class="flag-cancel" onclick="hideFlagForm('sharepoint')">Cancel</button>
-        </div>
-        <div class="flag-success" id="flagSuccessSharepoint" style="display:none">✅ Flagged for admin review</div>
-      </div>
-      <span id="spAnswer" style="display:none">${esc(result.answer)}</span>
-      <button class="log-toggle" data-label=" SharePoint step log" onclick="toggleLog('spLog')">▸ Show SharePoint step log</button>
-      <div class="log-body" id="spLog">${logItems}</div>`;
+    // ── Technical Reference panel ──
+    document.getElementById('techRefBody').innerHTML = sections.techRef
+      ? `<div class="answer-body">${linkifyFilePaths(md(sections.techRef), branch)}</div>`
+      : `<div class="state-idle"><span class="icon">🔧</span><span>No technical reference in this response.</span></div>`;
   }
 
   // ── Pause-prompt dialog (shown when agentic loop hits a time threshold) ────
@@ -1156,237 +1033,104 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     });
   }
 
-  // ── Runners ────────────────────────────────────────────────────────────────
-  async function runLoop(loop) {
+  // ── Runner ──────────────────────────────────────────────────────────────
+  async function runSearch() {
     const query  = getQuery();
     const branch = getBranch();
     if (!query)  { setStatus('Please enter a question first.'); return; }
     if (!branch) { setStatus('Please select a branch first.'); return; }
 
-    const panelId = loop === 'agentic' ? 'agenticBody' : 'hybridBody';
-    const label   = loop === 'agentic' ? 'Agentic Loop' : 'Hybrid Loop';
-    const btnId   = loop === 'agentic' ? 'btnAgentic' : 'btnHybrid';
-
-    setLoading(panelId, label);
-    document.getElementById(btnId).disabled = true;
-    document.getElementById('btnAll').disabled = true;
-    setStatus('Running ' + label + ' against Cora ADO (' + branch + ')…');
-    state[loop] = null;
+    // Set all 3 panels to loading
+    setLoading('overviewBody', 'Searching');
+    document.getElementById('userGuideBody').innerHTML =
+      '<div class="state-loading"><div class="spinner"></div><span>Waiting for results…</span></div>';
+    document.getElementById('techRefBody').innerHTML =
+      '<div class="state-loading"><div class="spinner"></div><span>Waiting for results…</span></div>';
+    document.getElementById('btnSearch').disabled = true;
+    setStatus('Searching Cora ADO repository (' + branch + ')…');
+    state.agentic = null;
 
     try {
-      if (loop === 'agentic') {
-        // ── Polling approach: immune to Railway's ~300 s proxy timeout ──────
-        // 1. POST /api/agentic/start → job_id (returns instantly)
-        // 2. Poll /api/agentic/poll/<job_id> every 2 s for events
-        // 3. Stop when "done" or "error" event received
-        await new Promise(async (resolve, reject) => {
-          let jobId = null;
-          try {
-            const startResp = await fetch('/api/agentic/start', {
-              method:  'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ query, branch }),
-            });
-            const startData = await startResp.json();
-            if (!startResp.ok || startData.error) {
-              reject(new Error(startData.error || 'Failed to start agentic job'));
-              return;
-            }
-            jobId = startData.job_id;
-            _pauseJobId = jobId;
-          } catch (e) {
-            reject(e);
-            return;
-          }
-
-          // Poll loop — 2 s interval
-          const MAX_POLLS = 300;  // 300 × 2 s = 10 min hard ceiling
-          let polls = 0;
-          const doPoll = async () => {
-            polls++;
-            if (polls > MAX_POLLS) {
-              reject(new Error('Agentic loop timed out after 10 minutes.'));
-              return;
-            }
-            try {
-              const pollResp = await fetch('/api/agentic/poll/' + jobId);
-              const pollData = await pollResp.json();
-              let finished = false;
-              for (const evt of (pollData.events || [])) {
-                if (evt.type === 'pause_prompt') {
-                  showPausePrompt(evt);
-                } else if (evt.type === 'progress') {
-                  // Live step feedback — update loading text with current action
-                  const iterLabel = evt.iteration ? `Iter ${evt.iteration}` : '';
-                  const filesLabel = evt.files ? ` · ${evt.files} file${evt.files !== 1 ? 's' : ''} read` : '';
-                  updateLoadingStep('agenticBody', `${iterLabel}${filesLabel}\n${evt.text || ''}`);
-                } else if (evt.type === 'done') {
-                  const result = evt.result;
-                  state.agentic = result;
-                  renderAgentic(result);
-                  setStatus('Agentic Loop complete.');
-                  finished = true;
-                  resolve();
-                  break;
-                } else if (evt.type === 'error') {
-                  setError(panelId, evt.message);
-                  setStatus('Agentic Loop failed: ' + evt.message);
-                  finished = true;
-                  reject(new Error(evt.message));
-                  break;
-                }
-                // ping events — just keep polling
-              }
-              if (!finished) {
-                setTimeout(doPoll, 2000);
-              }
-            } catch (e) {
-              // Network blip — keep retrying up to the ceiling
-              setTimeout(doPoll, 2000);
-            }
-          };
-          setTimeout(doPoll, 2000);
-        });
-      } else {
-        // ── Hybrid loop: simple POST ─────────────────────────────────────────
-        // Show phase-based messages while waiting (hybrid has no event stream)
-        const hybridPhases = [
-          [0,  'Phase 1 — Extracting search terms…'],
-          [4,  'Phase 1 — Searching across code layers…'],
-          [12, 'Phase 2 — Reading and following reference chain…'],
-          [30, 'Phase 2 — Continuing deep file reads…'],
-          [55, 'Phase 3 — Pass 1: synthesising draft answer…'],
-          [80, 'Phase 3 — Pass 2: extending with remaining files…'],
-        ];
-        const hybridStart = Date.now();
-        const hybridTimer = setInterval(() => {
-          const elapsed = (Date.now() - hybridStart) / 1000;
-          const phase = [...hybridPhases].reverse().find(([t]) => elapsed >= t);
-          if (phase) updateLoadingStep('hybridBody', phase[1]);
-        }, 1000);
-
+      await new Promise(async (resolve, reject) => {
+        let jobId = null;
         try {
-          const resp = await fetch('/api/' + loop, {
+          const startResp = await fetch('/api/agentic/start', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ query, branch }),
           });
-          const data = await resp.json();
-          if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
-          state[loop] = data.result;
-          renderHybrid(data.result);
-          setStatus(label + ' complete.');
-        } finally {
-          clearInterval(hybridTimer);
+          const startData = await startResp.json();
+          if (!startResp.ok || startData.error) {
+            reject(new Error(startData.error || 'Failed to start search'));
+            return;
+          }
+          jobId = startData.job_id;
+          _pauseJobId = jobId;
+        } catch (e) {
+          reject(e);
+          return;
         }
+
+        const MAX_POLLS = 300;
+        let polls = 0;
+        const doPoll = async () => {
+          polls++;
+          if (polls > MAX_POLLS) {
+            reject(new Error('Search timed out after 10 minutes.'));
+            return;
+          }
+          try {
+            const pollResp = await fetch('/api/agentic/poll/' + jobId);
+            const pollData = await pollResp.json();
+            let finished = false;
+            for (const evt of (pollData.events || [])) {
+              if (evt.type === 'pause_prompt') {
+                showPausePrompt(evt);
+              } else if (evt.type === 'progress') {
+                const iterLabel = evt.iteration ? `Iter ${evt.iteration}` : '';
+                const filesLabel = evt.files ? ` · ${evt.files} file${evt.files !== 1 ? 's' : ''} read` : '';
+                updateLoadingStep('overviewBody', `${iterLabel}${filesLabel}\n${evt.text || ''}`);
+              } else if (evt.type === 'done') {
+                const result = evt.result;
+                state.agentic = result;
+                renderAgentic(result);
+                setStatus('Search complete.');
+                finished = true;
+                resolve();
+                break;
+              } else if (evt.type === 'error') {
+                setError('overviewBody', evt.message);
+                document.getElementById('userGuideBody').innerHTML =
+                  '<div class="state-error">⚠️ Search failed</div>';
+                document.getElementById('techRefBody').innerHTML =
+                  '<div class="state-error">⚠️ Search failed</div>';
+                setStatus('Search failed: ' + evt.message);
+                finished = true;
+                reject(new Error(evt.message));
+                break;
+              }
+            }
+            if (!finished) {
+              setTimeout(doPoll, 2000);
+            }
+          } catch (e) {
+            setTimeout(doPoll, 2000);
+          }
+        };
+        setTimeout(doPoll, 2000);
+      });
+    } catch (e) {
+      if (!state.agentic) {
+        setError('overviewBody', e.message);
+        document.getElementById('userGuideBody').innerHTML =
+          '<div class="state-error">⚠️ ' + esc(e.message) + '</div>';
+        document.getElementById('techRefBody').innerHTML =
+          '<div class="state-error">⚠️ ' + esc(e.message) + '</div>';
       }
-    } catch (e) {
-      if (!state[loop]) setError(panelId, e.message);
-      setStatus(label + ' failed: ' + e.message);
+      setStatus('Search failed: ' + e.message);
     } finally {
-      document.getElementById(btnId).disabled = false;
-      document.getElementById('btnAll').disabled = false;
+      document.getElementById('btnSearch').disabled = false;
       document.getElementById('pauseDialog').style.display = 'none';
-      checkShowSynthesize();
-    }
-  }
-
-  async function runSharePoint() {
-    const query = getQuery();
-    if (!query) { setStatus('Please enter a question first.'); return; }
-
-    document.getElementById('spBody').innerHTML =
-      `<div class="state-loading"><div class="spinner"></div><span>Searching SharePoint knowledge base…</span></div>`;
-    const metaEl = document.getElementById('spMeta');
-    metaEl.style.display = 'none';
-    metaEl.textContent = '';
-    document.getElementById('btnSharePoint').disabled = true;
-    setStatus('Searching SharePoint Confluence Content for AI folder…');
-
-    try {
-      const resp = await fetch('/api/sharepoint', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ query }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
-      state.sharepoint = data.result;
-      renderSharePoint(data.result);
-      setStatus('SharePoint search complete.');
-    } catch (e) {
-      document.getElementById('spBody').innerHTML =
-        `<div class="state-error">⚠️ ${esc(e.message)}</div>`;
-      setStatus('SharePoint search failed: ' + e.message);
-    } finally {
-      document.getElementById('btnSharePoint').disabled = false;
-      checkShowSynthesize();
-    }
-  }
-
-  async function runAll() {
-    const query  = getQuery();
-    const branch = getBranch();
-    if (!query)  { setStatus('Please enter a question first.'); return; }
-    if (!branch) { setStatus('Please select a branch first.'); return; }
-
-    setAllAdoBtnsDisabled(true);
-    state.agentic = null;
-    state.hybrid = null;
-    setStatus('Running all three searches simultaneously…');
-
-    await Promise.all([
-      runLoop('agentic'),
-      runLoop('hybrid'),
-      runSharePoint(),
-    ]);
-
-    setAllAdoBtnsDisabled(false);
-    checkShowCompare();
-    setStatus('All searches complete.');
-  }
-
-  function checkShowSynthesize() {
-    const hasAny = state.agentic || state.hybrid || state.sharepoint;
-    if (hasAny) {
-      document.getElementById('btnSynthesize').style.display = 'flex';
-    }
-  }
-
-  async function runSynthesize() {
-    const hasAny = state.agentic || state.hybrid || state.sharepoint;
-    if (!hasAny) return;
-    const panel = document.getElementById('synthesisPanel');
-    panel.style.display = 'block';
-    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    document.getElementById('synthesisText').innerHTML = '';
-    document.getElementById('synthesisLoading').style.display = 'flex';
-    document.getElementById('btnSynthesize').disabled = true;
-    setStatus('Synthesizing all search results…');
-    try {
-      const resp = await fetch('/api/synthesize', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          query:           getQuery(),
-          agentic_result:  state.agentic    || null,
-          hybrid_result:   state.hybrid     || null,
-          sp_result:       state.sharepoint || null,
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
-      document.getElementById('synthesisText').innerHTML = md(data.synthesis);
-      document.getElementById('synthesisRaw').textContent = data.synthesis;
-      document.getElementById('synthesisExportRow').style.display = 'flex';
-      setStatus('Synthesis complete.');
-    } catch (e) {
-      document.getElementById('synthesisText').innerHTML =
-        `<div class="state-error">⚠️ ${esc(e.message)}</div>`;
-      setStatus('Synthesis failed: ' + e.message);
-    } finally {
-      document.getElementById('synthesisLoading').style.display = 'none';
-      document.getElementById('btnSynthesize').disabled = false;
     }
   }
 
@@ -1482,7 +1226,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   const ADM_TABLE_LABELS = {
     search_events:    'Search Events',
-    synthesis_events: 'Synthesis Events',
     flagged_queries:  'Flagged Queries'
   };
 
@@ -1519,7 +1262,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   }
 
   async function admLoadAll() {
-    for (const t of ['search_events', 'synthesis_events']) {
+    for (const t of ['search_events']) {
       try {
         const res  = await fetch(`/admin/data/${t}`);
         const data = await res.json();
@@ -1555,7 +1298,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   function admUpdateSummary() {
     const searches = admTableData.search_events    || [];
-    const synths   = admTableData.synthesis_events || [];
+
 
     document.getElementById('adm-stat-total').textContent = searches.length;
     const uniqueQ = new Set(searches.map(r => (r.query || '').trim().toLowerCase())).size;
@@ -1578,10 +1321,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     document.getElementById('adm-stat-confidence-sub').textContent =
       searches.length ? `${highConf} of ${searches.length} runs` : '';
 
-    document.getElementById('adm-stat-synth').textContent = synths.length;
-    const synthOK = synths.filter(r => r.status === 'success').length;
-    document.getElementById('adm-stat-synth-sub').textContent =
-      synths.length ? `${synthOK} success` : 'none yet';
+
 
     // Token summary cards
     const tokRows = searches.filter(r => r.total_tokens > 0);
@@ -1598,14 +1338,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
       // Total cost across all searches + syntheses
       const totalSearchCost = tokRows.reduce((s, r) => s + calcCost(r.input_tokens, r.output_tokens), 0);
-      const synthRows = (admTableData.synthesis_events || []).filter(r => r.total_tokens > 0);
-      const totalSynthCost = synthRows.reduce((s, r) => s + calcCost(r.input_tokens, r.output_tokens), 0);
-      const totalCost = totalSearchCost + totalSynthCost;
+      const totalCost = totalSearchCost;
       document.getElementById('adm-stat-cost-total').textContent = totalCost < 0.01 ? '<$0.01' : '$' + totalCost.toFixed(2);
       const avgCostPerSearch = tokRows.length ? totalSearchCost / tokRows.length : 0;
       document.getElementById('adm-stat-cost-total-sub').textContent =
-        `avg ${avgCostPerSearch < 0.01 ? '<$0.01' : '$' + avgCostPerSearch.toFixed(2)} / search` +
-        (totalSynthCost > 0 ? ` + $${totalSynthCost.toFixed(2)} synth` : '');
+        `avg ${avgCostPerSearch < 0.01 ? '<$0.01' : '$' + avgCostPerSearch.toFixed(2)} / search`;
     }
 
     function loopStats(type, runsEl, filesEl, thirdEl, thirdKey, timeEl, tokEl, costEl, errorsEl) {
@@ -1625,7 +1362,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       document.getElementById(errorsEl).textContent = rows.filter(r => r.status === 'error').length;
     }
     loopStats('agentic',    'adm-ag-runs', 'adm-ag-files', 'adm-ag-iters', 'iterations', 'adm-ag-time', 'adm-ag-tokens', 'adm-ag-cost', 'adm-ag-errors');
-    loopStats('sharepoint', 'adm-sp-runs', 'adm-sp-files', 'adm-sp-time', 'duration_sec', 'adm-sp-time', 'adm-sp-tokens', 'adm-sp-cost', 'adm-sp-errors');
+
   }
 
   function admSwitchTab(event, table) {
@@ -1780,95 +1517,28 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   // ── Info modals ────────────────────────────────────────────────────────────
   const INFO_CONTENT = {
     agentic: {
-      title: '⚡ Agentic Loop — How it works',
+      title: '🔍 Agentic Search — How it works',
       body: `
         <h4>Overview</h4>
-        <p>The Agentic Loop gives Claude full autonomy to search the <strong>CoraSystems/PPM</strong> Azure DevOps repository. Rather than following a fixed script, Claude decides what to search for next based on what it finds — just like a developer would.</p>
+        <p>The Agentic Search gives Claude full autonomy to search the <strong>CoraSystems/PPM</strong> Azure DevOps repository. Rather than following a fixed script, Claude decides what to search for next based on what it finds — just like a developer would.</p>
 
         <h4>Step-by-step process</h4>
         <ul>
           <li><strong>Round 1:</strong> Claude generates 3–5 search terms from your question and fires them all at the ADO Code Search API in parallel.</li>
           <li><strong>Rounds 2–12:</strong> After reading each file, Claude decides whether it needs more context — missing layers, deeper methods, related classes — and issues additional targeted searches.</li>
           <li><strong>Truncation handling:</strong> If a file is too large to read fully (&gt;15,000 chars), Claude searches by the specific method or class name to retrieve the exact snippet at its actual location.</li>
-          <li><strong>Final answer:</strong> Once confident (or at the 12-round cap), Claude synthesises everything it read into a structured answer with code references.</li>
+          <li><strong>Final answer:</strong> Once confident (or at the 12-round cap), Claude synthesises everything it read into a structured answer split across three panels: Overview, User Guide, and Technical Reference.</li>
         </ul>
 
         <h4>What it searches</h4>
         <p>Exclusively the <strong>CoraSystems/PPM</strong> repo on the branch you selected. No external sources, documentation, or web results.</p>
 
-        <hr class="info-divider"/>
-        <h4>Agentic vs Hybrid Loop</h4>
-        <table class="compare-table">
-          <thead><tr><th></th><th>⚡ Agentic</th><th>🔀 Hybrid</th></tr></thead>
-          <tbody>
-            <tr><td><strong>Strategy</strong></td><td>Fully iterative — Claude decides each step</td><td>Structured search, then adaptive reading</td></tr>
-            <tr><td><strong>Adaptability</strong></td><td>Highest — can pivot at any step</td><td>High — adaptive in Phase 2 with upfront candidate pool</td></tr>
-            <tr><td><strong>Coverage</strong></td><td>Deep — follows full reference chain</td><td>Broad + deep — layer enforcement + reference chain</td></tr>
-            <tr><td><strong>Speed</strong></td><td>Slower — 60–120 s typical</td><td>Medium — 40–80 s typical</td></tr>
-            <tr><td><strong>Best for</strong></td><td>Complex, multi-layer traces where search terms are unclear</td><td>Most questions — balanced depth, speed, and coverage</td></tr>
-          </tbody>
-        </table>
-        <p style="font-size:.8rem;color:var(--muted)">Both loops use the same ADO Code Search and file-reading APIs against the same repository branch.</p>
-      `
-    },
-    hybrid: {
-      title: '🔀 Hybrid Loop — How it works',
-      body: `
-        <h4>Overview</h4>
-        <p>The Hybrid Loop combines <strong>structured multi-term search</strong> to build a candidate pool with the <strong>Agentic Loop's adaptive reference-chain reading</strong> — then a single clean synthesis pass.</p>
-
-        <h4>Step-by-step process</h4>
+        <h4>Result panels</h4>
         <ul>
-          <li><strong>Phase 1 — Structured search:</strong> Claude extracts 4–7 search terms and runs them all against ADO Code Search with camelCase fallbacks and layer-coverage enforcement .</li>
-          <li><strong>Phase 2 — Adaptive reading (up to 10 files):</strong> Claude is shown the ranked candidate pool and reads one file at a time. After each file, it examines the code for imports, method calls, and class names, then decides: <em>read a known candidate</em>, <em>search for a newly discovered class</em>, or <em>stop</em>. This follows the actual call chain rather than guessing file names upfront.</li>
-          <li><strong>Phase 3 — Single synthesis:</strong> Once the reference chain is covered, one structured synthesis pass produces the final answer.</li>
+          <li><strong>📋 Overview:</strong> A plain-English explanation that any stakeholder can understand — no code, no file paths.</li>
+          <li><strong>📘 User Guide:</strong> Step-by-step instructions for navigating to and using the feature in Cora PPM.</li>
+          <li><strong>🔧 Technical Reference:</strong> Full developer-facing detail — execution flow, code snippets, file inventory, and conditional logic.</li>
         </ul>
-
-        <h4>Why this matters</h4>
-        <p>Picking files before reading code often misses the Service or Repository layer. The Hybrid Loop solves this: broad coverage from Phase 1, precise call-chain reading in Phase 2, and a hard cap that prevents over-searching.</p>
-
-        <hr class="info-divider"/>
-        <h4>Agentic vs Hybrid</h4>
-        <table class="compare-table">
-          <thead><tr><th></th><th>⚡ Agentic</th><th>🔀 Hybrid</th></tr></thead>
-          <tbody>
-            <tr><td><strong>Search strategy</strong></td><td>Reactive — searches based on what it reads</td><td>Upfront broad search, then adaptive follow-up</td></tr>
-            <tr><td><strong>Reading strategy</strong></td><td>Adaptive — picks next file based on code content</td><td>Adaptive — follows reference chain one file at a time</td></tr>
-            <tr><td><strong>Layer coverage</strong></td><td>High — follows imports and method calls</td><td>High — reference chain + layer enforcement</td></tr>
-            <tr><td><strong>Speed</strong></td><td>Slower (60–120 s)</td><td>Medium (40–80 s)</td></tr>
-            <tr><td><strong>Best for</strong></td><td>Deep, multi-layer traces where search direction is unclear</td><td>Most questions — balances depth, speed, and coverage</td></tr>
-          </tbody>
-        </table>
-        <p style="font-size:.8rem;color:var(--muted)">Both loops use the same ADO Code Search and file-reading APIs against the same repository branch.</p>
-      `
-    },
-    sharepoint: {
-      title: '🔷 SharePoint KB — How it works',
-      body: `
-        <h4>Overview</h4>
-        <p>The SharePoint KB loop searches the <strong>PS Confluence knowledge base</strong> that has been exported to SharePoint. It surfaces user-facing documentation, guides, and support articles — it does <em>not</em> search source code.</p>
-
-        <h4>Step-by-step process</h4>
-        <ul>
-          <li><strong>Step 1 — Search:</strong> Your question is sent to the SharePoint full-text search endpoint, targeting the KB document library.</li>
-          <li><strong>Step 2 — Retrieve documents:</strong> The top matching documents are fetched and their content extracted.</li>
-          <li><strong>Step 3 — Synthesize:</strong> Claude summarises the relevant sections from each document into a coherent answer, citing the source documents.</li>
-        </ul>
-
-        <h4>What it searches</h4>
-        <p>Only the <strong>PS Confluence knowledge base</strong> content exported to SharePoint. This includes how-to guides, feature documentation, and support articles — not the PPM source code.</p>
-
-        <h4>When to use it</h4>
-        <ul>
-          <li>User-facing feature explanations and workflows</li>
-          <li>Support and troubleshooting guidance</li>
-          <li>Business process documentation</li>
-          <li>Questions about <em>how to use</em> a feature (vs. how it is implemented)</li>
-        </ul>
-
-        <hr class="info-divider"/>
-        <h4>How it compares to the ADO loops</h4>
-        <p>The Agentic and Hybrid loops both search the <strong>source code repository</strong> and are best for implementation questions. The SharePoint KB loop searches <strong>documentation</strong> and is best for functional or user-facing questions. Running all and using <strong>Synthesize All</strong> gives the most complete picture.</p>
       `
     }
   };
@@ -1961,7 +1631,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     const queryEl = document.getElementById('queryInput') || document.getElementById('q');
     const query = queryEl ? queryEl.value : '';
     // Get the answer text from the hidden span
-    const answerMap = {agentic:'agAnswer', hybrid:'hybridAnswer', sharepoint:'spAnswer'};
+    const answerMap = {agentic:'agAnswer'};
     const answerEl = document.getElementById(answerMap[loop]);
     const answer = answerEl ? answerEl.textContent : '';
     fetch('/api/flag', {
