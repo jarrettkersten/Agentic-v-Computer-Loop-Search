@@ -798,18 +798,28 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         "Also check the snippets already returned in earlier search results — they may already\n"
         "contain the code you need at the precise offset in the file.\n\n"
         "═══ ANSWER REQUIREMENTS ═══\n"
-        "Your final answer MUST include ALL of the following sections:\n\n"
-        "## Overview\n"
-        "Plain-language summary of what the feature/function does and why it exists.\n\n"
-        "## How It Works — Step by Step\n"
-        "Walk through the COMPLETE execution flow: user action → page event → service call → "
-        "data access → database → return path. Name each method and file at every step.\n"
-        "Format: 'When X happens, `FileName.vb` calls `MethodName()` which does Y, then passes to...'\n\n"
-        "## Key Code\n"
-        "Show the most important method(s) with file path and brief explanation.\n"
-        "Use: `FileName.vb` → `MethodName()` — what it does\n\n"
-        "## Files Involved\n"
-        "List every file you read, with its role: UI / CodeBehind / Service / Repository / Helper.\n\n"
+        "Your answer MUST use EXACTLY this two-section structure:\n\n"
+        "## Answer\n"
+        "Write a complete, professional, authoritative response for the end user. "
+        "Use plain language — no file paths, no code snippets, no method names. "
+        "Explain what the feature/function does, why it exists, and how it works from the "
+        "user's perspective. A non-technical stakeholder should fully understand this section.\n\n"
+        "---\n\n"
+        "## Technical Reference\n"
+        "*For dev/product team review*\n\n"
+        "Full technical detail for developers to verify:\n"
+        "  - Complete execution flow from the ADO source (every method, file, layer in order).\n"
+        "    After EACH step, add an inline annotation showing which Answer claim it explains:\n"
+        "    e.g. `TimesheetService.SaveTimesheet()` in `TimesheetService.vb` (line 87) → *Supports: \"data is saved via a service layer\"*\n"
+        "  - Key code snippets in fenced code blocks. Each snippet MUST be preceded by:\n"
+        "    `File: path/to/File.ext, lines N–M` and annotated with which Answer claim it supports.\n"
+        "  - File inventory with each file's role (UI / CodeBehind / Service / Repository / Helper / SQL) "
+        "and which Answer statement(s) it backs.\n"
+        "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: Explicitly call out ANY conditional branches,\n"
+        "    feature flags, config-driven paths, or permission checks that affect the behaviour\n"
+        "    described in the Answer. Format each as:\n"
+        "    > ⚠️ **Conditional:** `If SomeFlag = True` in `File.ext` (line N) — affects: \"[Answer claim]\"\n"
+        "  - Any gaps or missing layers identified during the search.\n\n"
         "NEVER use general knowledge. Only answer from files you have read. "
         "If you cannot find a file you need, say which file and why it matters, then continue "
         "with what you have rather than stopping early.\n\n"
@@ -1044,15 +1054,21 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
             system=(
                 "You are a senior Cora PPM code analyst. Answer ONLY from the ADO repository "
                 "context provided — never from general knowledge.\n\n"
-                "Your answer MUST follow this structure:\n\n"
-                "## Overview\n"
-                "Plain-language summary of what the feature/function does.\n\n"
-                "## How It Works — Step by Step\n"
-                "Trace the COMPLETE execution flow naming every method and file at each step.\n\n"
-                "## Key Code\n"
-                "Show the most important method bodies with file paths in fenced code blocks.\n\n"
-                "## Files Involved\n"
-                "List every file referenced with its role (UI / CodeBehind / Service / Repository).\n\n"
+                "Your answer MUST use EXACTLY this two-section structure:\n\n"
+                "## Answer\n"
+                "Write a complete, professional, authoritative response for the end user. "
+                "Use plain language — no file paths, no code snippets, no method names. "
+                "Explain what the feature/function does, why it exists, and how it works from the "
+                "user's perspective. A non-technical stakeholder should fully understand this section.\n\n"
+                "---\n\n"
+                "## Technical Reference\n"
+                "*For dev/product team review*\n\n"
+                "Full technical detail for developers to verify:\n"
+                "  - Complete execution flow (every method, file, layer in order) with inline annotations.\n"
+                "  - Key code snippets in fenced code blocks with file paths.\n"
+                "  - File inventory with each file's role and which Answer statement(s) it backs.\n"
+                "  - Any conditional logic, feature flags, or permission checks.\n"
+                "  - Any gaps or missing layers identified.\n\n"
                 "If context is insufficient to cover all layers, state clearly which layer is missing "
                 "and what additional files would be needed."
             ),
@@ -1444,23 +1460,32 @@ def run_hybrid_loop(query, branch):
     SYNTH_SYSTEM = (
         "You are a senior Cora PPM code analyst. Answer EXCLUSIVELY from the repository files "
         "provided — never from general knowledge.\n\n"
-        "Your answer MUST follow this structure:\n\n"
-        "## Overview\n"
-        "1-2 sentence plain-language summary of what the feature/function does and why it exists.\n\n"
-        "## How It Works — Step by Step\n"
-        "Trace the COMPLETE execution flow from user action to database and back:\n"
-        "  - Name EVERY method called, in order, with the file it lives in\n"
+        "Your answer MUST use EXACTLY this two-section structure:\n\n"
+        "## Answer\n"
+        "Write a complete, professional, authoritative response for the end user. "
+        "Use plain language — no file paths, no code snippets, no method names. "
+        "Explain what the feature/function does, why it exists, and how it works from the "
+        "user's perspective. A non-technical stakeholder should fully understand this section.\n\n"
+        "---\n\n"
+        "## Technical Reference\n"
+        "*For dev/product team review*\n\n"
+        "Full technical detail for developers to verify:\n"
+        "  - Complete execution flow from user action to database and back (every method, file, layer in order).\n"
+        "    After EACH step, add an inline annotation showing which Answer claim it explains:\n"
+        "    e.g. `TimesheetService.SaveTimesheet()` in `TimesheetService.vb` (line 87) → *Supports: \"data is saved via a service layer\"*\n"
+        "  - Name EVERY method called, in order, with the file it lives in.\n"
         "  - Describe what each step does in concrete terms — parameters passed, conditions checked, "
-        "data transformed\n"
-        "  - Do NOT group files together or summarise at a high level. Go file by file, layer by layer.\n"
-        "  - Example: 'Clicking Save triggers `btnSave_Click` in `Timesheet.aspx.vb`, which calls "
-        "`TimesheetService.SaveTimesheet()`, which validates hours via `ValidateHours()` then "
-        "calls `TimesheetRepository.Insert()` which executes `sp_InsertTimesheetRow`'\n\n"
-        "## Key Code\n"
-        "Quote the most important method bodies (the actual code, not paraphrases), each preceded by "
-        "its file path. Use fenced code blocks. Include at least one code block per layer.\n\n"
-        "## Files Involved\n"
-        "List every file you read with its role: UI / CodeBehind / Service / Repository / Helper / SQL.\n\n"
+        "data transformed.\n"
+        "  - Key code snippets in fenced code blocks. Each snippet MUST be preceded by:\n"
+        "    `File: path/to/File.ext, lines N–M` and annotated with which Answer claim it supports.\n"
+        "    Include at least one code block per layer.\n"
+        "  - File inventory with each file's role (UI / CodeBehind / Service / Repository / Helper / SQL) "
+        "and which Answer statement(s) it backs.\n"
+        "  - ⚠️ CONDITIONAL LOGIC & FEATURE TOGGLES: Explicitly call out ANY conditional branches,\n"
+        "    feature flags, config-driven paths, or permission checks that affect the behaviour\n"
+        "    described in the Answer. Format each as:\n"
+        "    > ⚠️ **Conditional:** `If SomeFlag = True` in `File.ext` (line N) — affects: \"[Answer claim]\"\n"
+        "  - Any gaps or missing layers identified.\n\n"
         "DEPTH REQUIREMENT: You have been given multiple files across multiple layers. You MUST go deep "
         "on each one — cite specific method signatures, parameters, conditional logic, and return values. "
         "A shallow answer that only covers the UI layer or summarises without specifics is NOT acceptable. "
@@ -2171,13 +2196,20 @@ def run_sharepoint_loop(query: str) -> dict:
             "You are a Cora PPM documentation analyst. "
             "Answer EXCLUSIVELY from the SharePoint documents provided below. "
             "Do NOT use general knowledge or external sources.\n\n"
-            "Your answer MUST:\n"
-            "1. Explain the topic clearly in plain language — write like a help article\n"
-            "2. Use markdown headers (##), bullet points, and clear sections\n"
-            "3. Include relevant quotes or specific details from the source documents\n"
-            "4. After each key claim, note the document title it came from in parentheses\n"
-            "5. End with a '## Sources' section listing each document title as a "
-            "   markdown link using its Source URL\n\n"
+            "Your answer MUST use EXACTLY this two-section structure:\n\n"
+            "## Answer\n"
+            "Write a complete, professional, authoritative response for the end user. "
+            "Use plain language — write like a help article. Explain the topic clearly with "
+            "markdown headers, bullet points, and clear sections. "
+            "A non-technical stakeholder should fully understand this section.\n\n"
+            "---\n\n"
+            "## Technical Reference\n"
+            "*For dev/product team review*\n\n"
+            "Supporting detail from the source documents:\n"
+            "  - Include relevant quotes or specific details from the source documents.\n"
+            "  - After each key claim, note the document title it came from in parentheses.\n"
+            "  - List each source document title as a markdown link using its Source URL.\n"
+            "  - Note any gaps where the documents do not contain enough information.\n\n"
             "If the documents do not contain enough information, say so explicitly."
         ),
         messages=[{
@@ -2730,154 +2762,6 @@ def api_clarify():
 
 
 # ---------------------------------------------------------------------------
-# Follow-up questions within a session
-# ---------------------------------------------------------------------------
-
-@app.route("/api/followup", methods=["POST"])
-def api_followup():
-    """
-    Answer a follow-up question using only the context already gathered in this
-    session (the answers from prior search loops). Does NOT re-run ADO searches.
-    """
-    data              = request.get_json() or {}
-    original_question = data.get("original_question", "").strip()
-    followup_question = data.get("followup_question", "").strip()
-    answers           = data.get("answers", {})          # {agentic, hybrid, sharepoint, synthesis}
-    previous_followups = data.get("previous_followups", [])  # [{q, a}, ...]
-
-    if not followup_question:
-        return jsonify({"error": "No follow-up question provided."}), 400
-
-    # Build context from whichever answers are available
-    context_parts = []
-    for key, label in [
-        ("synthesis",   "Comprehensive Synthesis (all sources)"),
-        ("agentic",     "Agentic Loop answer"),
-        ("sharepoint",  "SharePoint KB answer"),
-    ]:
-        ans = answers.get(key)
-        if ans and isinstance(ans, dict):
-            text = ans.get("answer") or ans.get("synthesis") or ""
-        elif isinstance(ans, str):
-            text = ans
-        else:
-            text = ""
-        if text.strip():
-            context_parts.append(f"=== {label} ===\n{text.strip()}")
-
-    if not context_parts:
-        return jsonify({"error": "No search results available to answer follow-up questions. Run at least one search first."}), 400
-
-    # Build conversation history from previous follow-ups
-    history_lines = []
-    for i, fu in enumerate(previous_followups, 1):
-        history_lines.append(f"Follow-up {i}: {fu.get('q','')}\nAnswer {i}: {fu.get('a','')}")
-
-    history_section = ("\n\n--- Previous follow-ups ---\n" + "\n\n".join(history_lines)) if history_lines else ""
-
-    try:
-        client = get_client()
-        resp   = client.messages.create(
-            model=MODEL,
-            max_tokens=2000,
-            system=(
-                "You are a Cora PPM analyst answering follow-up questions within an existing Q&A session. "
-                "You MUST answer ONLY from the search results provided below — never from general knowledge.\n\n"
-                "Your answer MUST use EXACTLY this two-section structure:\n\n"
-                "## Answer\n"
-                "Direct, plain-language answer to the follow-up question, drawing on the search results below.\n\n"
-                "---\n\n"
-                "## Technical Reference\n"
-                "*For dev/product team review*\n\n"
-                "Any specific file paths, method names, code references, or document sources from the "
-                "search results that support this answer. If nothing specific applies, write 'See prior search results.'"
-            ),
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"Original question: {original_question}\n\n"
-                    f"Search results from this session:\n"
-                    + "\n\n".join(context_parts)
-                    + history_section
-                    + f"\n\n---\nNew follow-up question: {followup_question}"
-                ),
-            }],
-        )
-        answer = _clean_answer(resp.content[0].text)
-        return jsonify({"success": True, "answer": answer})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-# ---------------------------------------------------------------------------
-# Session export  (returns a Markdown file)
-# ---------------------------------------------------------------------------
-
-@app.route("/api/session-export", methods=["POST"])
-def api_session_export():
-    """
-    Assemble the full session (original Q, all loop answers, synthesis,
-    all follow-ups) into a single Markdown document and return it as a
-    downloadable .md file.
-    """
-    data              = request.get_json() or {}
-    original_question = data.get("original_question", "").strip()
-    answers           = data.get("answers", {})
-    followups         = data.get("followups", [])    # [{q, a}, ...]
-    branch            = data.get("branch", "")
-
-    lines = [
-        f"# Cora PPM Q&A Session Export",
-        f"",
-        f"**Question:** {original_question}",
-    ]
-    if branch:
-        lines.append(f"**Branch:** `{branch}`")
-    lines += ["", "---", ""]
-
-    # Loop answers
-    for key, label, icon in [
-        ("synthesis",  "Comprehensive Synthesis",  "✨"),
-        ("agentic",    "Agentic Loop",              "⚡"),
-
-        ("sharepoint", "SharePoint KB",             "🔷"),
-    ]:
-        ans = answers.get(key)
-        if ans and isinstance(ans, dict):
-            text = ans.get("answer") or ans.get("synthesis") or ""
-            conf = ans.get("confidence", {}).get("level", "") if isinstance(ans.get("confidence"), dict) else ""
-        elif isinstance(ans, str):
-            text = ans
-            conf = ""
-        else:
-            text = ""
-            conf = ""
-        if not text.strip():
-            continue
-        conf_str = f" · Confidence: {conf}" if conf else ""
-        lines += [f"## {icon} {label}{conf_str}", "", text.strip(), "", "---", ""]
-
-    # Follow-up questions
-    if followups:
-        lines += ["## 💬 Follow-up Questions", ""]
-        for i, fu in enumerate(followups, 1):
-            lines += [
-                f"### Follow-up {i}: {fu.get('q', '')}",
-                "",
-                fu.get("a", ""),
-                "",
-            ]
-
-    md_content = "\n".join(lines)
-
-    safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in original_question[:60]).strip()
-    filename  = f"CoPPM_QA_{safe_name or 'session'}.md"
-
-    return Response(
-        md_content,
-        mimetype="text/markdown",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
 
 # ---------------------------------------------------------------------------

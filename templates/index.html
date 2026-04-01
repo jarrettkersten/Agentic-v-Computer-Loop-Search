@@ -109,8 +109,6 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .confidence .conf-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
 
 /* ── Answer label ── */
-.answer-label{display:flex;align-items:center;gap:8px;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;padding-bottom:10px;border-bottom:1.5px solid var(--border)}
-.answer-label .pill{background:var(--bg);border:1px solid var(--border);border-radius:99px;font-size:.68rem;color:var(--muted);padding:2px 9px}
 
 /* ── Markdown answer ── */
 .answer-body{font-size:.9rem;line-height:1.75;color:var(--text)}
@@ -231,32 +229,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .btn-copy:hover{background:var(--bg);border-color:#b0bfd0;color:var(--text)}
 .btn-copy.copied{background:var(--success-bg);border-color:#86efac;color:var(--success)}
 
-/* ── Follow-up questions section ── */
-.followup-section{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);margin-top:4px;display:none}
-.followup-header{padding:14px 22px;display:flex;align-items:center;gap:10px;border-bottom:1.5px solid var(--border);cursor:pointer;user-select:none}
-.followup-header h2{font-size:.93rem;font-weight:700;color:var(--text);flex:1}
-.followup-counter{font-size:.75rem;font-weight:700;color:var(--muted);background:var(--bg);border:1.5px solid var(--border);border-radius:99px;padding:2px 10px}
-.followup-body{padding:18px 22px}
-.followup-input-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:16px}
-.followup-input-row textarea{flex:1;padding:10px 14px;border-radius:8px;border:1.5px solid var(--border);font-size:.86rem;font-family:inherit;color:var(--text);resize:vertical;min-height:50px;max-height:120px;transition:border-color .15s}
-.followup-input-row textarea:focus{outline:none;border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.1)}
-.followup-input-row textarea:disabled{background:var(--bg);color:var(--muted)}
-.btn-followup-ask{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:.86rem;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;white-space:nowrap}
-.btn-followup-ask:hover:not(:disabled){background:var(--brand-dark)}
-.btn-followup-ask:disabled{opacity:.45;cursor:not-allowed}
-.followup-exhausted{font-size:.82rem;color:var(--muted);padding:8px 0;margin-bottom:14px}
-.fu-item{background:var(--bg);border-radius:10px;margin-bottom:12px;overflow:hidden;border:1.5px solid var(--border)}
-.fu-item-q{padding:12px 16px;font-size:.85rem;font-weight:600;color:var(--brand);cursor:pointer;display:flex;align-items:center;gap:8px}
-.fu-item-q .fu-num{background:var(--brand);color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0}
-.fu-item-q .fu-chevron{margin-left:auto;font-size:.7rem;color:var(--muted);transition:transform .2s}
-.fu-item.collapsed .fu-chevron{transform:rotate(-90deg)}
-.fu-item-a{padding:0 16px 14px}
-.fu-item.collapsed .fu-item-a{display:none}
-.fu-loading{padding:14px 16px;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.84rem}
-.session-export-row{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
-.session-export-row .se-label{font-size:.78rem;color:var(--muted);flex:1}
-.btn-session-export{background:#475569;color:#fff;border:none;border-radius:7px;padding:8px 18px;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;display:inline-flex;align-items:center;gap:6px}
-.btn-session-export:hover{background:#334155}
 
 /* ── Pause-prompt dialog ── */
 .pause-overlay{position:fixed;inset:0;background:rgba(10,20,40,.55);display:none;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(2px)}
@@ -546,27 +518,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
 </main>
 
-<!-- ── Follow-up questions section ── -->
-<div class="followup-section collapsible-panel" id="followupSection">
-  <div class="followup-header cp-header" onclick="toggleCpPanel('followupSection')">
-    <h2>💬 Session Follow-ups</h2>
-    <span class="followup-counter" id="fuCounter">0 / 3 used</span>
-    <span class="chevron" style="margin-left:auto">▼</span>
-  </div>
-  <div class="cp-body followup-body">
-    <div class="fu-list" id="fuList"></div>
-    <div class="followup-input-row" id="fuInputRow">
-      <textarea id="fuInput" placeholder="Ask a follow-up question about the results already retrieved…"
-        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();askFollowup()}"></textarea>
-      <button class="btn-followup-ask" id="fuBtn" onclick="askFollowup()">Ask ↗</button>
-    </div>
-    <div class="followup-exhausted" id="fuExhausted" style="display:none">Maximum 3 follow-ups reached for this session.</div>
-    <div class="session-export-row" id="sessionExportRow" style="display:none">
-      <button class="btn-export-md" onclick="exportSession()">⬇️ Export Full Session .md</button>
-      <span style="font-size:.76rem;color:var(--muted)">Exports your original question, all loop answers, and follow-ups</span>
-    </div>
-  </div>
-</div>
 
 <!-- ── Loop info modal ── -->
 <div class="info-modal-overlay" id="infoModalOverlay" onclick="closeInfoModal()">
@@ -907,123 +858,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     else if (_pendingAction === 'sharepoint') runSharePoint();
   }
 
-  // ── Follow-up questions ─────────────────────────────────────────────────────
-  const MAX_FOLLOWUPS = 3;
-  let _followups = [];   // [{q, a}]
-
-  function checkShowFollowup() {
-    if (state.agentic || state.hybrid || state.sharepoint) {
-      document.getElementById('followupSection').style.display = 'block';
-    }
-  }
-
-  async function askFollowup() {
-    if (_followups.length >= MAX_FOLLOWUPS) return;
-    const q   = document.getElementById('fuInput').value.trim();
-    if (!q) return;
-    const btn = document.getElementById('fuBtn');
-    const ta  = document.getElementById('fuInput');
-    btn.disabled = true;
-    ta.disabled  = true;
-    // Show inline loading placeholder
-    const list    = document.getElementById('fuList');
-    const loading = document.createElement('div');
-    loading.className = 'fu-loading';
-    loading.innerHTML = '<div class="spinner"></div><span>Answering from existing search context…</span>';
-    list.appendChild(loading);
-    setStatus('Getting follow-up answer…');
-    try {
-      const resp = await fetch('/api/followup', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          question:        q,
-          agentic_result:  state.agentic   || null,
-          hybrid_result:   state.hybrid    || null,
-          sp_result:       state.sharepoint || null,
-        }),
-      });
-      const data = await resp.json();
-      list.removeChild(loading);
-      if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
-      _followups.push({ q, a: data.answer });
-      renderFollowupAnswer(q, data.answer, _followups.length);
-      ta.value = '';
-      document.getElementById('sessionExportRow').style.display = 'flex';
-      setStatus('Follow-up answered.');
-      if (_followups.length >= MAX_FOLLOWUPS) {
-        document.getElementById('fuInputRow').style.display   = 'none';
-        document.getElementById('fuExhausted').style.display = 'block';
-      }
-    } catch (e) {
-      list.removeChild(loading);
-      setStatus('Follow-up failed: ' + e.message);
-    } finally {
-      btn.disabled = false;
-      ta.disabled  = false;
-      updateFuCounter();
-    }
-  }
-
-  function renderFollowupAnswer(q, a, num) {
-    const list = document.getElementById('fuList');
-    const item = document.createElement('div');
-    item.className = 'fu-item';
-    const rawId = 'fuRaw' + num;
-    item.innerHTML = `
-      <div class="fu-item-q" onclick="this.parentElement.classList.toggle('collapsed')">
-        <span class="fu-num">${num}</span>
-        ${esc(q)}
-        <span class="fu-chevron">▾</span>
-      </div>
-      <div class="fu-item-a">
-        <div class="answer-body">${md(a)}</div>
-        <div class="export-row">
-          <button class="btn-copy" onclick="copyAnswer('${rawId}',this)">📋 Copy</button>
-          <button class="btn-export-md" onclick="downloadMd('${rawId}','Follow-up ${num}')">⬇️ .md</button>
-        </div>
-        <span id="${rawId}" style="display:none">${esc(a)}</span>
-      </div>`;
-    list.appendChild(item);
-  }
-
-  function updateFuCounter() {
-    const used = _followups.length;
-    document.getElementById('fuCounter').textContent = used + ' / ' + MAX_FOLLOWUPS + ' used';
-  }
-
-  async function exportSession() {
-    const q = document.getElementById('queryInput').value.trim();
-    const btn = document.querySelector('#sessionExportRow .btn-export-md');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Exporting…'; }
-    try {
-      const resp = await fetch('/api/session-export', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          query:           q,
-          agentic_result:  state.agentic   || null,
-          hybrid_result:   state.hybrid    || null,
-          sp_result:       state.sharepoint || null,
-          followups:       _followups,
-        }),
-      });
-      if (!resp.ok) throw new Error('Export failed');
-      const blob  = await resp.blob();
-      const cd    = resp.headers.get('Content-Disposition') || '';
-      const match = cd.match(/filename[^;=\n]*=["']?([^"'\n]+)/);
-      const fname = match ? match[1] : 'session-export.md';
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = fname;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch (e) {
-      setStatus('Session export failed: ' + e.message);
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '⬇️ Export Full Session .md'; }
-    }
-  }
   // getBranch() is defined in the branch loader section above
   function setStatus(m){ document.getElementById('statusBar').textContent = m; }
 
@@ -1116,10 +950,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <div class="branch-tag">🌿 ${esc(result.branch)}</div>
       </div>
       ${renderConfidence(result.confidence)}
-      <div class="answer-label">
-        <span>Answer</span>
-        <span class="pill">ADO Repository Only</span>
-      </div>
       <div class="answer-body">${linkifyFilePaths(md(result.answer), result.branch)}</div>
       <div class="export-row">
         <button class="btn-copy" onclick="copyAnswer('agAnswer',this)" data-answer="${esc(result.answer)}">📋 Copy</button>
@@ -1164,10 +994,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <div class="branch-tag">🌿 ${esc(result.branch)}</div>
       </div>
       ${renderConfidence(result.confidence)}
-      <div class="answer-label">
-        <span>Answer</span>
-        <span class="pill" style="background:var(--hybrid-bg);color:var(--hybrid)">ADO Repository Only</span>
-      </div>
       <div class="answer-body">${linkifyFilePaths(md(result.answer), result.branch)}</div>
       <div class="export-row">
         <button class="btn-copy" onclick="copyAnswer('hybridAnswer',this)">📋 Copy</button>
@@ -1214,10 +1040,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
       </div>
       ${renderConfidence(result.confidence)}
-      <div class="answer-label">
-        <span>Answer</span>
-        <span class="pill">SharePoint KB Only</span>
-      </div>
       <div class="answer-body">${md(result.answer)}</div>
       <div class="export-row">
         <button class="btn-copy" onclick="copyAnswer('spAnswer',this)">📋 Copy</button>
@@ -1440,7 +1262,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     const hasAny = state.agentic || state.hybrid || state.sharepoint;
     if (hasAny) {
       document.getElementById('btnSynthesize').style.display = 'flex';
-      checkShowFollowup();
     }
   }
 
