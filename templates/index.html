@@ -298,6 +298,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-table-actions{display:flex;gap:8px;align-items:center}
 .adm-btn-export{padding:7px 16px;border-radius:7px;border:1.5px solid var(--border);background:#fff;color:var(--text);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;display:inline-flex;align-items:center;gap:5px}
 .adm-btn-export:hover{background:var(--bg);border-color:#b0bfd0}
+.adm-page-btn{padding:5px 11px;border-radius:6px;border:1.5px solid var(--border);background:#fff;font-size:.78rem;font-weight:600;cursor:pointer;color:var(--text);transition:all .15s;font-family:inherit}
+.adm-page-btn:hover:not(:disabled){background:var(--bg);border-color:#b0bfd0}
+.adm-page-btn:disabled{opacity:.35;cursor:default}
+.adm-page-btn.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+@keyframes adm-spin{to{transform:rotate(360deg)}}
+.adm-refreshing{display:inline-block;animation:adm-spin .8s linear infinite}
 .adm-table-filter{padding:7px 12px;border-radius:7px;border:1.5px solid var(--border);font-size:.82rem;font-family:inherit;color:var(--text);min-width:200px}
 .adm-table-filter:focus{outline:none;border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
 .adm-table-wrap{overflow-x:auto;max-height:60vh;overflow-y:auto}
@@ -310,6 +316,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 #adm-table-body-el tr:hover td{background:#f8fafc}
 .adm-status-success{color:var(--success);font-weight:600}
 .adm-status-error{color:var(--error);font-weight:600}
+.adm-status-pending{color:var(--warn);font-weight:600}
 .adm-conf-high{color:var(--success);font-weight:600}
 .adm-conf-medium{color:var(--warn);font-weight:600}
 .adm-conf-low{color:var(--error);font-weight:600}
@@ -374,7 +381,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     </div>
     {% if not auth_disabled %}
     <span style="color:rgba(255,255,255,.7);font-size:.8rem">{{ user.get('displayName','') }}</span>
-    {% if is_admin %}<a href="/admin" style="color:#4ade80;font-size:.78rem;text-decoration:none;font-weight:600">Admin Dashboard</a>{% endif %}
     <a href="/logout" style="color:rgba(255,255,255,.6);font-size:.78rem;text-decoration:none">Sign out</a>
     {% endif %}
     <button class="admin-toggle-btn" id="adminToggleBtn" onclick="toggleAdminView()">Admin</button>
@@ -637,6 +643,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   <div class="adm-tabs">
     <button class="adm-tab active" onclick="admSwitchTab(event,'search_events')">Search Events</button>
     <button class="adm-tab" onclick="admSwitchTab(event,'synthesis_events')">Synthesis Events</button>
+    <button class="adm-tab" onclick="admSwitchTab(event,'flagged_queries')">🚩 Flagged Queries</button>
   </div>
 
   <!-- Table -->
@@ -645,6 +652,15 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <h2 id="adm-table-title">Search Events</h2>
       <div class="adm-table-actions">
         <input type="text" class="adm-table-filter" id="adm-table-filter" placeholder="Filter rows…" oninput="admApplyFilter()"/>
+        <select id="adm-page-size" onchange="admOnPageSizeChange()" style="padding:7px 10px;border-radius:7px;border:1.5px solid var(--border);font-size:.82rem;font-family:inherit;color:var(--text);cursor:pointer">
+          <option value="25">25 rows</option>
+          <option value="50" selected>50 rows</option>
+          <option value="100">100 rows</option>
+          <option value="0">All rows</option>
+        </select>
+        <button class="adm-btn-export" id="adm-refresh-btn" onclick="admRefresh()" style="gap:6px">
+          <span id="adm-refresh-icon">🔄</span> Refresh
+        </button>
         <button class="adm-btn-export" onclick="admExport()"><span>📥</span> Export CSV</button>
       </div>
     </div>
@@ -654,7 +670,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <tbody id="adm-tbody"><tr><td class="adm-loading-msg" colspan="99">Loading…</td></tr></tbody>
       </table>
     </div>
-    <div class="adm-row-count" id="adm-row-count"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 20px;border-top:1px solid var(--border)">
+      <div class="adm-row-count" id="adm-row-count"></div>
+      <div id="adm-pagination" style="display:flex;align-items:center;gap:6px"></div>
+    </div>
   </div>
 
 </main>
@@ -1430,10 +1449,13 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   let admCurrentTab  = 'search_events';
   let admSortCol     = null;
   let admSortAsc     = true;
+  let admPage        = 1;
+  let admPageSize    = 50;
 
   const ADM_TABLE_LABELS = {
     search_events:    'Search Events',
-    synthesis_events: 'Synthesis Events'
+    synthesis_events: 'Synthesis Events',
+    flagged_queries:  'Flagged Queries'
   };
 
   const ADM_COL_LABELS = {
@@ -1441,7 +1463,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     status: 'Status', duration_sec: 'Time (s)', files_read: 'Files',
     iterations: 'Iterations', searches: 'Searches', confidence_level: 'Confidence',
     input_tokens: 'Input Tokens', output_tokens: 'Output Tokens', total_tokens: 'Total Tokens',
-    error_message: 'Error', sources_used: 'Sources Used'
+    error_message: 'Error', sources_used: 'Sources Used',
+    answer: 'Answer', explanation: 'Explanation', flagged_by: 'Flagged By',
+    flagged_at: 'Flagged At', reviewed_by: 'Reviewed By', reviewed_at: 'Reviewed At',
+    admin_notes: 'Admin Notes'
   };
 
   function toggleAdminView() {
@@ -1473,8 +1498,21 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         admTableData[t] = data.rows || [];
       } catch (e) { admTableData[t] = []; }
     }
+    // Load flagged queries from flag admin API
+    try {
+      const flagRes = await fetch('/api/admin/flags');
+      const flagData = await flagRes.json();
+      admTableData['flagged_queries'] = flagData.flags || [];
+    } catch(e) { admTableData['flagged_queries'] = []; }
     admUpdateSummary();
     admRenderTable();
+  }
+
+  async function admRefresh() {
+    const icon = document.getElementById('adm-refresh-icon');
+    icon.classList.add('adm-refreshing');
+    await admLoadAll();
+    icon.classList.remove('adm-refreshing');
   }
 
   function admAvg(arr) {
@@ -1546,6 +1584,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   function admSwitchTab(event, table) {
     admCurrentTab = table;
     admSortCol = null; admSortAsc = true;
+    admPage = 1;
     document.querySelectorAll('.adm-tab').forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
     document.getElementById('adm-table-title').textContent = ADM_TABLE_LABELS[table];
@@ -1553,15 +1592,25 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     admRenderTable();
   }
 
+  function admOnPageSizeChange() {
+    admPageSize = parseInt(document.getElementById('adm-page-size').value, 10);
+    admPage = 1;
+    admRenderTable();
+  }
+
+  function admGoToPage(p) { admPage = p; admRenderTable(); }
+
   function admRenderTable() {
     const rows = admTableData[admCurrentTab] || [];
     const thead = document.getElementById('adm-thead');
     const tbody = document.getElementById('adm-tbody');
+    const pagination = document.getElementById('adm-pagination');
 
     if (rows.length === 0) {
       thead.innerHTML = '';
       tbody.innerHTML = '<tr><td class="adm-empty-msg" colspan="99">No data yet</td></tr>';
       document.getElementById('adm-row-count').textContent = '0 rows';
+      pagination.innerHTML = '';
       return;
     }
 
@@ -1581,6 +1630,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     if (filter) {
       sorted = sorted.filter(row => columns.some(c => String(row[c] || '').toLowerCase().includes(filter)));
     }
+    const totalFiltered = sorted.length;
+
+    // Pagination slicing
+    const ps = admPageSize > 0 ? admPageSize : totalFiltered;
+    const totalPages = Math.max(1, Math.ceil(totalFiltered / ps));
+    if (admPage > totalPages) admPage = totalPages;
+    const startIdx = (admPage - 1) * ps;
+    const pageRows = sorted.slice(startIdx, startIdx + ps);
 
     thead.innerHTML = '<tr>' + columns.map(c => {
       const label = ADM_COL_LABELS[c] || c;
@@ -1589,13 +1646,13 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       return `<th class="${isSorted ? 'sorted' : ''}" onclick="admSortBy('${c}')">${admEsc(label)} <span class="sort-arrow">${arrow}</span></th>`;
     }).join('') + '</tr>';
 
-    tbody.innerHTML = sorted.map(row =>
+    tbody.innerHTML = pageRows.map(row =>
       '<tr>' + columns.map(c => {
         let val = row[c];
         if (val === null || val === undefined) val = '';
         if (c === 'status') {
-          const cls = val === 'success' ? 'adm-status-success' : 'adm-status-error';
-          return `<td class="${cls}">${admEsc(val)}</td>`;
+          const statusCls = {success:'adm-status-success', error:'adm-status-error', pending:'adm-status-pending', reviewed:'adm-status-success', article_created:'adm-status-success', dismissed:'adm-status-error'}[val] || '';
+          return `<td class="${statusCls}">${admEsc(val)}</td>`;
         }
         if (c === 'loop_type') {
           const cls = { agentic: 'adm-loop-agentic', hybrid: 'adm-loop-hybrid', sharepoint: 'adm-loop-sharepoint' }[val] || '';
@@ -1622,8 +1679,35 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       }).join('') + '</tr>'
     ).join('');
 
+    // Row count
+    const showing = admPageSize > 0 ? `${startIdx + 1}–${Math.min(startIdx + ps, totalFiltered)} of ` : '';
     document.getElementById('adm-row-count').textContent =
-      `${sorted.length} of ${rows.length} row${rows.length !== 1 ? 's' : ''}`;
+      `${showing}${totalFiltered} row${totalFiltered !== 1 ? 's' : ''}` +
+      (totalFiltered < rows.length ? ` (filtered from ${rows.length})` : '');
+
+    // Pagination controls
+    if (totalPages <= 1 || admPageSize === 0) {
+      pagination.innerHTML = '';
+    } else {
+      let pg = '';
+      pg += `<button class="adm-page-btn" onclick="admGoToPage(${admPage - 1})" ${admPage <= 1 ? 'disabled' : ''}>‹</button>`;
+      const pages = [];
+      if (totalPages <= 7) {
+        for (let i = 1; i <= totalPages; i++) pages.push(i);
+      } else {
+        pages.push(1);
+        if (admPage > 3) pages.push('…');
+        for (let i = Math.max(2, admPage - 1); i <= Math.min(totalPages - 1, admPage + 1); i++) pages.push(i);
+        if (admPage < totalPages - 2) pages.push('…');
+        pages.push(totalPages);
+      }
+      for (const p of pages) {
+        if (p === '…') { pg += `<span style="color:var(--muted);font-size:.8rem">…</span>`; }
+        else { pg += `<button class="adm-page-btn ${p === admPage ? 'active' : ''}" onclick="admGoToPage(${p})">${p}</button>`; }
+      }
+      pg += `<button class="adm-page-btn" onclick="admGoToPage(${admPage + 1})" ${admPage >= totalPages ? 'disabled' : ''}>›</button>`;
+      pagination.innerHTML = pg;
+    }
   }
 
   function admSortBy(col) {
@@ -1632,7 +1716,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     admRenderTable();
   }
 
-  function admApplyFilter() { admRenderTable(); }
+  function admApplyFilter() { admPage = 1; admRenderTable(); }
 
   function admExport() {
     window.location.href = `/admin/export/${admCurrentTab}`;
