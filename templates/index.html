@@ -89,6 +89,10 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .state-idle .icon{font-size:2rem;opacity:.5}
 .spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--brand-light);border-radius:50%;animation:spin .75s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.loading-step{font-size:.75rem;color:var(--text-muted);margin-top:.5rem;max-width:340px;text-align:center;line-height:1.4;min-height:1.2em;transition:opacity .2s}
+.code-file-link{color:var(--brand-light);text-decoration:none;border-bottom:1px dashed var(--brand-light);font-size:inherit}
+.code-file-link:hover{color:var(--brand);border-bottom-style:solid}
+.ado-link-icon{font-size:.7em;opacity:.7;margin-left:.15em;vertical-align:super}
 
 /* ── Stats row ── */
 .stats-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
@@ -769,6 +773,29 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   }
   function md(s)      { return marked.parse(String(s || '')); }
 
+  function formatTokens(n) {
+    if (!n) return '0';
+    return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
+  }
+  function formatTime(s) {
+    if (!s && s !== 0) return '';
+    return s >= 60 ? Math.floor(s / 60) + 'm ' + (s % 60).toFixed(0) + 's' : s + 's';
+  }
+
+  // Wrap /code/... and /inetpub/... file paths in clickable ADO links
+  const ADO_BROWSE = 'https://dev.azure.com/CoraSystems/PPM/_git/PPM';
+  function linkifyFilePaths(html, branch) {
+    // Match paths starting with /code/ or /inetpub/ ending with a known extension
+    return html.replace(
+      /(\/(?:code|inetpub|CODE|INETPUB)[\/\w.\-]+\.(?:cs|vb|aspx|ascx|js|sql|ts|html|config|xml|json)(?:\.(?:vb|cs))?)/gi,
+      (match) => {
+        // Don't double-wrap (check if already inside an href)
+        const url = `${ADO_BROWSE}?path=${encodeURIComponent(match)}&version=GB${encodeURIComponent(branch)}&_a=contents`;
+        return `<a href="${url}" target="_blank" class="code-file-link" title="Open in Azure DevOps">${match}<span class="ado-link-icon">↗</span></a>`;
+      }
+    );
+  }
+
   // ── Export helpers ─────────────────────────────────────────────────────────
   function copyAnswer(spanId, btn) {
     const el = document.getElementById(spanId);
@@ -1011,7 +1038,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div class="state-loading">
         <div class="spinner"></div>
         <span>Running ${label}…</span>
+        <div class="loading-step" id="${panelId}-step"></div>
       </div>`;
+  }
+  function updateLoadingStep(panelId, text) {
+    const el = document.getElementById(panelId + '-step');
+    if (el) el.textContent = text;
   }
   function setError(panelId, msg) {
     document.getElementById(panelId).innerHTML =
@@ -1073,11 +1105,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       </div>${calls}`;
     }).join('');
 
+    const agTok = (result.input_tokens || 0) + (result.output_tokens || 0);
     document.getElementById('agenticBody').innerHTML = `
       <div class="stats-row">
         <div class="stat">⚡ Iterations: <strong>${result.total_iterations}</strong></div>
         <div class="stat">🔎 Searches: <strong>${result.total_searches}</strong></div>
         <div class="stat">📄 Files: <strong>${result.total_files_read}</strong></div>
+        ${agTok ? `<div class="stat">🪙 <strong>${formatTokens(agTok)}</strong> tok</div>` : ''}
+        ${result.elapsed_seconds != null ? `<div class="stat">⏱ <strong>${formatTime(result.elapsed_seconds)}</strong></div>` : ''}
         <div class="branch-tag">🌿 ${esc(result.branch)}</div>
       </div>
       ${renderConfidence(result.confidence)}
@@ -1085,7 +1120,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <span>Answer</span>
         <span class="pill">ADO Repository Only</span>
       </div>
-      <div class="answer-body">${md(result.answer)}</div>
+      <div class="answer-body">${linkifyFilePaths(md(result.answer), result.branch)}</div>
       <div class="export-row">
         <button class="btn-copy" onclick="copyAnswer('agAnswer',this)" data-answer="${esc(result.answer)}">📋 Copy</button>
         <button class="btn-export-md" onclick="downloadMd('agAnswer','Agentic Loop')">⬇️ .md</button>
@@ -1118,11 +1153,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       </div>`;
     }).join('');
 
+    const hybTok = (result.input_tokens || 0) + (result.output_tokens || 0);
     document.getElementById('hybridBody').innerHTML = `
       <div class="stats-row">
         <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
         <div class="stat">🔎 Found: <strong>${result.results_found}</strong></div>
         <div class="stat">📄 Files: <strong>${result.files_read}</strong></div>
+        ${hybTok ? `<div class="stat">🪙 <strong>${formatTokens(hybTok)}</strong> tok</div>` : ''}
+        ${result.elapsed_seconds != null ? `<div class="stat">⏱ <strong>${formatTime(result.elapsed_seconds)}</strong></div>` : ''}
         <div class="branch-tag">🌿 ${esc(result.branch)}</div>
       </div>
       ${renderConfidence(result.confidence)}
@@ -1130,7 +1168,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <span>Answer</span>
         <span class="pill" style="background:var(--hybrid-bg);color:var(--hybrid)">ADO Repository Only</span>
       </div>
-      <div class="answer-body">${md(result.answer)}</div>
+      <div class="answer-body">${linkifyFilePaths(md(result.answer), result.branch)}</div>
       <div class="export-row">
         <button class="btn-copy" onclick="copyAnswer('hybridAnswer',this)">📋 Copy</button>
         <button class="btn-export-md" onclick="downloadMd('hybridAnswer','Hybrid Loop')">⬇️ .md</button>
@@ -1267,6 +1305,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
               for (const evt of (pollData.events || [])) {
                 if (evt.type === 'pause_prompt') {
                   showPausePrompt(evt);
+                } else if (evt.type === 'progress') {
+                  // Live step feedback — update loading text with current action
+                  const iterLabel = evt.iteration ? `Iter ${evt.iteration}` : '';
+                  const filesLabel = evt.files ? ` · ${evt.files} file${evt.files !== 1 ? 's' : ''} read` : '';
+                  updateLoadingStep('agenticBody', `${iterLabel}${filesLabel}\n${evt.text || ''}`);
                 } else if (evt.type === 'done') {
                   const result = evt.result;
                   state.agentic = result;
@@ -1282,7 +1325,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
                   reject(new Error(evt.message));
                   break;
                 }
-                // ping / progress events — just keep polling
+                // ping events — just keep polling
               }
               if (!finished) {
                 setTimeout(doPoll, 2000);
@@ -1296,16 +1339,36 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         });
       } else {
         // ── Hybrid loop: simple POST ─────────────────────────────────────────
-        const resp = await fetch('/api/' + loop, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ query, branch }),
-        });
-        const data = await resp.json();
-        if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
-        state[loop] = data.result;
-        renderHybrid(data.result);
-        setStatus(label + ' complete.');
+        // Show phase-based messages while waiting (hybrid has no event stream)
+        const hybridPhases = [
+          [0,  'Phase 1 — Extracting search terms…'],
+          [4,  'Phase 1 — Searching across code layers…'],
+          [12, 'Phase 2 — Reading and following reference chain…'],
+          [30, 'Phase 2 — Continuing deep file reads…'],
+          [55, 'Phase 3 — Pass 1: synthesising draft answer…'],
+          [80, 'Phase 3 — Pass 2: extending with remaining files…'],
+        ];
+        const hybridStart = Date.now();
+        const hybridTimer = setInterval(() => {
+          const elapsed = (Date.now() - hybridStart) / 1000;
+          const phase = [...hybridPhases].reverse().find(([t]) => elapsed >= t);
+          if (phase) updateLoadingStep('hybridBody', phase[1]);
+        }, 1000);
+
+        try {
+          const resp = await fetch('/api/' + loop, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ query, branch }),
+          });
+          const data = await resp.json();
+          if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
+          state[loop] = data.result;
+          renderHybrid(data.result);
+          setStatus(label + ' complete.');
+        } finally {
+          clearInterval(hybridTimer);
+        }
       }
     } catch (e) {
       if (!state[loop]) setError(panelId, e.message);

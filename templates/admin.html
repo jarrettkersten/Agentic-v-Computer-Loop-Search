@@ -22,8 +22,9 @@ header{background:var(--brand);color:#fff;padding:0 36px;height:58px;display:fle
 main{max-width:1600px;margin:28px auto;padding:0 24px}
 
 /* Summary cards */
-.summary-row{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
-@media(max-width:1100px){.summary-row{grid-template-columns:repeat(3,1fr)}}
+.summary-row{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:1200px){.summary-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.summary-row{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.summary-row{grid-template-columns:1fr}}
 .summary-card{background:var(--card);border-radius:var(--radius);padding:20px 24px;box-shadow:var(--shadow)}
 .summary-card .label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
@@ -124,6 +125,11 @@ footer{text-align:center;padding:32px 0;color:var(--muted);font-size:.74rem}
       <div class="value" id="stat-synth">—</div>
       <div class="sub" id="stat-synth-sub"></div>
     </div>
+    <div class="summary-card">
+      <div class="label">Total Tokens Used</div>
+      <div class="value" id="stat-tokens">—</div>
+      <div class="sub" id="stat-tokens-sub"></div>
+    </div>
   </div>
 
   <!-- Per-loop breakdown -->
@@ -134,6 +140,7 @@ footer{text-align:center;padding:32px 0;color:var(--muted);font-size:.74rem}
       <div class="bc-stat"><span class="bc-key">Avg Files Read</span><span class="bc-val" id="ag-files">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Iterations</span><span class="bc-val" id="ag-iters">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="ag-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="ag-tokens">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="ag-errors">—</span></div>
     </div>
     <div class="breakdown-card hybrid">
@@ -142,6 +149,7 @@ footer{text-align:center;padding:32px 0;color:var(--muted);font-size:.74rem}
       <div class="bc-stat"><span class="bc-key">Avg Files Read</span><span class="bc-val" id="hy-files">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Searches</span><span class="bc-val" id="hy-searches">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="hy-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="hy-tokens">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="hy-errors">—</span></div>
     </div>
     <div class="breakdown-card sharepoint">
@@ -149,8 +157,8 @@ footer{text-align:center;padding:32px 0;color:var(--muted);font-size:.74rem}
       <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="sp-runs">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Docs Read</span><span class="bc-val" id="sp-files">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="sp-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="sp-tokens">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="sp-errors">—</span></div>
-      <div class="bc-stat"><span class="bc-key">&nbsp;</span><span class="bc-val"></span></div>
     </div>
   </div>
 
@@ -249,8 +257,23 @@ function updateSummary() {
   document.getElementById('stat-synth-sub').textContent =
     synths.length ? `${synthOK} success` : 'none yet';
 
+  const totalTok = searches.reduce((s, r) => s + (r.total_tokens || 0), 0)
+                 + synths.reduce((s, r)   => s + (r.total_tokens || 0), 0);
+  document.getElementById('stat-tokens').textContent =
+    totalTok >= 1000000 ? (totalTok / 1000000).toFixed(2) + 'M'
+    : totalTok >= 1000  ? (totalTok / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+    : String(totalTok) || '—';
+  const avgTok = avg(searches.filter(r => r.total_tokens).map(r => r.total_tokens));
+  document.getElementById('stat-tokens-sub').textContent =
+    avgTok != null ? `avg ${Math.round(avgTok / 1000)}k per search` : 'no data yet';
+
   // ── Per-loop breakdown ─────────────────────────────────────────────────────
-  function loopStats(type, runsEl, filesEl, thirdEl, thirdKey, timeEl, errorsEl) {
+  function formatTok(n) {
+    if (n == null) return '—';
+    return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(Math.round(n));
+  }
+
+  function loopStats(type, runsEl, filesEl, thirdEl, thirdKey, timeEl, tokensEl, errorsEl) {
     const rows   = searches.filter(r => r.loop_type === type);
     const errors = rows.filter(r => r.status === 'error').length;
     document.getElementById(runsEl).textContent = rows.length || '0';
@@ -260,11 +283,13 @@ function updateSummary() {
     document.getElementById(thirdEl).textContent = tAvg != null ? tAvg.toFixed(1) : '—';
     const dAvg = avg(rows.filter(r => r.duration_sec).map(r => r.duration_sec));
     document.getElementById(timeEl).textContent = dAvg != null ? dAvg.toFixed(1) + 's' : '—';
+    const tokAvg = avg(rows.filter(r => r.total_tokens).map(r => r.total_tokens));
+    document.getElementById(tokensEl).textContent = formatTok(tokAvg);
     document.getElementById(errorsEl).textContent = errors;
   }
-  loopStats('agentic',    'ag-runs', 'ag-files', 'ag-iters',    'iterations',  'ag-time', 'ag-errors');
-  loopStats('hybrid',     'hy-runs', 'hy-files', 'hy-searches', 'searches',    'hy-time', 'hy-errors');
-  loopStats('sharepoint', 'sp-runs', 'sp-files', 'sp-time',     'duration_sec','sp-time', 'sp-errors');
+  loopStats('agentic',    'ag-runs', 'ag-files', 'ag-iters',    'iterations',  'ag-time', 'ag-tokens', 'ag-errors');
+  loopStats('hybrid',     'hy-runs', 'hy-files', 'hy-searches', 'searches',    'hy-time', 'hy-tokens', 'hy-errors');
+  loopStats('sharepoint', 'sp-runs', 'sp-files', 'sp-time',     'duration_sec','sp-time', 'sp-tokens', 'sp-errors');
 }
 
 function switchTab(event, table) {

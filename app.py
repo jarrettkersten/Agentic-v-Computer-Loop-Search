@@ -404,8 +404,14 @@ def ado_code_search(query, branch, top=None):
     return results
 
 
-def ado_read_file(file_path, branch):
-    """Read a file from the Cora PPM ADO repo. Returns raw text content."""
+def ado_read_file(file_path, branch, char_offset=0):
+    """Read a file from the Cora PPM ADO repo.
+
+    char_offset: start reading from this character position in the file.
+    Use 0 for the beginning. To continue a truncated read, pass the next
+    offset shown in the ⚠ FILE TRUNCATED message.
+    Returns up to MAX_FILE_CHARS characters starting from char_offset.
+    """
     url = (
         f"{ADO_BASE_URL}/{ADO_PROJECT}/_apis/git/repositories/{ADO_REPO}/items"
         f"?path={requests.utils.quote(file_path)}"
@@ -424,17 +430,26 @@ def ado_read_file(file_path, branch):
             f"{resp.status_code} {resp.reason} — ADO detail: {detail}",
             response=resp,
         )
-    content = resp.text
-    if len(content) > MAX_FILE_CHARS:
-        return (
-            content[:MAX_FILE_CHARS]
-            + f"\n\n[⚠ FILE TRUNCATED — only the first {MAX_FILE_CHARS:,} chars are shown; "
-            "the file continues beyond this point. Methods or classes defined later in the "
-            "file are NOT visible here. To find specific code deeper in this file, call "
-            "ado_code_search with the exact method or class name as the search term — "
-            "the search engine will return the matching snippet at its actual location.]"
+    full_content = resp.text
+    total_len    = len(full_content)
+
+    # Slice the requested window
+    chunk = full_content[char_offset : char_offset + MAX_FILE_CHARS]
+
+    if not chunk:
+        return f"[No content at offset {char_offset:,} — file is {total_len:,} chars total.]"
+
+    next_offset = char_offset + MAX_FILE_CHARS
+    if next_offset < total_len:
+        chunk += (
+            f"\n\n[⚠ FILE TRUNCATED — showing chars {char_offset:,}–{char_offset + len(chunk):,} "
+            f"of {total_len:,} total. The file continues. To read the next section, call "
+            f"ado_read_file with the same file_path and char_offset: {next_offset}.]"
         )
-    return content
+    elif char_offset > 0:
+        chunk += f"\n\n[End of file reached at offset {char_offset + len(chunk):,} of {total_len:,}.]"
+
+    return chunk
 
 
 def get_client():
@@ -708,8 +723,12 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         {
             "name": "ado_read_file",
             "description": (
-                "Read the full content of a specific file from the Cora PPM ADO "
-                "repository. Use file paths returned by ado_code_search."
+                "Read the content of a specific file from the Cora PPM ADO repository. "
+                "Use file paths returned by ado_code_search. "
+                "Large files are returned in chunks of up to 15,000 characters. "
+                "If the response ends with '⚠ FILE TRUNCATED', call this tool again "
+                "with the same file_path and the char_offset value shown in the message "
+                "to read the next section of the file."
             ),
             "input_schema": {
                 "type": "object",
@@ -720,7 +739,16 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
                             "Full path of the file in the repository, "
                             "e.g. /src/Features/Forecasting/EACSubmit.cs"
                         ),
-                    }
+                    },
+                    "char_offset": {
+                        "type": "integer",
+                        "description": (
+                            "Character offset to start reading from. "
+                            "Omit or use 0 to read from the beginning. "
+                            "To continue reading a truncated file, use the next offset "
+                            "value shown in the ⚠ FILE TRUNCATED message."
+                        ),
+                    },
                 },
                 "required": ["file_path"],
             },
@@ -751,11 +779,14 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         "  6. Any SQL stored procedures or queries referenced\n"
         "Read ALL layers — an answer that only covers the UI without the business logic is incomplete.\n\n"
         "═══ HANDLING TRUNCATED FILES ═══\n"
-        "When a file you read ends with '⚠ FILE TRUNCATED', the method or class you need may be\n"
-        "further down in the file. DO NOT re-read the same file — it will truncate at the same point.\n"
-        "Instead, IMMEDIATELY call ado_code_search with the EXACT method or class name you are\n"
-        "looking for (e.g. 'btnSubmitEac_OnClick', 'SubmitEac', 'IProjectForecastUiBuilder').\n"
-        "The search engine returns snippets at their actual location, bypassing the truncation.\n"
+        "When a file you read ends with '⚠ FILE TRUNCATED', call ado_read_file again with\n"
+        "the SAME file_path and the char_offset value shown in the truncation message.\n"
+        "This reads the next 15,000-character chunk of the file. Keep reading chunks until\n"
+        "you find the method or class you need, or reach the end of the file.\n"
+        "Example: file truncated at 15,000 → call ado_read_file(file_path=..., char_offset=15000)\n"
+        "         still truncated at 30,000 → call ado_read_file(file_path=..., char_offset=30000)\n"
+        "You may also use ado_code_search with the exact method name as a faster alternative\n"
+        "when you know the specific symbol you are looking for.\n"
         "Also check the snippets already returned in earlier search results — they may already\n"
         "contain the code you need at the precise offset in the file.\n\n"
         "═══ ANSWER REQUIREMENTS ═══\n"
@@ -909,14 +940,21 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
                     tool_calls_this_turn.append({"type": "search", "query": sq, "error": str(e)})
 
             elif tu.name == "ado_read_file":
-                fp = tu.input.get("file_path", "")
+                fp          = tu.input.get("file_path", "")
+                char_offset = int(tu.input.get("char_offset") or 0)
                 try:
-                    content = ado_read_file(fp, branch)
+                    content = ado_read_file(fp, branch, char_offset=char_offset)
                     result_content = content
-                    accumulated_files[fp] = content   # ← store full content
+                    # Continuation reads append to the existing entry so the
+                    # full reconstructed file is available for synthesis.
+                    if char_offset > 0 and fp in accumulated_files:
+                        accumulated_files[fp] += f"\n\n[...continuing from offset {char_offset:,}...]\n\n" + content
+                    else:
+                        accumulated_files[fp] = content
                     tool_calls_this_turn.append({
                         "type":           "read_file",
                         "file_path":      fp,
+                        "char_offset":    char_offset,
                         "content_length": len(content),
                         "preview":        content[:200] + "..." if len(content) > 200 else content,
                     })
@@ -938,6 +976,26 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
             "action":     "Made " + str(len(tool_uses)) + " ADO tool call(s).",
             "tool_calls": tool_calls_this_turn,
         })
+
+        # Emit a progress event so the frontend can show live step feedback
+        if job:
+            _prog_parts = []
+            for _tc in tool_calls_this_turn:
+                if _tc.get("type") == "search":
+                    _prog_parts.append(f"🔎 Searching '{_tc.get('query', '')}'")
+                elif _tc.get("type") == "read_file":
+                    _fname = _tc.get("file_path", "").rsplit("/", 1)[-1]
+                    _off   = _tc.get("char_offset", 0)
+                    _prog_parts.append(
+                        f"📖 Reading {_fname}" + (f" (+{_off:,})" if _off else "")
+                    )
+            job["event_queue"].put({
+                "type":      "progress",
+                "iteration": iteration,
+                "files":     len(accumulated_files),
+                "searches":  total_searches,
+                "text":      " · ".join(_prog_parts) if _prog_parts else f"Iteration {iteration}",
+            })
 
         messages.append({"role": "assistant", "content": response.content})
         messages.append({"role": "user",      "content": tool_results})
@@ -1008,6 +1066,7 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         "branch":           branch,
         "input_tokens":     total_input_tokens,
         "output_tokens":    total_output_tokens,
+        "elapsed_seconds":  round(time.time() - loop_start_time, 1),
     }
 
     # Notify SSE stream that the job is done
@@ -1026,10 +1085,11 @@ def run_hybrid_loop(query, branch):
                follows the reference chain, stops when it has all layers.
     Phase 3 — Single structured synthesis pass.
     """
-    steps_log = []
-    client    = get_client()
+    steps_log      = []
+    client         = get_client()
     h_input_tokens  = 0
     h_output_tokens = 0
+    h_start_time    = time.time()
 
     # ── Phase 1: Structured broad search ─────────────────────────────────────
 
@@ -1533,15 +1593,16 @@ def run_hybrid_loop(query, branch):
     confidence   = assess_confidence(query, final_answer, len(file_contents), "Hybrid Loop")
 
     return {
-        "answer":        final_answer,
-        "confidence":    confidence,
-        "steps":         steps_log,
-        "total_steps":   len(steps_log),
-        "results_found": len(all_results),
-        "files_read":    len(file_contents),
-        "branch":        branch,
-        "input_tokens":  h_input_tokens,
-        "output_tokens": h_output_tokens,
+        "answer":          final_answer,
+        "confidence":      confidence,
+        "steps":           steps_log,
+        "total_steps":     len(steps_log),
+        "results_found":   len(all_results),
+        "files_read":      len(file_contents),
+        "branch":          branch,
+        "input_tokens":    h_input_tokens,
+        "output_tokens":   h_output_tokens,
+        "elapsed_seconds": round(time.time() - h_start_time, 1),
     }
 
 
