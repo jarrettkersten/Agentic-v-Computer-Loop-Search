@@ -810,9 +810,9 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         iteration += 1
 
         # ── Iteration hard cap ────────────────────────────────────────────────
-        if iteration > 15:
+        if iteration > 25:
             messages.append({"role": "user", "content": (
-                "SYSTEM NOTE: You have reached the 15-iteration limit. "
+                "SYSTEM NOTE: You have reached the 25-iteration limit. "
                 "Write your complete answer NOW using every file you have already read. "
                 "Do not make any more tool calls."
             )})
@@ -869,7 +869,7 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
 
         response = client.messages.create(
             model=MODEL,
-            max_tokens=4000,
+            max_tokens=5000,
             system=system_prompt,
             tools=tools,
             messages=messages,
@@ -964,7 +964,7 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
             )
         fallback = client.messages.create(
             model=MODEL,
-            max_tokens=5000,
+            max_tokens=10000,
             system=(
                 "You are a senior Cora PPM code analyst. Answer ONLY from the ADO repository "
                 "context provided — never from general knowledge.\n\n"
@@ -1131,6 +1131,49 @@ def run_hybrid_loop(query, branch):
                 "content_preview": content[:250] + "..." if len(content) > 250 else content,
                 "chars_read":      len(content),
             })
+
+            # ── Truncation fallback ───────────────────────────────────────────
+            # When a large file is cut at MAX_FILE_CHARS, the methods we need are
+            # often further down the file (e.g. event handlers, repository methods).
+            # Run targeted searches for the class name and query keywords so their
+            # snippets (at their actual offset) are appended to the file context.
+            if "FILE TRUNCATED" in content:
+                import re as _re2
+                # Derive a short class/module name from the file path
+                fname_stem = fp.rsplit("/", 1)[-1].rsplit(".", 1)[0]   # e.g. "ProjectForecastGenericUiBuilder"
+                # Also extract short technical tokens from the query (4+ char words)
+                query_tokens = list(dict.fromkeys(
+                    w for w in _re2.findall(r'[A-Za-z][A-Za-z0-9]{3,}', query)
+                    if w.lower() not in {"what", "does", "this", "with", "that", "from", "have",
+                                         "into", "when", "which", "where", "about", "than", "then"}
+                ))[:3]
+                # Prefer class name; fall back to query tokens
+                truncation_terms = ([fname_stem] + query_tokens)[:2]
+                extra_snippets: list[str] = []
+                for term in truncation_terms:
+                    try:
+                        hits = ado_code_search(term, branch, top=3)
+                        for hit in hits:
+                            if hit.get("file_path") == fp:
+                                for match in hit.get("matches", {}).get("content", []):
+                                    snippet = "\n".join(
+                                        ln.get("line", "") for ln in match.get("charOffset", [])
+                                    ) or match.get("charOffset", [{}])[0].get("line", "")
+                                    if snippet and snippet not in content:
+                                        extra_snippets.append(
+                                            f"[snippet at offset {match.get('charOffset','')}]\n{snippet}"
+                                        )
+                    except Exception:
+                        pass
+                if extra_snippets:
+                    appended = "\n\n[TRUNCATION SNIPPETS — code from deeper in the file]\n" + \
+                               "\n---\n".join(extra_snippets)
+                    file_contents[-1]["content"] += appended
+                    steps_log.append({
+                        "step":   step_label + ".trunc",
+                        "action": f"File was truncated — fetched {len(extra_snippets)} deeper snippet(s) via search",
+                    })
+
             return True
         except Exception as e:
             steps_log.append({"step": step_label, "action": f"Could not read {fp}: {e}"})
@@ -1421,12 +1464,24 @@ def run_hybrid_loop(query, branch):
 
         return "\n\n".join(parts)
 
+    # ── Rolling 2-pass synthesis ──────────────────────────────────────────────
+    # Pass 1: synthesize the first half of files into a draft answer.
+    # Pass 2: extend/deepen the draft with the remaining files.
+    # This mirrors the rolling approach in codebase-qa and prevents the model
+    # from trying to juggle 10+ large files in one cold synthesis call.
+    half = max(3, len(file_contents) // 2)
+    batch1 = file_contents[:half]
+    batch2 = file_contents[half:]
+
     steps_log.append({
         "step":   4,
-        "action": f"Synthesis — building structured answer from {len(file_contents)} file(s)",
+        "action": (
+            f"Synthesis pass 1 — drafting answer from {len(batch1)} file(s) "
+            f"({len(batch2)} more queued for pass 2)"
+        ),
     })
 
-    synth_resp = client.messages.create(
+    resp1 = client.messages.create(
         model=MODEL,
         max_tokens=8000,
         system=SYNTH_SYSTEM,
@@ -1434,16 +1489,47 @@ def run_hybrid_loop(query, branch):
             "role":    "user",
             "content": (
                 "Using ONLY the following files from the Cora PPM ADO repository "
-                "(branch: " + branch + "), answer this question with full detail:\n\n"
+                "(branch: " + branch + "), write a detailed draft answer to this question. "
+                "Be thorough — a second pass will extend your answer with additional files.\n\n"
                 "Question: " + query + "\n\n"
-                "Repository files:\n" + _build_context(file_contents)
+                "Repository files (batch 1 of 2):\n" + _build_context(batch1)
             ),
         }],
     )
-    h_input_tokens  += getattr(getattr(synth_resp, "usage", None), "input_tokens",  0)
-    h_output_tokens += getattr(getattr(synth_resp, "usage", None), "output_tokens", 0)
+    h_input_tokens  += getattr(getattr(resp1, "usage", None), "input_tokens",  0)
+    h_output_tokens += getattr(getattr(resp1, "usage", None), "output_tokens", 0)
+    partial_answer = resp1.content[0].text
 
-    final_answer = _clean_answer(synth_resp.content[0].text)
+    if batch2:
+        steps_log.append({
+            "step":   5,
+            "action": (
+                f"Synthesis pass 2 — extending draft with {len(batch2)} additional file(s)"
+            ),
+        })
+
+        resp2 = client.messages.create(
+            model=MODEL,
+            max_tokens=10000,
+            system=SYNTH_SYSTEM,
+            messages=[{
+                "role":    "user",
+                "content": (
+                    "You previously wrote a draft answer to the question below, using the first "
+                    "batch of files. Now extend and deepen that answer using the additional files "
+                    "provided. Preserve all correct details from the draft; add new detail, "
+                    "correct any gaps, and produce one comprehensive final answer.\n\n"
+                    "Question: " + query + "\n\n"
+                    "--- DRAFT ANSWER ---\n" + partial_answer + "\n--- END DRAFT ---\n\n"
+                    "Additional repository files (batch 2 of 2):\n" + _build_context(batch2)
+                ),
+            }],
+        )
+        h_input_tokens  += getattr(getattr(resp2, "usage", None), "input_tokens",  0)
+        h_output_tokens += getattr(getattr(resp2, "usage", None), "output_tokens", 0)
+        final_answer = _clean_answer(resp2.content[0].text)
+    else:
+        final_answer = _clean_answer(partial_answer)
     confidence   = assess_confidence(query, final_answer, len(file_contents), "Hybrid Loop")
 
     return {
