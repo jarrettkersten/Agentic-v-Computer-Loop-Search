@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Cora PPM — Agentic Search</title>
+<title>Cora PPM — Cora Code Investigator</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <style>
 :root{
@@ -37,11 +37,11 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 
 /* ── Top query card ── */
 .query-card{}
-.query-layout{display:grid;grid-template-columns:200px 1fr;gap:20px;align-items:start}
+.query-layout{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start}
 @media(max-width:900px){.query-layout{grid-template-columns:1fr}}
 
 .field-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px}
-.branch-select{width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;font-family:inherit;color:var(--text);background:#fff;transition:border-color .2s;cursor:pointer;outline:none}
+.branch-select{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;font-family:inherit;color:var(--text);background:#fff;transition:border-color .2s;cursor:pointer;outline:none;height:42px}
 .branch-select:focus{border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
 .branch-loading{font-size:.75rem;color:var(--muted);font-style:italic;margin-top:5px;min-height:16px}
 
@@ -50,14 +50,14 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .query-textarea::placeholder{color:#94a3b8}
 
 /* ── Action row (top card) ── */
-.action-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.action-row{margin-top:12px}
 .status-bar{font-size:.79rem;color:var(--muted);min-height:17px;margin-top:6px}
 
 /* ── Buttons ── */
 .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 20px;border:none;border-radius:8px;font-size:.87rem;font-weight:600;cursor:pointer;transition:all .15s;letter-spacing:.01em;font-family:inherit}
 .btn:active{transform:scale(.98)}
 .btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
-.btn-run-all{background:var(--brand);color:#fff;padding:10px 26px;font-size:.93rem}
+.btn-run-all{background:var(--brand);color:#fff;padding:10px 26px;font-size:.93rem;width:100%;height:42px;justify-content:center;border-radius:8px}
 .btn-run-all:hover:not(:disabled){background:var(--brand-dark)}
 .btn-compare{background:#92400e;color:#fff}
 .btn-compare:hover:not(:disabled){background:#78350f}
@@ -70,13 +70,11 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 @media(max-width:700px){.results-grid{flex-direction:column}}
 
 /* ── Result panels ── */
-.panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:auto;display:flex;flex-direction:column;flex:1 1 0;min-width:220px;position:relative}
-.panel-header{padding:14px 18px;display:flex;align-items:center;gap:9px;border-bottom:1.5px solid var(--border)}
-.panel-header h2{font-size:.93rem;font-weight:700;flex:1;color:var(--text)}
-.badge{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;letter-spacing:.04em}
+.panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:auto;display:flex;flex-direction:column;flex:1 1 0;min-width:220px;position:relative;border:1px solid var(--border)}
+.panel-header{padding:16px 20px;display:flex;align-items:center;gap:10px;background:var(--bg);border-bottom:1px solid var(--border)}
+.panel-header h2{font-size:1rem;font-weight:700;flex:1;color:var(--text);letter-spacing:-.01em}
+.badge{font-size:.67rem;font-weight:600;padding:3px 10px;border-radius:99px;white-space:nowrap;letter-spacing:.03em;text-transform:uppercase}
 .badge-agentic{background:var(--agentic-bg);color:var(--agentic);border:1px solid var(--agentic-border)}
-.badge-hybrid{background:var(--hybrid-bg);color:var(--hybrid);border:1px solid var(--hybrid-border)}
-.badge-sp{background:var(--sharepoint-bg);color:var(--sharepoint);border:1px solid var(--sharepoint-border)}
 .panel-body{padding:18px 20px;flex:1}
 
 /* ── Panel states ── */
@@ -368,13 +366,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   <div class="logo">
     <img src="https://corasystems.com/_next/static/media/cora-logo-white.3ac9db11.svg" alt="Cora" height="22" style="display:block"/>
     <div class="sep"></div>
-    Agentic Search
+    🔍 Cora Code Investigator
   </div>
   <div style="display:flex;align-items:center;gap:12px">
-    <div class="source-badge">
-      <span class="dot"></span>
-      CoraSystems / PPM — no external sources
-    </div>
     {% if not auth_disabled %}
     <span style="color:rgba(255,255,255,.7);font-size:.8rem">{{ user.get('displayName','') }}</span>
     <a href="/logout" style="color:rgba(255,255,255,.6);font-size:.78rem;text-decoration:none">Sign out</a>
@@ -399,6 +393,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <input type="text" class="branch-select" id="branchManual" placeholder="Type branch name…"
                style="display:none;margin-top:6px"/>
         <div class="branch-loading" id="branchLoading"></div>
+        <div class="action-row">
+          <button class="btn btn-run-all" id="btnSearch" onclick="runWithClarify('agentic')">🔍 Search</button>
+        </div>
       </div>
       <div>
         <label class="field-label" for="queryInput">Your question</label>
@@ -431,9 +428,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       </div>
     </div>
 
-    <div class="action-row">
-      <button class="btn btn-run-all" id="btnSearch" onclick="runWithClarify('agentic')">🔍 Search</button>
-    </div>
     <!-- ── Clarifying question card (shown only when needed) ── -->
     <div id="clarifyCard" class="clarify-card" style="display:none">
       <div class="cq-label">💬 One quick clarification before searching</div>
@@ -638,7 +632,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 </main>
 </div><!-- /view-admin -->
 
-<footer>Cora PPM Agentic Search · All answers sourced exclusively from CoraSystems/PPM Azure DevOps</footer>
+<footer>Cora Code Investigator · All answers sourced exclusively from CoraSystems/PPM Azure DevOps</footer>
 
 <script>
   marked.setOptions({ breaks: true, gfm: true });
@@ -1517,10 +1511,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   // ── Info modals ────────────────────────────────────────────────────────────
   const INFO_CONTENT = {
     agentic: {
-      title: '🔍 Agentic Search — How it works',
+      title: '🔍 Cora Code Investigator — How it works',
       body: `
         <h4>Overview</h4>
-        <p>The Agentic Search gives Claude full autonomy to search the <strong>CoraSystems/PPM</strong> Azure DevOps repository. Rather than following a fixed script, Claude decides what to search for next based on what it finds — just like a developer would.</p>
+        <p>The Cora Code Investigator gives Claude full autonomy to search the <strong>CoraSystems/PPM</strong> Azure DevOps repository. Rather than following a fixed script, Claude decides what to search for next based on what it finds — just like a developer would.</p>
 
         <h4>Step-by-step process</h4>
         <ul>
