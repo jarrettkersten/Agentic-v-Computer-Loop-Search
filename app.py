@@ -54,6 +54,10 @@ ADO_SEARCH_URL    = (
     f"/_apis/search/codesearchresults?api-version=7.0"
 )
 
+# Cost estimation — USD per million tokens (update via env vars if pricing changes)
+COST_PER_M_INPUT  = float(os.environ.get("COST_PER_M_INPUT",  "3.00"))   # Sonnet 4.6 input
+COST_PER_M_OUTPUT = float(os.environ.get("COST_PER_M_OUTPUT", "15.00"))  # Sonnet 4.6 output
+
 MAX_AGENTIC_ITERATIONS = 12    # more headroom for complex multi-file questions
 MAX_SEARCH_RESULTS     = 12    # broader initial candidate pool per search term
 MAX_FILE_CHARS         = 15000 # read more of each file — key methods are often deep
@@ -2450,7 +2454,9 @@ def index():
     return render_template("index.html",
                            user=user,
                            is_admin=_is_admin(),
-                           auth_disabled=AUTH_DISABLED)
+                           auth_disabled=AUTH_DISABLED,
+                           cost_per_m_input=COST_PER_M_INPUT,
+                           cost_per_m_output=COST_PER_M_OUTPUT)
 
 
 @app.route("/api/extract-screenshot", methods=["POST"])

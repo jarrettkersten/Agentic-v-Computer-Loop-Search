@@ -599,8 +599,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     </div>
   </div>
 
-  <!-- Token summary row -->
-  <div class="adm-summary-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px">
+  <!-- Token & cost summary row -->
+  <div class="adm-summary-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px">
     <div class="adm-summary-card">
       <div class="label">Avg Tokens / Search</div>
       <div class="value" id="adm-stat-tok-avg">—</div>
@@ -612,9 +612,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div class="sub" id="adm-stat-tok-total-sub"></div>
     </div>
     <div class="adm-summary-card">
-      <div class="label">Most Expensive Search</div>
+      <div class="label">Highest Token Search</div>
       <div class="value" id="adm-stat-tok-max">—</div>
       <div class="sub" id="adm-stat-tok-max-sub"></div>
+    </div>
+    <div class="adm-summary-card" style="border-left:3px solid #6d28d9">
+      <div class="label">Total Est. Cost</div>
+      <div class="value" id="adm-stat-cost-total" style="color:#6d28d9">—</div>
+      <div class="sub" id="adm-stat-cost-total-sub"></div>
     </div>
   </div>
 
@@ -627,6 +632,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div class="bc-stat"><span class="bc-key">Avg Iterations</span><span class="bc-val" id="adm-ag-iters">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-ag-time">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-ag-tokens">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Cost</span><span class="bc-val" id="adm-ag-cost" style="color:#6d28d9">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-ag-errors">—</span></div>
     </div>
     <div class="adm-breakdown-card sharepoint">
@@ -635,6 +641,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div class="bc-stat"><span class="bc-key">Avg Docs Read</span><span class="bc-val" id="adm-sp-files">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-sp-time">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-sp-tokens">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Cost</span><span class="bc-val" id="adm-sp-cost" style="color:#6d28d9">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-sp-errors">—</span></div>
     </div>
   </div>
@@ -764,6 +771,19 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   function formatTime(s) {
     if (!s && s !== 0) return '';
     return s >= 60 ? Math.floor(s / 60) + 'm ' + (s % 60).toFixed(0) + 's' : s + 's';
+  }
+
+  // ── Cost estimation ─────────────────────────────────────────────────────────
+  // Pricing from env vars (COST_PER_M_INPUT / COST_PER_M_OUTPUT), defaults to Sonnet 4.6 rates
+  const COST_PER_M_INPUT  = {{ cost_per_m_input | default(3.00) }};
+  const COST_PER_M_OUTPUT = {{ cost_per_m_output | default(15.00) }};
+  function calcCost(inputTok, outputTok) {
+    return ((inputTok || 0) / 1e6) * COST_PER_M_INPUT
+         + ((outputTok || 0) / 1e6) * COST_PER_M_OUTPUT;
+  }
+  function formatCost(cost) {
+    if (!cost || cost <= 0) return '';
+    return cost < 0.01 ? '<$0.01' : '$' + cost.toFixed(2);
   }
 
   // Wrap /code/... and /inetpub/... file paths in clickable ADO links
@@ -973,12 +993,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     }).join('');
 
     const agTok = (result.input_tokens || 0) + (result.output_tokens || 0);
+    const agCost = calcCost(result.input_tokens, result.output_tokens);
     document.getElementById('agenticBody').innerHTML = `
       <div class="stats-row">
         <div class="stat">⚡ Iterations: <strong>${result.total_iterations}</strong></div>
         <div class="stat">🔎 Searches: <strong>${result.total_searches}</strong></div>
         <div class="stat">📄 Files: <strong>${result.total_files_read}</strong></div>
         ${agTok ? `<div class="stat">🪙 <strong>${formatTokens(agTok)}</strong> tok</div>` : ''}
+        ${agCost ? `<div class="stat">💲 <strong>${formatCost(agCost)}</strong></div>` : ''}
         ${result.elapsed_seconds != null ? `<div class="stat">⏱ <strong>${formatTime(result.elapsed_seconds)}</strong></div>` : ''}
         <div class="branch-tag">🌿 ${esc(result.branch)}</div>
       </div>
@@ -1026,12 +1048,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     }).join('');
 
     const hybTok = (result.input_tokens || 0) + (result.output_tokens || 0);
+    const hybCost = calcCost(result.input_tokens, result.output_tokens);
     document.getElementById('hybridBody').innerHTML = `
       <div class="stats-row">
         <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
         <div class="stat">🔎 Found: <strong>${result.results_found}</strong></div>
         <div class="stat">📄 Files: <strong>${result.files_read}</strong></div>
         ${hybTok ? `<div class="stat">🪙 <strong>${formatTokens(hybTok)}</strong> tok</div>` : ''}
+        ${hybCost ? `<div class="stat">💲 <strong>${formatCost(hybCost)}</strong></div>` : ''}
         ${result.elapsed_seconds != null ? `<div class="stat">⏱ <strong>${formatTime(result.elapsed_seconds)}</strong></div>` : ''}
         <div class="branch-tag">🌿 ${esc(result.branch)}</div>
       </div>
@@ -1084,11 +1108,15 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     metaEl.style.display = 'block';
     metaEl.innerHTML = `📁 <a href="${esc(result.folder)}" target="_blank">${esc(result.folder)}</a>`;
 
+    const spTok = (result.input_tokens || 0) + (result.output_tokens || 0);
+    const spCost = calcCost(result.input_tokens, result.output_tokens);
     document.getElementById('spBody').innerHTML = `
       <div class="stats-row">
         <div class="stat">🔎 Found: <strong>${result.results_found}</strong></div>
         <div class="stat">📄 Files: <strong>${result.files_read}</strong></div>
         <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
+        ${spTok ? `<div class="stat">🪙 <strong>${formatTokens(spTok)}</strong> tok</div>` : ''}
+        ${spCost ? `<div class="stat">💲 <strong>${formatCost(spCost)}</strong></div>` : ''}
       </div>
       ${renderConfidence(result.confidence)}
       <div class="answer-body">${md(result.answer)}</div>
@@ -1462,7 +1490,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     id: 'ID', ran_at: 'Time', loop_type: 'Loop', query: 'Query', branch: 'Branch',
     status: 'Status', duration_sec: 'Time (s)', files_read: 'Files',
     iterations: 'Iterations', searches: 'Searches', confidence_level: 'Confidence',
-    input_tokens: 'Input Tokens', output_tokens: 'Output Tokens', total_tokens: 'Total Tokens',
+    input_tokens: 'Input Tokens', output_tokens: 'Output Tokens', total_tokens: 'Total Tokens', est_cost: 'Est. Cost',
     error_message: 'Error', sources_used: 'Sources Used',
     answer: 'Answer', explanation: 'Explanation', flagged_by: 'Flagged By',
     flagged_at: 'Flagged At', reviewed_by: 'Reviewed By', reviewed_at: 'Reviewed At',
@@ -1495,7 +1523,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       try {
         const res  = await fetch(`/admin/data/${t}`);
         const data = await res.json();
-        admTableData[t] = data.rows || [];
+        const rows = data.rows || [];
+        // Inject estimated cost column
+        rows.forEach(r => {
+          r.est_cost = calcCost(r.input_tokens, r.output_tokens);
+        });
+        admTableData[t] = rows;
       } catch (e) { admTableData[t] = []; }
     }
     // Load flagged queries from flag admin API
@@ -1562,9 +1595,20 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       const maxRow = tokRows.reduce((a, b) => b.total_tokens > a.total_tokens ? b : a, tokRows[0]);
       document.getElementById('adm-stat-tok-max').textContent = maxRow.total_tokens.toLocaleString();
       document.getElementById('adm-stat-tok-max-sub').textContent = (maxRow.loop_type || '') + ' — ' + (maxRow.query || '').slice(0, 40);
+
+      // Total cost across all searches + syntheses
+      const totalSearchCost = tokRows.reduce((s, r) => s + calcCost(r.input_tokens, r.output_tokens), 0);
+      const synthRows = (admTableData.synthesis_events || []).filter(r => r.total_tokens > 0);
+      const totalSynthCost = synthRows.reduce((s, r) => s + calcCost(r.input_tokens, r.output_tokens), 0);
+      const totalCost = totalSearchCost + totalSynthCost;
+      document.getElementById('adm-stat-cost-total').textContent = totalCost < 0.01 ? '<$0.01' : '$' + totalCost.toFixed(2);
+      const avgCostPerSearch = tokRows.length ? totalSearchCost / tokRows.length : 0;
+      document.getElementById('adm-stat-cost-total-sub').textContent =
+        `avg ${avgCostPerSearch < 0.01 ? '<$0.01' : '$' + avgCostPerSearch.toFixed(2)} / search` +
+        (totalSynthCost > 0 ? ` + $${totalSynthCost.toFixed(2)} synth` : '');
     }
 
-    function loopStats(type, runsEl, filesEl, thirdEl, thirdKey, timeEl, tokEl, errorsEl) {
+    function loopStats(type, runsEl, filesEl, thirdEl, thirdKey, timeEl, tokEl, costEl, errorsEl) {
       const rows = searches.filter(r => r.loop_type === type);
       document.getElementById(runsEl).textContent = rows.length || '0';
       const fAvg = admAvg(rows.filter(r => r.files_read).map(r => r.files_read));
@@ -1575,10 +1619,13 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       document.getElementById(timeEl).textContent = dAvg != null ? dAvg.toFixed(1) + 's' : '—';
       const tokAvg = admAvg(rows.filter(r => r.total_tokens > 0).map(r => r.total_tokens));
       document.getElementById(tokEl).textContent = tokAvg != null ? Math.round(tokAvg).toLocaleString() : '—';
+      const costRows = rows.filter(r => r.total_tokens > 0);
+      const avgCost = costRows.length ? costRows.reduce((s, r) => s + calcCost(r.input_tokens, r.output_tokens), 0) / costRows.length : 0;
+      document.getElementById(costEl).textContent = avgCost > 0 ? formatCost(avgCost) : '—';
       document.getElementById(errorsEl).textContent = rows.filter(r => r.status === 'error').length;
     }
-    loopStats('agentic',    'adm-ag-runs', 'adm-ag-files', 'adm-ag-iters', 'iterations', 'adm-ag-time', 'adm-ag-tokens', 'adm-ag-errors');
-    loopStats('sharepoint', 'adm-sp-runs', 'adm-sp-files', 'adm-sp-time', 'duration_sec', 'adm-sp-time', 'adm-sp-tokens', 'adm-sp-errors');
+    loopStats('agentic',    'adm-ag-runs', 'adm-ag-files', 'adm-ag-iters', 'iterations', 'adm-ag-time', 'adm-ag-tokens', 'adm-ag-cost', 'adm-ag-errors');
+    loopStats('sharepoint', 'adm-sp-runs', 'adm-sp-files', 'adm-sp-time', 'duration_sec', 'adm-sp-time', 'adm-sp-tokens', 'adm-sp-cost', 'adm-sp-errors');
   }
 
   function admSwitchTab(event, table) {
@@ -1670,6 +1717,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         }
         if ((c === 'input_tokens' || c === 'output_tokens') && val) {
           return `<td>${parseInt(val, 10).toLocaleString()}</td>`;
+        }
+        if (c === 'est_cost' && val) {
+          const fc = formatCost(val);
+          return `<td style="font-weight:600;color:#6d28d9">${fc || '—'}</td>`;
         }
         if (typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T?/)) {
           val = new Date(val).toLocaleString();
