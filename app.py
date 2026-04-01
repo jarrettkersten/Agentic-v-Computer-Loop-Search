@@ -415,10 +415,9 @@ def ado_code_search(query, branch, top=None):
 def ado_read_file(file_path, branch, char_offset=0):
     """Read a file from the Cora PPM ADO repo.
 
-    char_offset: start reading from this character position in the file.
-    Use 0 for the beginning. To continue a truncated read, pass the next
-    offset shown in the ⚠ FILE TRUNCATED message.
-    Returns up to MAX_FILE_CHARS characters starting from char_offset.
+    Returns the FULL file content starting from char_offset.  No truncation —
+    the entire file (from the offset onward) is returned so the model never
+    misses methods or classes defined deeper in the file.
     """
     url = (
         f"{ADO_BASE_URL}/{ADO_PROJECT}/_apis/git/repositories/{ADO_REPO}/items"
@@ -441,23 +440,19 @@ def ado_read_file(file_path, branch, char_offset=0):
     full_content = resp.text
     total_len    = len(full_content)
 
-    # Slice the requested window
-    chunk = full_content[char_offset : char_offset + MAX_FILE_CHARS]
+    # Return everything from the requested offset onward — no chunking.
+    content = full_content[char_offset:]
 
-    if not chunk:
+    if not content:
         return f"[No content at offset {char_offset:,} — file is {total_len:,} chars total.]"
 
-    next_offset = char_offset + MAX_FILE_CHARS
-    if next_offset < total_len:
-        chunk += (
-            f"\n\n[⚠ FILE TRUNCATED — showing chars {char_offset:,}–{char_offset + len(chunk):,} "
-            f"of {total_len:,} total. The file continues. To read the next section, call "
-            f"ado_read_file with the same file_path and char_offset: {next_offset}.]"
-        )
-    elif char_offset > 0:
-        chunk += f"\n\n[End of file reached at offset {char_offset + len(chunk):,} of {total_len:,}.]"
+    # Append a size footer so the model (and logs) know how much was returned.
+    content += f"\n\n[Full file returned — {len(content):,} chars"
+    if char_offset > 0:
+        content += f" (from offset {char_offset:,})"
+    content += f" of {total_len:,} total.]"
 
-    return chunk
+    return content
 
 
 def get_client():
@@ -708,8 +703,7 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
                 "files, or implementations. Returns matching file paths AND content "
                 f"snippets (the actual matching lines of code) from the {ADO_REPO} repository. "
                 "The snippets show the exact code at the match location — use them to "
-                "inspect code from large files without reading the full file, and to "
-                "find methods that may be beyond the truncation point of a file you already read. "
+                "quickly inspect code from large files without reading the full file. "
                 "Call this multiple times with different short technical search terms "
                 "(class names, method names, feature names, 1-3 words) to find all relevant files. "
                 "NEVER use the full user question as the search term — it returns nothing."
@@ -733,10 +727,8 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
             "description": (
                 "Read the content of a specific file from the Cora PPM ADO repository. "
                 "Use file paths returned by ado_code_search. "
-                "Large files are returned in chunks of up to 15,000 characters. "
-                "If the response ends with '⚠ FILE TRUNCATED', call this tool again "
-                "with the same file_path and the char_offset value shown in the message "
-                "to read the next section of the file."
+                "Returns the FULL file content — no truncation. "
+                "You will always receive the complete file in a single call."
             ),
             "input_schema": {
                 "type": "object",
@@ -752,9 +744,7 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
                         "type": "integer",
                         "description": (
                             "Character offset to start reading from. "
-                            "Omit or use 0 to read from the beginning. "
-                            "To continue reading a truncated file, use the next offset "
-                            "value shown in the ⚠ FILE TRUNCATED message."
+                            "Omit or use 0 to read from the beginning."
                         ),
                     },
                 },
@@ -786,17 +776,10 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         "  5. Any helpers, utilities, or shared controls it calls\n"
         "  6. Any SQL stored procedures or queries referenced\n"
         "Read ALL layers — an answer that only covers the UI without the business logic is incomplete.\n\n"
-        "═══ HANDLING TRUNCATED FILES ═══\n"
-        "When a file you read ends with '⚠ FILE TRUNCATED', call ado_read_file again with\n"
-        "the SAME file_path and the char_offset value shown in the truncation message.\n"
-        "This reads the next 15,000-character chunk of the file. Keep reading chunks until\n"
-        "you find the method or class you need, or reach the end of the file.\n"
-        "Example: file truncated at 15,000 → call ado_read_file(file_path=..., char_offset=15000)\n"
-        "         still truncated at 30,000 → call ado_read_file(file_path=..., char_offset=30000)\n"
-        "You may also use ado_code_search with the exact method name as a faster alternative\n"
-        "when you know the specific symbol you are looking for.\n"
-        "Also check the snippets already returned in earlier search results — they may already\n"
-        "contain the code you need at the precise offset in the file.\n\n"
+        "═══ FILE READS — NO TRUNCATION ═══\n"
+        "ado_read_file returns the FULL file content in one call — there is no truncation.\n"
+        "You will always receive the complete file, so every method and class definition\n"
+        "will be visible. Do NOT re-read the same file unless you need a different offset.\n\n"
         "═══ ANSWER REQUIREMENTS ═══\n"
         "Your answer MUST use EXACTLY this two-section structure:\n\n"
         "## Answer\n"
