@@ -1,652 +1,1846 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Loop Comparison: Agentic vs Computer</title>
-  <style>
-    /* ── Base ── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0f1117;
-      color: #e2e8f0;
-      min-height: 100vh;
-      padding: 24px 16px 48px;
-    }
-    a { color: #60a5fa; }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Cora PPM — Loop Comparison Search</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+:root{
+  --brand:#1a2535;--brand-light:#1e6fd4;--brand-dark:#0f1c2b;
+  --bg:#f2f4f8;--card:#fff;
+  --border:#e2e8f0;--text:#1a2535;--muted:#64748b;
+  --success:#16a34a;--success-bg:#f0fdf4;
+  --error:#b91c1c;--error-bg:#fff5f5;
+  --warn:#d97706;--warn-bg:#fffbeb;
+  --agentic:#2563eb;--agentic-bg:#eff6ff;--agentic-border:#bfdbfe;
+  --hybrid:#0d9488;--hybrid-bg:#f0fdfa;--hybrid-border:#99f6e4;
+  --sharepoint:#0078d4;--sharepoint-bg:#eff6ff;--sharepoint-border:#bae6fd;
+  --radius:14px;--shadow:0 2px 16px rgba(26,37,53,.07),0 1px 4px rgba(26,37,53,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
 
-    /* ── Layout ── */
-    .page { max-width: 1200px; margin: 0 auto; }
+/* ── Header ── */
+header{background:var(--brand);color:#fff;padding:0 36px;height:58px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+.logo{display:flex;align-items:center;gap:12px;font-size:1rem;font-weight:600;letter-spacing:.01em;flex:1}
+.logo .sep{width:1px;height:22px;background:rgba(255,255,255,.25)}
+.source-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:99px;font-size:.76rem;color:rgba(255,255,255,.8);padding:4px 14px}
+.source-badge .dot{width:7px;height:7px;background:#4ade80;border-radius:50%;flex-shrink:0}
 
-    /* ── Header ── */
-    .header { text-align: center; margin-bottom: 32px; }
-    .header h1 {
-      font-size: 1.75rem;
-      font-weight: 700;
-      background: linear-gradient(135deg, #60a5fa, #a78bfa);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 6px;
-    }
-    .header p { color: #94a3b8; font-size: 0.95rem; }
+/* ── Main layout ── */
+main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direction:column;gap:18px}
 
-    /* ── Query box ── */
-    .query-box {
-      background: #1e2130;
-      border: 1px solid #2d3348;
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 20px;
-    }
-    .query-box label {
-      display: block;
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      color: #64748b;
-      margin-bottom: 8px;
-    }
-    .query-box textarea {
-      width: 100%;
-      background: #111827;
-      border: 1px solid #374151;
-      border-radius: 8px;
-      color: #e2e8f0;
-      font-size: 0.97rem;
-      padding: 12px 14px;
-      resize: vertical;
-      min-height: 80px;
-      transition: border-color .2s;
-      outline: none;
-    }
-    .query-box textarea:focus { border-color: #6366f1; }
+/* ── Cards ── */
+.card{background:var(--card);border-radius:var(--radius);padding:24px 28px;box-shadow:var(--shadow)}
+.card-title{font-size:.95rem;font-weight:700;color:var(--text);margin-bottom:18px;display:flex;align-items:center;gap:10px}
 
-    /* ── Buttons ── */
-    .btn-row {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-top: 14px;
-    }
-    .btn {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 20px;
-      border: none;
-      border-radius: 8px;
-      font-size: 0.92rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity .2s, transform .1s;
-    }
-    .btn:active { transform: scale(.97); }
-    .btn:disabled { opacity: .45; cursor: not-allowed; }
-    .btn-agentic  { background: #3b82f6; color: #fff; }
-    .btn-computer { background: #8b5cf6; color: #fff; }
-    .btn-both     { background: #0f766e; color: #fff; }
-    .btn-compare  { background: #d97706; color: #fff; display:none; }
+/* ── Top query card ── */
+.query-card{}
+.query-layout{display:grid;grid-template-columns:200px 1fr;gap:20px;align-items:start}
+@media(max-width:900px){.query-layout{grid-template-columns:1fr}}
 
-    /* ── Grid ── */
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-bottom: 16px;
-    }
-    @media(max-width: 780px) { .grid { grid-template-columns: 1fr; } }
+.field-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px}
+.branch-select{width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;font-family:inherit;color:var(--text);background:#fff;transition:border-color .2s;cursor:pointer;outline:none}
+.branch-select:focus{border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
+.branch-loading{font-size:.75rem;color:var(--muted);font-style:italic;margin-top:5px;min-height:16px}
 
-    /* ── Panel ── */
-    .panel {
-      background: #1e2130;
-      border: 1px solid #2d3348;
-      border-radius: 12px;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-    .panel-header {
-      padding: 14px 18px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      border-bottom: 1px solid #2d3348;
-    }
-    .panel-header h2 { font-size: 1rem; font-weight: 700; flex: 1; }
-    .badge {
-      font-size: 0.72rem;
-      font-weight: 600;
-      padding: 3px 8px;
-      border-radius: 99px;
-      white-space: nowrap;
-    }
-    .badge-agentic  { background: #1d4ed8; color: #bfdbfe; }
-    .badge-computer { background: #6d28d9; color: #ddd6fe; }
+.query-textarea{width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:.93rem;font-family:inherit;color:var(--text);background:#fff;resize:vertical;min-height:80px;outline:none;transition:border-color .2s;line-height:1.55}
+.query-textarea:focus{border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
+.query-textarea::placeholder{color:#94a3b8}
 
-    .panel-body { padding: 16px 18px; flex: 1; }
+/* ── Action row (top card) ── */
+.action-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.status-bar{font-size:.79rem;color:var(--muted);min-height:17px;margin-top:6px}
 
-    /* ── States ── */
-    .state-idle, .state-loading, .state-error {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      color: #64748b;
-      min-height: 140px;
-      text-align: center;
-      font-size: 0.9rem;
-    }
-    .state-error { color: #f87171; }
-    .state-idle .icon { font-size: 2rem; }
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 20px;border:none;border-radius:8px;font-size:.87rem;font-weight:600;cursor:pointer;transition:all .15s;letter-spacing:.01em;font-family:inherit}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-run-all{background:var(--brand);color:#fff;padding:10px 26px;font-size:.93rem}
+.btn-run-all:hover:not(:disabled){background:var(--brand-dark)}
+.btn-compare{background:#92400e;color:#fff}
+.btn-compare:hover:not(:disabled){background:#78350f}
+.btn-sm{padding:7px 15px;font-size:.82rem;border-radius:7px}
+.btn-agentic{background:var(--agentic);color:#fff}
+.btn-agentic:hover:not(:disabled){background:#1d4ed8}
+.btn-hybrid{background:var(--hybrid);color:#fff}
+.btn-hybrid:hover:not(:disabled){background:#0f766e}
+.btn-sp{background:var(--sharepoint);color:#fff}
+.btn-sp:hover:not(:disabled){background:#005ba1}
 
-    /* ── Spinner ── */
-    .spinner {
-      width: 32px; height: 32px;
-      border: 3px solid #374151;
-      border-top-color: #6366f1;
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+/* ── Three-column grid ── */
+.results-grid{display:flex;flex-direction:row;gap:16px;align-items:start}
+@media(max-width:700px){.results-grid{flex-direction:column}}
 
-    /* ── Answer ── */
-    .answer-section { margin-bottom: 14px; }
-    .answer-section h3 {
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      color: #64748b;
-      margin-bottom: 8px;
-    }
-    .answer-text {
-      font-size: 0.93rem;
-      line-height: 1.65;
-      color: #cbd5e1;
-      white-space: pre-wrap;
-    }
+/* ── Result panels ── */
+.panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:auto;display:flex;flex-direction:column;flex:1 1 0;min-width:220px;position:relative}
+.panel-header{padding:14px 18px;display:flex;align-items:center;gap:9px;border-bottom:1.5px solid var(--border)}
+.panel-header h2{font-size:.93rem;font-weight:700;flex:1;color:var(--text)}
+.badge{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;letter-spacing:.04em}
+.badge-agentic{background:var(--agentic-bg);color:var(--agentic);border:1px solid var(--agentic-border)}
+.badge-hybrid{background:var(--hybrid-bg);color:var(--hybrid);border:1px solid var(--hybrid-border)}
+.badge-sp{background:var(--sharepoint-bg);color:var(--sharepoint);border:1px solid var(--sharepoint-border)}
+.panel-body{padding:18px 20px;flex:1}
 
-    /* ── Stats strip ── */
-    .stats {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      margin-bottom: 12px;
-    }
-    .stat {
-      background: #111827;
-      border: 1px solid #1f2937;
-      border-radius: 8px;
-      padding: 6px 12px;
-      font-size: 0.8rem;
-      color: #94a3b8;
-    }
-    .stat strong { color: #e2e8f0; }
+/* ── Panel states ── */
+.state-idle,.state-loading,.state-error{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:160px;text-align:center;font-size:.86rem;color:var(--muted);line-height:1.6}
+.state-error{color:var(--error)}
+.state-idle .icon{font-size:2rem;opacity:.5}
+.spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--brand-light);border-radius:50%;animation:spin .75s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-step{font-size:.75rem;color:var(--text-muted);margin-top:.5rem;max-width:340px;text-align:center;line-height:1.4;min-height:1.2em;transition:opacity .2s}
+.code-file-link{color:var(--brand-light);text-decoration:none;border-bottom:1px dashed var(--brand-light);font-size:inherit}
+.code-file-link:hover{color:var(--brand);border-bottom-style:solid}
+.ado-link-icon{font-size:.7em;opacity:.7;margin-left:.15em;vertical-align:super}
 
-    /* ── Log accordion ── */
-    .log-toggle {
-      background: none;
-      border: 1px solid #374151;
-      border-radius: 6px;
-      color: #94a3b8;
-      cursor: pointer;
-      font-size: 0.8rem;
-      padding: 5px 10px;
-      width: 100%;
-      text-align: left;
-      margin-bottom: 6px;
-      transition: background .15s;
-    }
-    .log-toggle:hover { background: #1f2937; }
-    .log-body { display: none; }
-    .log-body.open { display: block; }
-    .log-item {
-      background: #111827;
-      border-left: 3px solid #374151;
-      border-radius: 0 6px 6px 0;
-      margin-bottom: 6px;
-      padding: 8px 12px;
-      font-size: 0.8rem;
-    }
-    .log-item .log-label { color: #6366f1; font-weight: 600; margin-bottom: 4px; }
-    .log-item .log-detail { color: #64748b; }
-    .log-item .log-results { margin-top: 6px; }
-    .log-result-item { color: #94a3b8; margin-bottom: 3px; }
-    .log-result-item strong { color: #cbd5e1; }
+/* ── Stats row ── */
+.stats-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.stat{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:4px 11px;font-size:.76rem;color:var(--muted)}
+.stat strong{color:var(--text)}
+.branch-tag{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:4px 11px;font-size:.76rem;color:var(--success)}
 
-    /* ── Comparison panel ── */
-    .compare-panel {
-      background: #1a1d2e;
-      border: 1px solid #d97706;
-      border-radius: 12px;
-      padding: 20px;
-      display: none;
-    }
-    .compare-panel h2 {
-      font-size: 1.05rem;
-      font-weight: 700;
-      color: #fbbf24;
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .compare-text {
-      font-size: 0.93rem;
-      line-height: 1.65;
-      color: #cbd5e1;
-      white-space: pre-wrap;
-    }
+/* ── Confidence badge ── */
+.confidence{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:7px 14px;font-size:.82rem;font-weight:600;margin-bottom:16px;border:1.5px solid}
+.confidence-high{background:#f0fdf4;border-color:#bbf7d0;color:var(--success)}
+.confidence-medium{background:#fffbeb;border-color:#fde68a;color:var(--warn)}
+.confidence-low{background:#fff5f5;border-color:#fecaca;color:var(--error)}
+.confidence .conf-icon{font-size:1rem}
+.confidence .conf-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
 
-    /* ── Status bar ── */
-    .status-bar {
-      text-align: center;
-      font-size: 0.82rem;
-      color: #64748b;
-      margin: 8px 0 16px;
-      min-height: 18px;
-    }
+/* ── Answer label ── */
 
-    /* ── Top bar (user info) ── */
-    .top-bar {
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 8px;
-      font-size: 0.82rem;
-      color: #94a3b8;
-    }
-    .top-bar a {
-      color: #60a5fa;
-      text-decoration: none;
-      font-weight: 500;
-    }
-    .top-bar a:hover { text-decoration: underline; }
+/* ── Markdown answer ── */
+.answer-body{font-size:.9rem;line-height:1.75;color:var(--text)}
+.answer-body h1,.answer-body h2{color:var(--text);font-weight:700;margin:1.3em 0 .5em;padding-bottom:.3em;border-bottom:1.5px solid var(--border)}
+.answer-body h1{font-size:1.05rem}
+.answer-body h2{font-size:.97rem}
+.answer-body h3{color:var(--brand-light);font-size:.86rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:1.2em 0 .4em}
+.answer-body h4{color:var(--muted);font-size:.84rem;font-weight:600;margin:.9em 0 .3em}
+.answer-body p{margin-bottom:.8em}
+.answer-body ul,.answer-body ol{margin:.4em 0 .9em 1.3em;padding:0}
+.answer-body li{margin-bottom:.25em}
+.answer-body strong{color:var(--brand);font-weight:600}
+.answer-body em{color:var(--muted)}
+.answer-body hr{border:none;border-top:1.5px solid var(--border);margin:1.4em 0}
+.answer-body code{font-family:"Fira Code","Cascadia Code","Consolas",monospace;font-size:.82em;background:#f1f5f9;border:1px solid var(--border);border-radius:4px;padding:2px 5px;color:#0f172a}
+.answer-body pre{background:#0f172a;border:1px solid #1e293b;border-left:3px solid var(--brand-light);border-radius:0 8px 8px 0;padding:13px 15px;margin:.7em 0 1em;overflow-x:auto}
+.answer-body pre code{background:none;border:none;padding:0;color:#a5f3fc;font-size:.81em;line-height:1.6}
+.answer-body blockquote{border-left:3px solid var(--border);margin:.8em 0;padding:6px 14px;color:var(--muted);font-style:italic}
+.answer-body table{width:100%;border-collapse:collapse;margin:.8em 0 1em;font-size:.84em}
+.answer-body th{background:var(--bg);color:var(--muted);padding:7px 12px;text-align:left;font-weight:700;border:1.5px solid var(--border);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+.answer-body td{padding:7px 12px;border:1px solid var(--border);color:var(--text)}
+.answer-body tr:nth-child(even) td{background:#fafbfc}
+.answer-body>*:first-child{margin-top:0}
+.answer-body>*:last-child{margin-bottom:0}
 
-    /* ── Flag button ── */
-    .flag-btn {
-      background: none;
-      border: 1px solid #374151;
-      border-radius: 6px;
-      color: #f87171;
-      cursor: pointer;
-      font-size: 0.78rem;
-      padding: 4px 10px;
-      margin-top: 10px;
-      transition: background .15s, border-color .15s;
-    }
-    .flag-btn:hover { background: #1f2937; border-color: #f87171; }
-    .flag-btn:disabled { opacity: .4; cursor: not-allowed; }
+/* ── Log accordion ── */
+.log-toggle{background:none;border:1.5px solid var(--border);border-radius:7px;color:var(--muted);cursor:pointer;font-size:.76rem;padding:6px 12px;width:100%;text-align:left;margin-top:14px;transition:background .15s;font-family:inherit}
+.log-toggle:hover{background:var(--bg);color:var(--text);border-color:#b0bfd0}
+.log-body{display:none;margin-top:6px}
+.log-body.open{display:block}
+.log-item{background:var(--bg);border-left:3px solid var(--border);border-radius:0 6px 6px 0;margin-bottom:6px;padding:9px 13px;font-size:.76rem}
+.log-item .log-label{font-weight:700;margin-bottom:3px}
+.log-item .log-label.search{color:var(--agentic)}
+.log-item .log-label.file{color:var(--agentic)}
+.log-item .log-label.step{color:var(--brand-light)}
+.log-item .log-detail{color:var(--muted);margin-bottom:3px}
+.log-result-item{color:var(--muted);margin-bottom:2px;padding-left:10px;border-left:2px solid var(--border);font-size:.74rem}
+.log-result-item strong{color:var(--text)}
+.log-preview{font-style:italic;color:#94a3b8;margin-top:4px;font-size:.72rem}
+.log-url{color:var(--brand-light);font-size:.7rem;word-break:break-all;margin-top:2px}
 
-    /* ── Flag form ── */
-    .flag-form {
-      display: none;
-      margin-top: 10px;
-      padding: 12px;
-      background: #111827;
-      border: 1px solid #374151;
-      border-radius: 8px;
-    }
-    .flag-form textarea {
-      width: 100%;
-      background: #0f1117;
-      border: 1px solid #374151;
-      border-radius: 6px;
-      color: #e2e8f0;
-      font-size: 0.85rem;
-      padding: 8px 10px;
-      resize: vertical;
-      min-height: 60px;
-      outline: none;
-      margin-bottom: 8px;
-    }
-    .flag-form textarea:focus { border-color: #f87171; }
-    .flag-form .flag-submit {
-      background: #dc2626;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 6px 14px;
-      font-size: 0.82rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .flag-form .flag-submit:disabled { opacity: .4; cursor: not-allowed; }
-    .flag-form .flag-cancel {
-      background: none;
-      border: 1px solid #374151;
-      border-radius: 6px;
-      color: #94a3b8;
-      padding: 6px 14px;
-      font-size: 0.82rem;
-      cursor: pointer;
-      margin-left: 8px;
-    }
-    .flag-success {
-      color: #34d399;
-      font-size: 0.82rem;
-      margin-top: 8px;
-      display: none;
-    }
-  </style>
+/* ── Compare panel ── */
+.compare-panel{background:var(--warn-bg);border:1.5px solid #fde68a;border-radius:var(--radius);padding:22px;display:none;margin-top:4px;box-shadow:var(--shadow)}
+.compare-header{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1.5px solid #fde68a}
+.compare-header h2{font-size:.97rem;font-weight:700;color:#92400e;flex:1}
+.compare-loading{display:none;align-items:center;gap:10px;color:var(--muted);font-size:.86rem;margin-bottom:12px}
+.compare-body{font-size:.9rem;line-height:1.75;color:var(--text)}
+.compare-body h1,.compare-body h2{color:var(--text);font-weight:700;margin:1.3em 0 .5em;padding-bottom:.3em;border-bottom:1.5px solid #fde68a}
+.compare-body h3{color:#92400e;font-size:.86rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:1.2em 0 .4em}
+.compare-body p{margin-bottom:.8em}
+.compare-body ul,.compare-body ol{margin:.4em 0 .9em 1.3em}
+.compare-body li{margin-bottom:.25em}
+.compare-body strong{color:#78350f;font-weight:600}
+.compare-body hr{border:none;border-top:1.5px solid #fde68a;margin:1.4em 0}
+.compare-body code{font-family:"Fira Code","Consolas",monospace;font-size:.82em;background:#fef9c3;border:1px solid #fde68a;border-radius:4px;padding:2px 5px;color:#78350f}
+.compare-body pre{background:#1c1917;border:1px solid #292524;border-left:3px solid #d97706;border-radius:0 8px 8px 0;padding:13px 15px;margin:.7em 0 1em;overflow-x:auto}
+.compare-body pre code{background:none;border:none;padding:0;color:#fde68a;font-size:.81em;line-height:1.6}
+.compare-body>*:first-child{margin-top:0}
+.compare-body>*:last-child{margin-bottom:0}
+
+/* ── SP-specific log items ── */
+.sp-log-item{background:var(--bg);border-left:3px solid var(--sharepoint-border);border-radius:0 6px 6px 0;margin-bottom:6px;padding:9px 13px;font-size:.76rem}
+.sp-log-label{font-weight:700;margin-bottom:3px;color:var(--sharepoint)}
+.sp-log-detail{color:var(--muted);margin-bottom:3px}
+.sp-log-url{color:var(--sharepoint);font-size:.7rem;word-break:break-all;margin-top:2px}
+.sp-log-result{color:var(--muted);margin-bottom:2px;padding-left:10px;border-left:2px solid var(--sharepoint-border);font-size:.74rem}
+.sp-log-preview{font-style:italic;color:#94a3b8;margin-top:4px;font-size:.72rem}
+.sp-meta{font-size:.75rem;color:var(--sharepoint);word-break:break-all;margin-bottom:12px}
+
+/* ── Synthesis panel ── */
+.synthesis-panel{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;display:none}
+.synthesis-header{padding:16px 22px;display:flex;align-items:center;gap:10px;background:var(--brand);color:#fff}
+.synthesis-header h2{font-size:.97rem;font-weight:700;flex:1}
+.synthesis-header .badge{background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25)}
+.synthesis-header .chevron{margin-left:0!important}
+.synthesis-body{padding:22px 26px}
+.synthesis-loading{display:none;align-items:center;gap:10px;color:var(--muted);font-size:.86rem;margin-bottom:12px}
+
+/* ── Collapse / expand ── */
+.chevron{margin-left:auto;font-size:.75rem;color:var(--muted);transition:transform .22s;flex-shrink:0;cursor:pointer;padding:2px 4px}
+.collapsed .chevron{transform:rotate(-90deg)}
+/* card collapse */
+.card.collapsible .card-title{cursor:pointer;user-select:none;margin-bottom:0}
+.card.collapsible .card-body{overflow:hidden;transition:none}
+.card.collapsed .card-body{display:none}
+.card.collapsible:not(.collapsed) .card-title{margin-bottom:18px}
+/* panel collapse */
+.panel-header{cursor:pointer;user-select:none}
+.panel.collapsed .panel-body,.panel.collapsed #spMeta{display:none!important}
+.panel.collapsed .panel-header{border-bottom:none}
+/* compare / synthesis collapse */
+.collapsible-panel .cp-header{cursor:pointer;user-select:none;display:flex;align-items:center;gap:10px}
+.collapsible-panel.collapsed .cp-body{display:none!important}
+.collapsible-panel .cp-header{margin-bottom:0}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
+.card-body,.panel-body,.cp-body{animation:fadeIn .18s ease}
+
+footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem}
+@media(max-width:640px){main{width:96%}.card{padding:18px 16px}header{padding:0 18px}}
+
+/* ── Clarification inline card ── */
+.clarify-card{margin-top:12px;background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:14px 18px;animation:fadeIn .2s ease}
+.clarify-card .cq-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#d97706;margin-bottom:6px}
+.clarify-card .cq-question{font-size:.87rem;color:var(--text);margin-bottom:10px;line-height:1.5}
+.clarify-card .cq-row{display:flex;gap:8px;align-items:center}
+.clarify-card textarea{flex:1;padding:8px 12px;border-radius:7px;border:1.5px solid #fde68a;font-size:.84rem;font-family:inherit;color:var(--text);resize:none;min-height:38px;max-height:80px;transition:border-color .15s;background:#fff}
+.clarify-card textarea:focus{outline:none;border-color:#d97706;box-shadow:0 0 0 3px rgba(217,119,6,.12)}
+.clarify-card .cq-submit{background:#d97706;color:#fff;border:none;border-radius:7px;padding:9px 18px;font-size:.84rem;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;white-space:nowrap}
+.clarify-card .cq-submit:hover{background:#b45309}
+.clarify-card .cq-skip{background:none;border:1.5px solid #fde68a;color:#92400e;border-radius:7px;padding:9px 14px;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.clarify-card .cq-skip:hover{background:#fef9c3}
+
+/* ── Export buttons on panels ── */
+.export-row{display:flex;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+.btn-export-md{padding:5px 12px;border-radius:6px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+.btn-export-md:hover{background:var(--bg);border-color:#b0bfd0;color:var(--text)}
+.btn-copy{padding:5px 12px;border-radius:6px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+.btn-copy:hover{background:var(--bg);border-color:#b0bfd0;color:var(--text)}
+.btn-copy.copied{background:var(--success-bg);border-color:#86efac;color:var(--success)}
+
+
+/* ── Pause-prompt dialog ── */
+.pause-overlay{position:fixed;inset:0;background:rgba(10,20,40,.55);display:none;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(2px)}
+.pause-dialog{background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.22);padding:30px 34px;max-width:440px;width:90%;text-align:center}
+.pause-dialog .pd-icon{font-size:2rem;margin-bottom:10px}
+.pause-dialog .pd-title{font-size:1.05rem;font-weight:700;color:var(--brand);margin-bottom:8px}
+.pause-dialog .pd-msg{font-size:.88rem;color:var(--muted);line-height:1.55;margin-bottom:22px}
+.pause-dialog .pd-btns{display:flex;gap:12px;justify-content:center}
+.pause-dialog .pd-continue{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:10px 26px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s}
+.pause-dialog .pd-continue:hover{background:var(--brand-dark)}
+.pause-dialog .pd-stop{background:#fff;color:var(--error);border:1.5px solid var(--error);border-radius:8px;padding:10px 26px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.pause-dialog .pd-stop:hover{background:var(--error-bg)}
+
+/* ── Screenshot upload ── */
+.screenshot-zone{margin-top:14px;border:2px dashed var(--border);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:border-color .18s,background .18s;background:#fafbfc;position:relative}
+.screenshot-zone:hover,.screenshot-zone.drag-over{border-color:var(--brand-light);background:rgba(30,111,212,.04)}
+.screenshot-zone input[type=file]{display:none}
+.screenshot-zone .sz-icon{font-size:1.4rem;flex-shrink:0}
+.screenshot-zone .sz-text{font-size:.82rem;color:var(--muted);line-height:1.45}
+.screenshot-zone .sz-text strong{color:var(--text);display:block}
+.screenshot-preview{margin-top:12px;display:flex;align-items:flex-start;gap:14px;padding:12px 16px;background:#f8fafc;border:1.5px solid var(--border);border-radius:10px}
+.screenshot-preview img{width:80px;height:54px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0}
+.screenshot-preview .sp-info{flex:1;min-width:0}
+.screenshot-preview .sp-filename{font-size:.8rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.screenshot-preview .sp-status{font-size:.76rem;color:var(--muted);margin-top:3px}
+.screenshot-preview .sp-status.analysing{color:var(--brand-light)}
+.screenshot-preview .sp-status.done{color:var(--success)}
+.screenshot-preview .sp-status.error{color:var(--error)}
+.screenshot-preview .sp-remove{background:none;border:1.5px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:.75rem;padding:3px 9px;transition:all .15s;white-space:nowrap;flex-shrink:0;font-family:inherit}
+.screenshot-preview .sp-remove:hover{border-color:#b0bfd0;background:var(--bg);color:var(--text)}
+.screenshot-context-chip{margin-top:8px;padding:8px 12px;background:rgba(30,111,212,.06);border:1px solid rgba(30,111,212,.18);border-radius:8px;font-size:.76rem;color:var(--text);line-height:1.5;cursor:pointer}
+.screenshot-context-chip .scc-label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand-light);margin-bottom:4px}
+.screenshot-context-chip.collapsed .scc-body{display:none}
+.screenshot-context-chip .scc-toggle{color:var(--brand-light);font-size:.7rem;margin-left:6px;cursor:pointer}
+
+/* ── Admin toggle button in header ── */
+.admin-toggle-btn{color:rgba(255,255,255,.8);text-decoration:none;font-size:.82rem;padding:5px 13px;border-radius:6px;border:1px solid rgba(255,255,255,.22);background:rgba(30,111,212,.35);border-color:rgba(30,111,212,.5);cursor:pointer;font-family:inherit;font-weight:600;transition:all .15s}
+.admin-toggle-btn:hover{background:rgba(255,255,255,.12)!important;border-color:rgba(255,255,255,.3)!important}
+
+/* ── Admin view (SPA — swaps with main) ── */
+#view-admin{display:none}
+#view-admin main{width:95%;max-width:none;margin:28px auto;padding:0}
+.adm-summary-row{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:1100px){.adm-summary-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.adm-summary-row{grid-template-columns:1fr}}
+.adm-summary-card{background:var(--card);border-radius:var(--radius);padding:20px 24px;box-shadow:var(--shadow)}
+.adm-summary-card .label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.adm-summary-card .value{font-size:1.8rem;font-weight:800;color:var(--brand)}
+.adm-summary-card .sub{font-size:.78rem;color:var(--muted);margin-top:4px}
+.adm-breakdown-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:700px){.adm-breakdown-row{grid-template-columns:1fr}}
+.adm-breakdown-card{background:var(--card);border-radius:var(--radius);padding:18px 22px;box-shadow:var(--shadow);border-top:3px solid var(--border)}
+.adm-breakdown-card.agentic{border-color:#2563eb}
+.adm-breakdown-card.sharepoint{border-color:#0078d4}
+.adm-breakdown-card .bc-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.adm-breakdown-card .bc-stat{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;padding:5px 0;border-bottom:1px solid var(--border)}
+.adm-breakdown-card .bc-stat:last-child{border-bottom:none}
+.adm-breakdown-card .bc-stat .bc-key{color:var(--muted)}
+.adm-breakdown-card .bc-stat .bc-val{font-weight:700;color:var(--text)}
+.adm-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--card);padding:4px;border-radius:10px;box-shadow:var(--shadow);width:fit-content}
+.adm-tab{padding:10px 22px;border-radius:8px;border:none;background:transparent;font-size:.88rem;font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;font-family:inherit}
+.adm-tab.active{background:var(--brand);color:#fff}
+.adm-tab:hover:not(.active){background:var(--bg);color:var(--text)}
+.adm-table-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.adm-table-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.adm-table-header h2{font-size:.95rem;font-weight:700;color:var(--text)}
+.adm-table-actions{display:flex;gap:8px;align-items:center}
+.adm-btn-export{padding:7px 16px;border-radius:7px;border:1.5px solid var(--border);background:#fff;color:var(--text);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;display:inline-flex;align-items:center;gap:5px}
+.adm-btn-export:hover{background:var(--bg);border-color:#b0bfd0}
+.adm-table-filter{padding:7px 12px;border-radius:7px;border:1.5px solid var(--border);font-size:.82rem;font-family:inherit;color:var(--text);min-width:200px}
+.adm-table-filter:focus{outline:none;border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
+.adm-table-wrap{overflow-x:auto;max-height:60vh;overflow-y:auto}
+#adm-table-body-el table{width:100%;border-collapse:collapse;font-size:.82rem}
+#adm-table-body-el th{background:#f8fafc;padding:10px 14px;text-align:left;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1.5px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;position:sticky;top:0}
+#adm-table-body-el th:hover{background:#eef1f6}
+#adm-table-body-el th .sort-arrow{font-size:.6rem;margin-left:4px;opacity:.4}
+#adm-table-body-el th.sorted .sort-arrow{opacity:1}
+#adm-table-body-el td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--text);max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#adm-table-body-el tr:hover td{background:#f8fafc}
+.adm-status-success{color:var(--success);font-weight:600}
+.adm-status-error{color:var(--error);font-weight:600}
+.adm-conf-high{color:var(--success);font-weight:600}
+.adm-conf-medium{color:var(--warn);font-weight:600}
+.adm-conf-low{color:var(--error);font-weight:600}
+.adm-loop-agentic{color:#2563eb;font-weight:600}
+.adm-loop-sharepoint{color:#0078d4;font-weight:600}
+.adm-row-count{font-size:.78rem;color:var(--muted);padding:12px 20px;border-top:1px solid var(--border)}
+.adm-empty-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
+.adm-loading-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
+
+/* ── Panel info button ── */
+.btn-panel-info{background:none;border:1.5px solid var(--border);border-radius:50%;width:24px;height:24px;font-size:.78rem;line-height:1;cursor:pointer;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;font-family:inherit;padding:0}
+.btn-panel-info:hover{background:var(--bg);border-color:#b0bfd0;color:var(--text)}
+
+/* ── Info modal overlay ── */
+.info-modal-overlay{position:fixed;inset:0;background:rgba(10,20,40,.5);display:none;align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(2px);padding:20px}
+.info-modal{background:#fff;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.22);max-width:560px;width:100%;max-height:85vh;overflow-y:auto;display:flex;flex-direction:column}
+.info-modal-header{padding:20px 24px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.info-modal-header h3{font-size:1rem;font-weight:700;color:var(--text);line-height:1.35;flex:1}
+.info-modal-close{background:none;border:1.5px solid var(--border);border-radius:8px;padding:5px 10px;font-size:.8rem;color:var(--muted);cursor:pointer;font-family:inherit;flex-shrink:0;transition:all .15s}
+.info-modal-close:hover{background:var(--bg);color:var(--text)}
+.info-modal-body{padding:16px 24px 24px;font-size:.875rem;line-height:1.7;color:var(--text)}
+.info-modal-body h4{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:18px 0 7px}
+.info-modal-body h4:first-child{margin-top:0}
+.info-modal-body p{margin-bottom:.7em}
+.info-modal-body ul{margin:.3em 0 .8em 1.2em;padding:0}
+.info-modal-body li{margin-bottom:.3em}
+.info-modal-body strong{color:var(--brand);font-weight:600}
+.info-modal-body .compare-table{width:100%;border-collapse:collapse;margin:.6em 0 1em;font-size:.82rem}
+.info-modal-body .compare-table th{background:var(--bg);padding:7px 11px;text-align:left;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border:1.5px solid var(--border)}
+.info-modal-body .compare-table td{padding:7px 11px;border:1px solid var(--border);vertical-align:top}
+.info-modal-body .compare-table tr:nth-child(even) td{background:#fafbfc}
+.info-divider{border:none;border-top:1.5px solid var(--border);margin:16px 0}
+
+/* ── Panel drag-resize handle ── */
+.panel-resize-handle{position:absolute;top:0;right:0;bottom:0;width:7px;cursor:col-resize;background:transparent;border-radius:0 var(--radius) var(--radius) 0;z-index:20;transition:background .15s}
+.panel-resize-handle:hover,.panel-resize-handle.resizing{background:rgba(30,111,212,.22)}
+.panel-resize-handle::after{content:'';position:absolute;top:50%;right:2px;transform:translateY(-50%);width:3px;height:28px;border-radius:2px;background:var(--border);transition:background .15s}
+.panel-resize-handle:hover::after,.panel-resize-handle.resizing::after{background:var(--brand-light)}
+
+/* ── Flag button & form ── */
+.btn-flag{background:none;border:1px solid var(--warn);color:var(--warn);border-radius:8px;padding:5px 12px;font-size:.78rem;cursor:pointer;transition:all .15s}
+.btn-flag:hover{background:var(--warn-bg)}
+.flag-form{background:var(--warn-bg);border:1px solid var(--warn);border-radius:10px;padding:12px;margin-top:10px}
+.flag-form textarea{width:100%;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:.85rem;resize:vertical;font-family:inherit}
+.flag-submit{background:var(--warn);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:.82rem;cursor:pointer}
+.flag-cancel{background:none;border:1px solid var(--border);border-radius:8px;padding:6px 16px;font-size:.82rem;cursor:pointer;color:var(--muted)}
+.flag-success{color:var(--success);font-size:.85rem;margin-top:8px;font-weight:600}
+</style>
 </head>
 <body>
-<div class="page">
 
-  <!-- Top bar: user info + admin link -->
-  <div class="top-bar">
-    {% if not auth_disabled %}
-      <span>{{ user.get('name', user.get('preferred_username', '')) }}</span>
-      {% if is_admin %}<a href="/admin">Admin Dashboard</a>{% endif %}
-      <a href="/logout">Sign out</a>
-    {% else %}
-      <span>Auth disabled (dev mode)</span>
-      <a href="/admin">Admin Dashboard</a>
-    {% endif %}
+<header>
+  <div class="logo">
+    <img src="https://corasystems.com/_next/static/media/cora-logo-white.3ac9db11.svg" alt="Cora" height="22" style="display:block"/>
+    <div class="sep"></div>
+    Loop Comparison Search
   </div>
-
-  <div class="header">
-    <h1>⚡ Agentic Loop vs 🖥 Computer Loop</h1>
-    <p>Submit a query and compare how each approach finds and synthesizes an answer.</p>
-  </div>
-
-  <!-- Query input -->
-  <div class="query-box">
-    <label>Your query</label>
-    <textarea id="queryInput" placeholder="e.g. What is Claude's context window size? How does Playwright compare to Selenium?"></textarea>
-    <div class="btn-row">
-      <button class="btn btn-agentic"  id="btnAgentic"  onclick="runLoop('agentic')">⚡ Run Agentic Loop</button>
-      <button class="btn btn-computer" id="btnComputer" onclick="runLoop('computer')">🖥 Run Computer Loop</button>
-      <button class="btn btn-both"     id="btnBoth"     onclick="runBoth()">▶▶ Run Both</button>
-      <button class="btn btn-compare"  id="btnCompare"  onclick="runCompare()">🔍 Compare Results</button>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div class="source-badge">
+      <span class="dot"></span>
+      CoraSystems / PPM — no external sources
     </div>
+    {% if not auth_disabled %}
+    <span style="color:rgba(255,255,255,.7);font-size:.8rem">{{ user.get('displayName','') }}</span>
+    {% if is_admin %}<a href="/admin" style="color:#4ade80;font-size:.78rem;text-decoration:none;font-weight:600">Admin Dashboard</a>{% endif %}
+    <a href="/logout" style="color:rgba(255,255,255,.6);font-size:.78rem;text-decoration:none">Sign out</a>
+    {% endif %}
+    <button class="admin-toggle-btn" id="adminToggleBtn" onclick="toggleAdminView()">Admin</button>
+  </div>
+</header>
+
+<div id="view-main">
+<main>
+
+  <!-- ── Top: Query + Branch ── -->
+  <div class="card query-card collapsible" id="queryCard">
+    <div class="card-title" onclick="toggleCard('queryCard')">Ask a question about the Cora PPM codebase <span class="chevron">▼</span></div>
+    <div class="card-body">
+    <div class="query-layout">
+      <div>
+        <label class="field-label" for="branchSelect">Branch</label>
+        <select class="branch-select" id="branchSelect">
+          <option value="">Loading…</option>
+        </select>
+        <input type="text" class="branch-select" id="branchManual" placeholder="Type branch name…"
+               style="display:none;margin-top:6px"/>
+        <div class="branch-loading" id="branchLoading"></div>
+      </div>
+      <div>
+        <label class="field-label" for="queryInput">Your question</label>
+        <textarea class="query-textarea" id="queryInput"
+          placeholder="e.g. What does the EAC Submit button do on the Project Forecasting page?"></textarea>
+
+        <!-- ── Screenshot upload ── -->
+        <label class="screenshot-zone" id="screenshotZone" for="screenshotInput"
+               ondragover="szDragOver(event)" ondragleave="szDragLeave(event)" ondrop="szDrop(event)">
+          <input type="file" id="screenshotInput" accept="image/*" onchange="szFileChosen(event)"/>
+          <span class="sz-icon">🖼️</span>
+          <span class="sz-text">
+            <strong>Attach a screenshot (optional)</strong>
+            Drag &amp; drop or click to upload a Cora PPM UI screenshot — Claude will extract context to sharpen the search
+          </span>
+        </label>
+        <!-- Preview + context chip appear here when an image is loaded -->
+        <div id="screenshotPreview" style="display:none" class="screenshot-preview">
+          <img id="screenshotThumb" src="" alt="screenshot"/>
+          <div class="sp-info">
+            <div class="sp-filename" id="szFilename"></div>
+            <div class="sp-status analysing" id="szStatus">Analysing screenshot…</div>
+          </div>
+          <button class="sp-remove" onclick="szRemove()">✕ Remove</button>
+        </div>
+        <div id="screenshotContextChip" style="display:none" class="screenshot-context-chip collapsed">
+          <div class="scc-label">📋 Extracted screenshot context <span class="scc-toggle" onclick="szToggleChip()">▸ Show</span></div>
+          <div class="scc-body" id="szContextBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn btn-run-all" id="btnAll" onclick="runWithClarify('all')">▶▶ Run All</button>
+      <span style="width:1px;height:28px;background:var(--border);display:inline-block;margin:0 4px;flex-shrink:0"></span>
+      <button class="btn btn-agentic btn-sm" id="btnAgentic" onclick="runWithClarify('agentic')">⚡ Agentic Loop</button>
+      <button class="btn btn-hybrid btn-sm" id="btnHybrid" onclick="runWithClarify('hybrid')">🔀 Hybrid Loop</button>
+      <button class="btn btn-sp btn-sm" id="btnSharePoint" onclick="runWithClarify('sharepoint')">🔷 SharePoint KB</button>
+      <span style="width:1px;height:28px;background:var(--border);display:inline-block;margin:0 4px;flex-shrink:0"></span>
+      <button class="btn" id="btnSynthesize" style="display:none;background:#475569;color:#fff" onclick="runSynthesize()">✨ Synthesize All</button>
+    </div>
+    <!-- ── Clarifying question card (shown only when needed) ── -->
+    <div id="clarifyCard" class="clarify-card" style="display:none">
+      <div class="cq-label">💬 One quick clarification before searching</div>
+      <div class="cq-question" id="clarifyQuestion"></div>
+      <div class="cq-row">
+        <textarea id="clarifyAnswer" rows="1" placeholder="Your answer…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitClarify()}"></textarea>
+        <button class="cq-submit" onclick="submitClarify()">Search ↗</button>
+        <button class="cq-skip" onclick="skipClarify()">Skip</button>
+      </div>
+    </div>
+    <div class="status-bar" id="statusBar"></div>
+    </div><!-- end card-body -->
   </div>
 
-  <div class="status-bar" id="statusBar"></div>
+  <!-- ── Three-column result panels ── -->
+  <div class="results-grid">
 
-  <!-- Side-by-side result panels -->
-  <div class="grid">
-    <!-- Agentic panel -->
-    <div class="panel">
-      <div class="panel-header">
+    <!-- Agentic Loop -->
+    <div class="panel" id="panelAgentic">
+      <div class="panel-resize-handle" id="resizeAgentic"></div>
+      <div class="panel-header" onclick="togglePanel('panelAgentic', event)">
         <h2>⚡ Agentic Loop</h2>
-        <span class="badge badge-agentic">API + Tool Use</span>
+        <span class="badge badge-agentic">ADO Tool Use</span>
+        <button class="btn-panel-info" title="How Agentic Loop works" onclick="openInfoModal('agentic',event)">ℹ</button>
+        <span class="chevron">▼</span>
       </div>
       <div class="panel-body" id="agenticBody">
         <div class="state-idle">
           <span class="icon">⚡</span>
-          <span>Claude iteratively calls a web_search tool,<br>building context across up to 4 rounds.</span>
+          <span>Claude iteratively searches the ADO repo,<br>deciding what to look for next across up to 12 rounds.<br><em style="font-size:.8rem">Results come only from CoraSystems/PPM</em></span>
         </div>
       </div>
     </div>
 
-    <!-- Computer panel -->
-    <div class="panel">
-      <div class="panel-header">
-        <h2>🖥 Computer Loop</h2>
-        <span class="badge badge-computer">Browser Automation</span>
+    <!-- Hybrid Loop -->
+    <div class="panel" id="panelHybrid">
+      <div class="panel-resize-handle" id="resizeHybrid"></div>
+      <div class="panel-header" onclick="togglePanel('panelHybrid', event)">
+        <h2>🔀 Hybrid Loop</h2>
+        <span class="badge badge-hybrid">Search + Adaptive Read</span>
+        <button class="btn-panel-info" title="How Hybrid Loop works" onclick="openInfoModal('hybrid',event)">ℹ</button>
+        <span class="chevron">▼</span>
       </div>
-      <div class="panel-body" id="computerBody">
+      <div class="panel-body" id="hybridBody">
         <div class="state-idle">
-          <span class="icon">🖥</span>
-          <span>Playwright drives a real browser —<br>navigate, observe, extract, synthesize.</span>
+          <span class="icon">🔀</span>
+          <span>Structured ADO search followed by adaptive<br>reference-chain reading — best of both loops.<br><em style="font-size:.8rem">Results come only from CoraSystems/PPM</em></span>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Comparison -->
-  <div class="compare-panel" id="comparePanel">
-    <h2>🔍 Comparison Analysis</h2>
-    <div class="state-idle" id="compareLoading" style="display:none;">
-      <div class="spinner"></div>
-      <span>Claude is comparing both answers…</span>
+    <!-- SharePoint Loop -->
+    <div class="panel" id="panelSP">
+      <div class="panel-resize-handle" id="resizeSP"></div>
+      <div class="panel-header" onclick="togglePanel('panelSP', event)">
+        <h2>🔷 SharePoint KB</h2>
+        <span class="badge badge-sp">Confluence Content for AI</span>
+        <button class="btn-panel-info" title="How SharePoint KB works" onclick="openInfoModal('sharepoint',event)">ℹ</button>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="panel-body" id="spBody">
+        <div class="state-idle">
+          <span class="icon">🔷</span>
+          <span>Searches the PS Confluence knowledge base<br>exported to SharePoint.<br><em style="font-size:.8rem">Results come only from the KB documents</em></span>
+        </div>
+      </div>
+      <div id="spMeta" style="padding:0 20px 10px;display:none"></div>
     </div>
-    <div class="compare-text" id="compareText"></div>
+
   </div>
 
+  <!-- ── Master synthesis panel ── -->
+  <div class="synthesis-panel collapsible-panel" id="synthesisPanel">
+    <div class="cp-header synthesis-header" onclick="toggleCpPanel('synthesisPanel')">
+      <h2>✨ Comprehensive Synthesis</h2>
+      <span class="badge">All Sources Combined</span>
+      <span class="chevron" style="color:rgba(255,255,255,.7);margin-left:auto">▼</span>
+    </div>
+    <div class="cp-body synthesis-body">
+      <div class="synthesis-loading" id="synthesisLoading">
+        <div class="spinner" style="border-top-color:#fff"></div>
+        <span style="color:var(--muted)">Synthesizing all search results into a single answer…</span>
+      </div>
+      <div class="answer-body" id="synthesisText"></div>
+      <div class="export-row" id="synthesisExportRow" style="display:none">
+        <button class="btn-copy" onclick="copyAnswer('synthesisRaw',this)">📋 Copy</button>
+        <button class="btn-export-md" onclick="downloadMd('synthesisRaw','Synthesis')">⬇️ .md</button>
+      </div>
+      <span id="synthesisRaw" style="display:none"></span>
+    </div>
+  </div>
+
+</main>
+
+
+<!-- ── Loop info modal ── -->
+<div class="info-modal-overlay" id="infoModalOverlay" onclick="closeInfoModal()">
+  <div class="info-modal" onclick="event.stopPropagation()">
+    <div class="info-modal-header">
+      <h3 id="infoModalTitle"></h3>
+      <button class="info-modal-close" onclick="closeInfoModal()">✕ Close</button>
+    </div>
+    <div class="info-modal-body" id="infoModalBody"></div>
+  </div>
 </div>
 
-<script>
-  const state = { agentic: null, computer: null };
+<!-- ── Agentic Loop pause-prompt dialog ── -->
+<div class="pause-overlay" id="pauseDialog">
+  <div class="pause-dialog">
+    <div class="pd-icon">⏸️</div>
+    <div class="pd-title">Still searching…</div>
+    <div class="pd-msg" id="pauseMsg">The Agentic Loop is still running. Continue searching for more files?</div>
+    <div class="pd-btns">
+      <button class="pd-continue" onclick="pauseDecision('continue')">▶ Continue searching</button>
+      <button class="pd-stop"     onclick="pauseDecision('stop')">⏹ Stop &amp; answer now</button>
+    </div>
+  </div>
+</div>
+</div><!-- /view-main -->
 
-  function setStatus(msg) {
-    document.getElementById('statusBar').textContent = msg;
+<!-- ══════════════════════════════════════════════════════
+     ADMIN VIEW  (swaps in when toggle button is clicked)
+════════════════════════════════════════════════════════ -->
+<div id="view-admin">
+<main>
+
+  <!-- Summary cards -->
+  <div class="adm-summary-row">
+    <div class="adm-summary-card">
+      <div class="label">Total Searches</div>
+      <div class="value" id="adm-stat-total">—</div>
+      <div class="sub" id="adm-stat-total-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">Unique Questions</div>
+      <div class="value" id="adm-stat-unique">—</div>
+      <div class="sub" id="adm-stat-unique-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">Avg Response Time</div>
+      <div class="value" id="adm-stat-time">—</div>
+      <div class="sub" id="adm-stat-time-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">High Confidence</div>
+      <div class="value" id="adm-stat-confidence">—</div>
+      <div class="sub" id="adm-stat-confidence-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">Syntheses Run</div>
+      <div class="value" id="adm-stat-synth">—</div>
+      <div class="sub" id="adm-stat-synth-sub"></div>
+    </div>
+  </div>
+
+  <!-- Token summary row -->
+  <div class="adm-summary-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px">
+    <div class="adm-summary-card">
+      <div class="label">Avg Tokens / Search</div>
+      <div class="value" id="adm-stat-tok-avg">—</div>
+      <div class="sub" id="adm-stat-tok-avg-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">Total Tokens (all searches)</div>
+      <div class="value" id="adm-stat-tok-total">—</div>
+      <div class="sub" id="adm-stat-tok-total-sub"></div>
+    </div>
+    <div class="adm-summary-card">
+      <div class="label">Most Expensive Search</div>
+      <div class="value" id="adm-stat-tok-max">—</div>
+      <div class="sub" id="adm-stat-tok-max-sub"></div>
+    </div>
+  </div>
+
+  <!-- Per-loop breakdown -->
+  <div class="adm-breakdown-row">
+    <div class="adm-breakdown-card agentic">
+      <div class="bc-label">⚡ Agentic Loop</div>
+      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="adm-ag-runs">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Files Read</span><span class="bc-val" id="adm-ag-files">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Iterations</span><span class="bc-val" id="adm-ag-iters">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-ag-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-ag-tokens">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-ag-errors">—</span></div>
+    </div>
+    <div class="adm-breakdown-card sharepoint">
+      <div class="bc-label">🔷 SharePoint Loop</div>
+      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="adm-sp-runs">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Docs Read</span><span class="bc-val" id="adm-sp-files">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-sp-time">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-sp-tokens">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-sp-errors">—</span></div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="adm-tabs">
+    <button class="adm-tab active" onclick="admSwitchTab(event,'search_events')">Search Events</button>
+    <button class="adm-tab" onclick="admSwitchTab(event,'synthesis_events')">Synthesis Events</button>
+  </div>
+
+  <!-- Table -->
+  <div class="adm-table-card">
+    <div class="adm-table-header">
+      <h2 id="adm-table-title">Search Events</h2>
+      <div class="adm-table-actions">
+        <input type="text" class="adm-table-filter" id="adm-table-filter" placeholder="Filter rows…" oninput="admApplyFilter()"/>
+        <button class="adm-btn-export" onclick="admExport()"><span>📥</span> Export CSV</button>
+      </div>
+    </div>
+    <div class="adm-table-wrap" id="adm-table-body-el">
+      <table>
+        <thead id="adm-thead"></thead>
+        <tbody id="adm-tbody"><tr><td class="adm-loading-msg" colspan="99">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="adm-row-count" id="adm-row-count"></div>
+  </div>
+
+</main>
+</div><!-- /view-admin -->
+
+<footer>Cora PPM Loop Comparison · All answers sourced exclusively from CoraSystems/PPM Azure DevOps</footer>
+
+<script>
+  marked.setOptions({ breaks: true, gfm: true });
+
+  // ── Collapse / expand helpers ──────────────────────────────────────────────
+  function toggleCard(id) {
+    document.getElementById(id).classList.toggle('collapsed');
   }
 
-  function setLoading(panelId, loopName) {
+  function togglePanel(id, event) {
+    // Don't collapse when the Run button inside the header is clicked
+    if (event && event.target.closest('button')) return;
+    document.getElementById(id).classList.toggle('collapsed');
+  }
+
+  function toggleCpPanel(id) {
+    document.getElementById(id).classList.toggle('collapsed');
+  }
+
+  const state = { agentic: null, hybrid: null, sharepoint: null };
+
+  // ── Branch loader ──────────────────────────────────────────────────────────
+  function getBranch() {
+    const manual = document.getElementById('branchManual');
+    if (manual.style.display !== 'none') return manual.value.trim();
+    return document.getElementById('branchSelect').value.trim();
+  }
+
+  async function loadBranches() {
+    const sel    = document.getElementById('branchSelect');
+    const manual = document.getElementById('branchManual');
+    const lbl    = document.getElementById('branchLoading');
+    lbl.innerHTML = 'Loading branches…';
+    sel.style.display    = '';
+    manual.style.display = 'none';
+
+    // 8-second hard timeout so a slow/unreachable ADO server doesn't hang forever
+    const ctrl    = new AbortController();
+    const timerId = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const resp = await fetch('/api/branches', { signal: ctrl.signal });
+      clearTimeout(timerId);
+      const data = await resp.json();
+      if (data.branches && data.branches.length) {
+        sel.innerHTML = data.branches.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+        lbl.innerHTML = data.branches.length + ' branches available';
+        setTimeout(() => { lbl.innerHTML = ''; }, 2500);
+      } else {
+        const errMsg = data.error ? ` (${data.error})` : '';
+        sel.innerHTML = '<option value="">— select branch —</option>';
+        lbl.innerHTML = `No branches found${errMsg} — <a href="#" onclick="showManualBranch();return false">type branch name</a> · <a href="#" onclick="loadBranches();return false">retry</a>`;
+      }
+    } catch (e) {
+      clearTimeout(timerId);
+      // On timeout or network failure fall straight through to manual input
+      showManualBranch();
+      const reason = e.name === 'AbortError' ? 'timed out' : e.message;
+      lbl.innerHTML = `⚠ Branch load ${reason} — type the branch name above · <a href="#" onclick="loadBranches();return false">retry</a>`;
+    }
+  }
+
+  function showManualBranch() {
+    document.getElementById('branchSelect').style.display = 'none';
+    document.getElementById('branchManual').style.display = '';
+    document.getElementById('branchLoading').innerHTML = '<a href="#" onclick="loadBranches();return false">← Back to dropdown</a>';
+  }
+
+  loadBranches();
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function md(s)      { return marked.parse(String(s || '')); }
+
+  function formatTokens(n) {
+    if (!n) return '0';
+    return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
+  }
+  function formatTime(s) {
+    if (!s && s !== 0) return '';
+    return s >= 60 ? Math.floor(s / 60) + 'm ' + (s % 60).toFixed(0) + 's' : s + 's';
+  }
+
+  // Wrap /code/... and /inetpub/... file paths in clickable ADO links
+  const ADO_BROWSE = 'https://dev.azure.com/CoraSystems/PPM/_git/PPM';
+  function linkifyFilePaths(html, branch) {
+    // Match paths starting with /code/ or /inetpub/ ending with a known extension
+    return html.replace(
+      /(\/(?:code|inetpub|CODE|INETPUB)[\/\w.\-]+\.(?:cs|vb|aspx|ascx|js|sql|ts|html|config|xml|json)(?:\.(?:vb|cs))?)/gi,
+      (match) => {
+        // Don't double-wrap (check if already inside an href)
+        const url = `${ADO_BROWSE}?path=${encodeURIComponent(match)}&version=GB${encodeURIComponent(branch)}&_a=contents`;
+        return `<a href="${url}" target="_blank" class="code-file-link" title="Open in Azure DevOps">${match}<span class="ado-link-icon">↗</span></a>`;
+      }
+    );
+  }
+
+  // ── Export helpers ─────────────────────────────────────────────────────────
+  function copyAnswer(spanId, btn) {
+    const el = document.getElementById(spanId);
+    const text = el ? el.textContent : '';
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      btn.disabled = true;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1800);
+    }).catch(() => {
+      // Fallback for environments where clipboard API isn't available
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      btn.disabled = true;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1800);
+    });
+  }
+
+  function downloadMd(spanId, label) {
+    const el = document.getElementById(spanId);
+    const text = el ? el.textContent : '';
+    if (!text) return;
+    const q = (document.getElementById('queryInput').value.trim() || 'answer').slice(0, 60);
+    const slug = (label + ' — ' + q).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    const blob = new Blob(['# ' + label + '\n\n**Query:** ' + q + '\n\n---\n\n' + text], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = slug + '.md';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // ── Screenshot state ────────────────────────────────────────────────────────
+  let szContext = '';       // extracted context string — injected into every search query
+
+  // ── Clarification state ─────────────────────────────────────────────────────
+  let _clarifyDone    = false;   // true once user answered/skipped for this session
+  let _clarifyContext = '';      // extra context appended to query after clarification
+  let _pendingAction  = null;    // 'all' | 'agentic' | 'hybrid' | 'sharepoint'
+
+  function getQuery() {
+    const raw = document.getElementById('queryInput').value.trim();
+    let q = raw;
+    if (_clarifyContext) q += '\n\n[User clarification: ' + _clarifyContext + ']';
+    if (szContext)       q += '\n\n[Screenshot context — extracted from attached UI screenshot]\n' + szContext;
+    return q;
+  }
+
+  // ── Clarification flow ──────────────────────────────────────────────────────
+  async function runWithClarify(action) {
+    const raw = document.getElementById('queryInput').value.trim();
+    if (!raw) { setStatus('Please enter a question first.'); return; }
+    _pendingAction = action;
+    // Only ask clarification once per session; if already done (or no question), run directly
+    if (_clarifyDone) { _executePendingAction(); return; }
+    setStatus('Checking question…');
+    try {
+      const resp = await fetch('/api/clarify', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ query: raw }),
+      });
+      if (!resp.ok) throw new Error('clarify endpoint error');
+      const data = await resp.json();
+      if (data.needs_clarification && data.question) {
+        document.getElementById('clarifyQuestion').textContent = data.question;
+        document.getElementById('clarifyCard').style.display = 'block';
+        document.getElementById('clarifyAnswer').value = '';
+        document.getElementById('clarifyAnswer').focus();
+        setStatus('');
+      } else {
+        _clarifyDone = true;
+        _executePendingAction();
+      }
+    } catch (e) {
+      // Clarify check failed — proceed directly without clarification
+      _clarifyDone = true;
+      _executePendingAction();
+    }
+  }
+
+  function submitClarify() {
+    const q   = document.getElementById('clarifyQuestion').textContent;
+    const ans = document.getElementById('clarifyAnswer').value.trim();
+    if (ans) _clarifyContext = q + ' ' + ans;
+    _clarifyDone = true;
+    document.getElementById('clarifyCard').style.display = 'none';
+    _executePendingAction();
+  }
+
+  function skipClarify() {
+    _clarifyDone = true;
+    document.getElementById('clarifyCard').style.display = 'none';
+    _executePendingAction();
+  }
+
+  function _executePendingAction() {
+    if      (_pendingAction === 'all')        runAll();
+    else if (_pendingAction === 'agentic')    runLoop('agentic');
+    else if (_pendingAction === 'hybrid')     runLoop('hybrid');
+    else if (_pendingAction === 'sharepoint') runSharePoint();
+  }
+
+  // getBranch() is defined in the branch loader section above
+  function setStatus(m){ document.getElementById('statusBar').textContent = m; }
+
+  function setAllAdoBtnsDisabled(v) {
+    ['btnAll','btnAgentic','btnHybrid','btnSharePoint'].forEach(id => {
+      document.getElementById(id).disabled = v;
+    });
+  }
+
+  function setLoading(panelId, label) {
     document.getElementById(panelId).innerHTML = `
       <div class="state-loading">
         <div class="spinner"></div>
-        <span>Running ${loopName}…</span>
+        <span>Running ${label}…</span>
+        <div class="loading-step" id="${panelId}-step"></div>
       </div>`;
   }
-
+  function updateLoadingStep(panelId, text) {
+    const el = document.getElementById(panelId + '-step');
+    if (el) el.textContent = text;
+  }
   function setError(panelId, msg) {
-    document.getElementById(panelId).innerHTML = `
-      <div class="state-error">⚠️ ${escHtml(msg)}</div>`;
+    document.getElementById(panelId).innerHTML =
+      `<div class="state-error">⚠️ ${esc(msg)}</div>`;
+  }
+  function toggleLog(id) {
+    const el  = document.getElementById(id);
+    const btn = el.previousElementSibling;
+    el.classList.toggle('open');
+    btn.textContent = (el.classList.contains('open') ? '▾ Hide' : '▸ Show') + btn.dataset.label;
   }
 
-  function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // ── Confidence badge ───────────────────────────────────────────────────────
+  function renderConfidence(conf) {
+    if (!conf) return '';
+    const level  = (conf.level || 'Medium').toLowerCase();
+    const icons  = { high: '✅', medium: '⚠️', low: '❌' };
+    const cls    = { high: 'confidence-high', medium: 'confidence-medium', low: 'confidence-low' };
+    const icon   = icons[level]  || '⚠️';
+    const klass  = cls[level]    || 'confidence-medium';
+    return `<div class="confidence ${klass}">
+      <span class="conf-icon">${icon}</span>
+      <span class="conf-label">Confidence</span>
+      <strong>${esc(conf.level || 'Medium')}</strong>
+      <span style="font-weight:400;color:inherit;opacity:.85"> — ${esc(conf.reason || '')}</span>
+    </div>`;
   }
 
+  // ── Agentic renderer ───────────────────────────────────────────────────────
   function renderAgentic(result) {
     const iters = result.iterations || [];
     const logItems = iters.map(it => {
-      const searches = (it.searches || []).map(s =>
-        `<div class="log-result-item">🔎 <strong>${escHtml(s.search_query)}</strong></div>` +
-        (s.results || []).slice(0, 3).map(r =>
-          `<div class="log-result-item" style="margin-left:12px">• ${escHtml(r.title)}: ${escHtml(r.snippet.slice(0,120))}…</div>`
-        ).join('')
-      ).join('');
-      return `
-        <div class="log-item">
-          <div class="log-label">Iteration ${it.iteration}</div>
-          <div class="log-detail">${escHtml(it.action)}</div>
-          ${searches ? `<div class="log-results">${searches}</div>` : ''}
-        </div>`;
+      const calls = (it.tool_calls || []).map(tc => {
+        if (tc.type === 'search') {
+          const rows = (tc.results || []).map(r =>
+            `<div class="log-result-item">📄 <strong>${esc(r.file_name)}</strong> — <span>${esc(r.file_path)}</span></div>`
+          ).join('');
+          return `<div class="log-item">
+            <div class="log-label search">🔎 ADO Search</div>
+            <div class="log-detail">Query: <strong>${esc(tc.query)}</strong></div>
+            ${rows || '<div class="log-detail">No results returned.</div>'}
+            ${tc.error ? `<div style="color:var(--error);font-size:.73rem">Error: ${esc(tc.error)}</div>` : ''}
+          </div>`;
+        }
+        if (tc.type === 'read_file') {
+          return `<div class="log-item">
+            <div class="log-label file">📖 Read File</div>
+            <div class="log-detail">${esc(tc.file_path)}</div>
+            ${tc.preview ? `<div class="log-preview">"${esc(tc.preview)}"</div>` : ''}
+            ${tc.content_length ? `<div class="log-detail">${tc.content_length.toLocaleString()} chars read</div>` : ''}
+            ${tc.error ? `<div style="color:var(--error);font-size:.73rem">Error: ${esc(tc.error)}</div>` : ''}
+          </div>`;
+        }
+        return '';
+      }).join('');
+      return `<div class="log-item">
+        <div class="log-label step">Iteration ${it.iteration}</div>
+        <div class="log-detail">${esc(it.action)}</div>
+      </div>${calls}`;
     }).join('');
 
+    const agTok = (result.input_tokens || 0) + (result.output_tokens || 0);
     document.getElementById('agenticBody').innerHTML = `
-      <div class="stats">
-        <div class="stat">Iterations: <strong>${result.total_iterations}</strong></div>
-        <div class="stat">Searches: <strong>${result.total_searches}</strong></div>
+      <div class="stats-row">
+        <div class="stat">⚡ Iterations: <strong>${result.total_iterations}</strong></div>
+        <div class="stat">🔎 Searches: <strong>${result.total_searches}</strong></div>
+        <div class="stat">📄 Files: <strong>${result.total_files_read}</strong></div>
+        ${agTok ? `<div class="stat">🪙 <strong>${formatTokens(agTok)}</strong> tok</div>` : ''}
+        ${result.elapsed_seconds != null ? `<div class="stat">⏱ <strong>${formatTime(result.elapsed_seconds)}</strong></div>` : ''}
+        <div class="branch-tag">🌿 ${esc(result.branch)}</div>
       </div>
-      <div class="answer-section">
-        <h3>Answer</h3>
-        <div class="answer-text">${escHtml(result.answer)}</div>
+      ${renderConfidence(result.confidence)}
+      <div class="answer-body">${linkifyFilePaths(md(result.answer), result.branch)}</div>
+      <div class="export-row">
+        <button class="btn-copy" onclick="copyAnswer('agAnswer',this)" data-answer="${esc(result.answer)}">📋 Copy</button>
+        <button class="btn-export-md" onclick="downloadMd('agAnswer','Agentic Loop')">⬇️ .md</button>
+        <button class="btn-flag" onclick="showFlagForm('agentic')">🚩 Flag as unhelpful</button>
       </div>
-      <button class="flag-btn" onclick="showFlagForm('agentic')">⚑ Flag as unhelpful / missing info</button>
-      <div class="flag-form" id="flagForm-agentic">
-        <textarea id="flagExplanation-agentic" placeholder="What was incorrect or missing? Please explain…"></textarea>
-        <button class="flag-submit" onclick="submitFlag('agentic')">Submit Feedback</button>
-        <button class="flag-cancel" onclick="hideFlagForm('agentic')">Cancel</button>
+      <div class="flag-form" id="flagFormAgentic" style="display:none">
+        <textarea id="flagExplAgentic" placeholder="What was incorrect or missing?" rows="3"></textarea>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="flag-submit" onclick="submitFlag('agentic')">Submit</button>
+          <button class="flag-cancel" onclick="hideFlagForm('agentic')">Cancel</button>
+        </div>
+        <div class="flag-success" id="flagSuccessAgentic" style="display:none">✅ Flagged for admin review</div>
       </div>
-      <div class="flag-success" id="flagSuccess-agentic">✓ Feedback submitted — thank you!</div>
-      <button class="log-toggle" onclick="toggleLog('agLog')">▸ Show iteration log</button>
+      <span id="agAnswer" style="display:none">${esc(result.answer)}</span>
+      <button class="log-toggle" data-label=" ADO tool call log" onclick="toggleLog('agLog')">▸ Show ADO tool call log</button>
       <div class="log-body" id="agLog">${logItems}</div>`;
   }
 
-  function renderComputer(result) {
+  // ── Hybrid renderer ───────────────────────────────────────────────────────
+  function renderHybrid(result) {
     const steps = result.steps || [];
     const logItems = steps.map(s => {
-      const resultRows = (s.results || []).slice(0, 3).map(r =>
-        `<div class="log-result-item">• <strong>${escHtml(r.title)}</strong>: ${escHtml((r.snippet||'').slice(0,100))}…</div>`
+      const rows = (s.results || []).map(r =>
+        `<div class="log-result-item">📄 <strong>${esc(r.file_name || r.file_path?.split('/').pop() || '')}</strong> — <span>${esc(r.file_path || '')}</span></div>`
       ).join('');
-      const preview = s.content_preview
-        ? `<div class="log-detail" style="margin-top:4px;font-style:italic;">"${escHtml(s.content_preview.slice(0,150))}…"</div>` : '';
-      return `
-        <div class="log-item">
-          <div class="log-label">Step ${s.step}</div>
-          <div class="log-detail">${escHtml(s.action)}</div>
-          ${s.url ? `<div class="log-detail" style="color:#4b5563;">↳ ${escHtml(s.url.slice(0,80))}</div>` : ''}
-          ${resultRows ? `<div class="log-results">${resultRows}</div>` : ''}
-          ${preview}
-        </div>`;
+      const searches = (s.searches || []).map(sr =>
+        `<div class="log-result-item">🔎 "${esc(sr.term)}" → ${sr.error
+          ? '<span style="color:var(--error)">error</span>'
+          : `${sr.hits} hit(s), ${sr.new_unique} new`
+        }${sr.triggered_by === 'hybrid_nav' ? ' <em style="color:var(--hybrid);font-size:.7rem">(navigation)</em>' : ''}</div>`
+      ).join('');
+      const preview = s.content_preview ? `<div class="log-preview">"${esc(s.content_preview)}"</div>` : '';
+      return `<div class="log-item">
+        <div class="log-label step" style="background:var(--hybrid-bg);color:var(--hybrid);border-color:var(--hybrid-border)">Step ${s.step}</div>
+        <div class="log-detail">${esc(s.action)}</div>
+        ${s.url ? `<div class="log-url">↳ ${esc(s.url)}</div>` : ''}
+        ${searches}${rows}${preview}
+        ${s.chars_read ? `<div class="log-detail">${s.chars_read.toLocaleString()} chars read</div>` : ''}
+      </div>`;
     }).join('');
 
-    document.getElementById('computerBody').innerHTML = `
-      <div class="stats">
-        <div class="stat">Browser steps: <strong>${result.total_steps}</strong></div>
-        <div class="stat">Results found: <strong>${result.results_found}</strong></div>
+    const hybTok = (result.input_tokens || 0) + (result.output_tokens || 0);
+    document.getElementById('hybridBody').innerHTML = `
+      <div class="stats-row">
+        <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
+        <div class="stat">🔎 Found: <strong>${result.results_found}</strong></div>
+        <div class="stat">📄 Files: <strong>${result.files_read}</strong></div>
+        ${hybTok ? `<div class="stat">🪙 <strong>${formatTokens(hybTok)}</strong> tok</div>` : ''}
+        ${result.elapsed_seconds != null ? `<div class="stat">⏱ <strong>${formatTime(result.elapsed_seconds)}</strong></div>` : ''}
+        <div class="branch-tag">🌿 ${esc(result.branch)}</div>
       </div>
-      <div class="answer-section">
-        <h3>Answer</h3>
-        <div class="answer-text">${escHtml(result.answer)}</div>
+      ${renderConfidence(result.confidence)}
+      <div class="answer-body">${linkifyFilePaths(md(result.answer), result.branch)}</div>
+      <div class="export-row">
+        <button class="btn-copy" onclick="copyAnswer('hybridAnswer',this)">📋 Copy</button>
+        <button class="btn-export-md" onclick="downloadMd('hybridAnswer','Hybrid Loop')">⬇️ .md</button>
+        <button class="btn-flag" onclick="showFlagForm('hybrid')">🚩 Flag as unhelpful</button>
       </div>
-      <button class="flag-btn" onclick="showFlagForm('computer')">⚑ Flag as unhelpful / missing info</button>
-      <div class="flag-form" id="flagForm-computer">
-        <textarea id="flagExplanation-computer" placeholder="What was incorrect or missing? Please explain…"></textarea>
-        <button class="flag-submit" onclick="submitFlag('computer')">Submit Feedback</button>
-        <button class="flag-cancel" onclick="hideFlagForm('computer')">Cancel</button>
+      <div class="flag-form" id="flagFormHybrid" style="display:none">
+        <textarea id="flagExplHybrid" placeholder="What was incorrect or missing?" rows="3"></textarea>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="flag-submit" onclick="submitFlag('hybrid')">Submit</button>
+          <button class="flag-cancel" onclick="hideFlagForm('hybrid')">Cancel</button>
+        </div>
+        <div class="flag-success" id="flagSuccessHybrid" style="display:none">✅ Flagged for admin review</div>
       </div>
-      <div class="flag-success" id="flagSuccess-computer">✓ Feedback submitted — thank you!</div>
-      <button class="log-toggle" onclick="toggleLog('cpLog')">▸ Show browser step log</button>
-      <div class="log-body" id="cpLog">${logItems}</div>`;
+      <span id="hybridAnswer" style="display:none">${esc(result.answer)}</span>
+      <button class="log-toggle" data-label=" hybrid step log" onclick="toggleLog('hybridLog')">▸ Show hybrid step log</button>
+      <div class="log-body" id="hybridLog">${logItems}</div>`;
   }
 
-  function toggleLog(id) {
-    const el = document.getElementById(id);
-    const btn = el.previousElementSibling;
-    el.classList.toggle('open');
-    btn.textContent = el.classList.contains('open')
-      ? '▾ Hide log' : '▸ Show ' + (id === 'agLog' ? 'iteration' : 'browser step') + ' log';
+  // ── SharePoint renderer ────────────────────────────────────────────────────
+  function renderSharePoint(result) {
+    const steps = result.steps || [];
+    const logItems = steps.map(s => {
+      const searches = (s.searches || []).map(sr =>
+        `<div class="sp-log-result">🔎 "${esc(sr.term)}" → ${sr.error
+          ? `<span style="color:var(--error)">error: ${esc(sr.error)}</span>`
+          : `${sr.hits} hit(s), ${sr.new_unique} new`
+        }</div>`
+      ).join('');
+      const results = (s.results || []).map(r =>
+        `<div class="sp-log-result">📄 <strong>${esc(r.title)}</strong>
+           <span style="font-size:.7rem"> · ${esc(r.file_type || '')}</span>
+         </div>`
+      ).join('');
+      const preview = s.content_preview ? `<div class="sp-log-preview">"${esc(s.content_preview)}"</div>` : '';
+      return `<div class="sp-log-item">
+        <div class="sp-log-label">Step ${s.step}</div>
+        <div class="sp-log-detail">${esc(s.action)}</div>
+        ${s.url ? `<div class="sp-log-url">↳ <a href="${esc(s.url)}" target="_blank">${esc(s.url)}</a></div>` : ''}
+        ${searches}${results}${preview}
+        ${s.chars_read ? `<div class="sp-log-detail">${s.chars_read.toLocaleString()} chars read</div>` : ''}
+      </div>`;
+    }).join('');
+
+    const metaEl = document.getElementById('spMeta');
+    metaEl.style.display = 'block';
+    metaEl.innerHTML = `📁 <a href="${esc(result.folder)}" target="_blank">${esc(result.folder)}</a>`;
+
+    document.getElementById('spBody').innerHTML = `
+      <div class="stats-row">
+        <div class="stat">🔎 Found: <strong>${result.results_found}</strong></div>
+        <div class="stat">📄 Files: <strong>${result.files_read}</strong></div>
+        <div class="stat">🪜 Steps: <strong>${result.total_steps}</strong></div>
+      </div>
+      ${renderConfidence(result.confidence)}
+      <div class="answer-body">${md(result.answer)}</div>
+      <div class="export-row">
+        <button class="btn-copy" onclick="copyAnswer('spAnswer',this)">📋 Copy</button>
+        <button class="btn-export-md" onclick="downloadMd('spAnswer','SharePoint Loop')">⬇️ .md</button>
+        <button class="btn-flag" onclick="showFlagForm('sharepoint')">🚩 Flag as unhelpful</button>
+      </div>
+      <div class="flag-form" id="flagFormSharepoint" style="display:none">
+        <textarea id="flagExplSharepoint" placeholder="What was incorrect or missing?" rows="3"></textarea>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="flag-submit" onclick="submitFlag('sharepoint')">Submit</button>
+          <button class="flag-cancel" onclick="hideFlagForm('sharepoint')">Cancel</button>
+        </div>
+        <div class="flag-success" id="flagSuccessSharepoint" style="display:none">✅ Flagged for admin review</div>
+      </div>
+      <span id="spAnswer" style="display:none">${esc(result.answer)}</span>
+      <button class="log-toggle" data-label=" SharePoint step log" onclick="toggleLog('spLog')">▸ Show SharePoint step log</button>
+      <div class="log-body" id="spLog">${logItems}</div>`;
   }
 
-  function getQuery() {
-    return document.getElementById('queryInput').value.trim();
+  // ── Pause-prompt dialog (shown when agentic loop hits a time threshold) ────
+  let _pauseJobId = null;
+  function showPausePrompt(evt) {
+    _pauseJobId = evt.job_id || _pauseJobId;
+    const dialog = document.getElementById('pauseDialog');
+    document.getElementById('pauseMsg').textContent = evt.message || 'Continue searching?';
+    dialog.style.display = 'flex';
+  }
+  async function pauseDecision(choice) {
+    document.getElementById('pauseDialog').style.display = 'none';
+    if (!_pauseJobId) return;
+    await fetch('/api/agentic/' + choice, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: _pauseJobId }),
+    });
   }
 
-  function setBtnsDisabled(val) {
-    ['btnAgentic','btnComputer','btnBoth'].forEach(id =>
-      document.getElementById(id).disabled = val);
-  }
-
+  // ── Runners ────────────────────────────────────────────────────────────────
   async function runLoop(loop) {
-    const query = getQuery();
-    if (!query) { setStatus('⚠️ Please enter a query first.'); return; }
+    const query  = getQuery();
+    const branch = getBranch();
+    if (!query)  { setStatus('Please enter a question first.'); return; }
+    if (!branch) { setStatus('Please select a branch first.'); return; }
 
-    const panelId = loop === 'agentic' ? 'agenticBody' : 'computerBody';
-    const label   = loop === 'agentic' ? 'Agentic Loop' : 'Computer Loop';
-    const endpoint = loop === 'agentic' ? '/api/agentic' : '/api/computer';
+    const panelId = loop === 'agentic' ? 'agenticBody' : 'hybridBody';
+    const label   = loop === 'agentic' ? 'Agentic Loop' : 'Hybrid Loop';
+    const btnId   = loop === 'agentic' ? 'btnAgentic' : 'btnHybrid';
 
     setLoading(panelId, label);
-    setBtnsDisabled(true);
-    setStatus(`Running ${label}…`);
+    document.getElementById(btnId).disabled = true;
+    document.getElementById('btnAll').disabled = true;
+    setStatus('Running ' + label + ' against Cora ADO (' + branch + ')…');
     state[loop] = null;
-    document.getElementById('comparePanel').style.display = 'none';
-    document.getElementById('btnCompare').style.display = 'none';
 
     try {
-      const resp = await fetch(endpoint, {
-        method: 'POST',
+      if (loop === 'agentic') {
+        // ── Polling approach: immune to Railway's ~300 s proxy timeout ──────
+        // 1. POST /api/agentic/start → job_id (returns instantly)
+        // 2. Poll /api/agentic/poll/<job_id> every 2 s for events
+        // 3. Stop when "done" or "error" event received
+        await new Promise(async (resolve, reject) => {
+          let jobId = null;
+          try {
+            const startResp = await fetch('/api/agentic/start', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ query, branch }),
+            });
+            const startData = await startResp.json();
+            if (!startResp.ok || startData.error) {
+              reject(new Error(startData.error || 'Failed to start agentic job'));
+              return;
+            }
+            jobId = startData.job_id;
+            _pauseJobId = jobId;
+          } catch (e) {
+            reject(e);
+            return;
+          }
+
+          // Poll loop — 2 s interval
+          const MAX_POLLS = 300;  // 300 × 2 s = 10 min hard ceiling
+          let polls = 0;
+          const doPoll = async () => {
+            polls++;
+            if (polls > MAX_POLLS) {
+              reject(new Error('Agentic loop timed out after 10 minutes.'));
+              return;
+            }
+            try {
+              const pollResp = await fetch('/api/agentic/poll/' + jobId);
+              const pollData = await pollResp.json();
+              let finished = false;
+              for (const evt of (pollData.events || [])) {
+                if (evt.type === 'pause_prompt') {
+                  showPausePrompt(evt);
+                } else if (evt.type === 'progress') {
+                  // Live step feedback — update loading text with current action
+                  const iterLabel = evt.iteration ? `Iter ${evt.iteration}` : '';
+                  const filesLabel = evt.files ? ` · ${evt.files} file${evt.files !== 1 ? 's' : ''} read` : '';
+                  updateLoadingStep('agenticBody', `${iterLabel}${filesLabel}\n${evt.text || ''}`);
+                } else if (evt.type === 'done') {
+                  const result = evt.result;
+                  state.agentic = result;
+                  renderAgentic(result);
+                  setStatus('Agentic Loop complete.');
+                  finished = true;
+                  resolve();
+                  break;
+                } else if (evt.type === 'error') {
+                  setError(panelId, evt.message);
+                  setStatus('Agentic Loop failed: ' + evt.message);
+                  finished = true;
+                  reject(new Error(evt.message));
+                  break;
+                }
+                // ping events — just keep polling
+              }
+              if (!finished) {
+                setTimeout(doPoll, 2000);
+              }
+            } catch (e) {
+              // Network blip — keep retrying up to the ceiling
+              setTimeout(doPoll, 2000);
+            }
+          };
+          setTimeout(doPoll, 2000);
+        });
+      } else {
+        // ── Hybrid loop: simple POST ─────────────────────────────────────────
+        // Show phase-based messages while waiting (hybrid has no event stream)
+        const hybridPhases = [
+          [0,  'Phase 1 — Extracting search terms…'],
+          [4,  'Phase 1 — Searching across code layers…'],
+          [12, 'Phase 2 — Reading and following reference chain…'],
+          [30, 'Phase 2 — Continuing deep file reads…'],
+          [55, 'Phase 3 — Pass 1: synthesising draft answer…'],
+          [80, 'Phase 3 — Pass 2: extending with remaining files…'],
+        ];
+        const hybridStart = Date.now();
+        const hybridTimer = setInterval(() => {
+          const elapsed = (Date.now() - hybridStart) / 1000;
+          const phase = [...hybridPhases].reverse().find(([t]) => elapsed >= t);
+          if (phase) updateLoadingStep('hybridBody', phase[1]);
+        }, 1000);
+
+        try {
+          const resp = await fetch('/api/' + loop, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ query, branch }),
+          });
+          const data = await resp.json();
+          if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
+          state[loop] = data.result;
+          renderHybrid(data.result);
+          setStatus(label + ' complete.');
+        } finally {
+          clearInterval(hybridTimer);
+        }
+      }
+    } catch (e) {
+      if (!state[loop]) setError(panelId, e.message);
+      setStatus(label + ' failed: ' + e.message);
+    } finally {
+      document.getElementById(btnId).disabled = false;
+      document.getElementById('btnAll').disabled = false;
+      document.getElementById('pauseDialog').style.display = 'none';
+      checkShowSynthesize();
+    }
+  }
+
+  async function runSharePoint() {
+    const query = getQuery();
+    if (!query) { setStatus('Please enter a question first.'); return; }
+
+    document.getElementById('spBody').innerHTML =
+      `<div class="state-loading"><div class="spinner"></div><span>Searching SharePoint knowledge base…</span></div>`;
+    const metaEl = document.getElementById('spMeta');
+    metaEl.style.display = 'none';
+    metaEl.textContent = '';
+    document.getElementById('btnSharePoint').disabled = true;
+    setStatus('Searching SharePoint Confluence Content for AI folder…');
+
+    try {
+      const resp = await fetch('/api/sharepoint', {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body:    JSON.stringify({ query }),
       });
       const data = await resp.json();
       if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
-
-      state[loop] = data.result;
-      if (loop === 'agentic') renderAgentic(data.result);
-      else renderComputer(data.result);
-
-      setStatus(`${label} complete.`);
+      state.sharepoint = data.result;
+      renderSharePoint(data.result);
+      setStatus('SharePoint search complete.');
     } catch (e) {
-      setError(panelId, e.message);
-      setStatus(`${label} failed: ${e.message}`);
+      document.getElementById('spBody').innerHTML =
+        `<div class="state-error">⚠️ ${esc(e.message)}</div>`;
+      setStatus('SharePoint search failed: ' + e.message);
     } finally {
-      setBtnsDisabled(false);
-      checkShowCompare();
+      document.getElementById('btnSharePoint').disabled = false;
+      checkShowSynthesize();
     }
   }
 
-  async function runBoth() {
-    const query = getQuery();
-    if (!query) { setStatus('⚠️ Please enter a query first.'); return; }
-    setBtnsDisabled(true);
+  async function runAll() {
+    const query  = getQuery();
+    const branch = getBranch();
+    if (!query)  { setStatus('Please enter a question first.'); return; }
+    if (!branch) { setStatus('Please select a branch first.'); return; }
+
+    setAllAdoBtnsDisabled(true);
     state.agentic = null;
-    state.computer = null;
-    document.getElementById('comparePanel').style.display = 'none';
-    document.getElementById('btnCompare').style.display = 'none';
+    state.hybrid = null;
+    setStatus('Running all three searches simultaneously…');
 
-    await Promise.all([runLoop('agentic'), runLoop('computer')]);
-    setBtnsDisabled(false);
+    await Promise.all([
+      runLoop('agentic'),
+      runLoop('hybrid'),
+      runSharePoint(),
+    ]);
+
+    setAllAdoBtnsDisabled(false);
     checkShowCompare();
+    setStatus('All searches complete.');
   }
 
-  function checkShowCompare() {
-    if (state.agentic && state.computer) {
-      document.getElementById('btnCompare').style.display = 'flex';
-      setStatus('Both loops finished — click "Compare Results" for a side-by-side analysis.');
+  function checkShowSynthesize() {
+    const hasAny = state.agentic || state.hybrid || state.sharepoint;
+    if (hasAny) {
+      document.getElementById('btnSynthesize').style.display = 'flex';
     }
   }
 
-  async function runCompare() {
-    const query = getQuery();
-    if (!state.agentic || !state.computer) return;
-
-    const panel = document.getElementById('comparePanel');
+  async function runSynthesize() {
+    const hasAny = state.agentic || state.hybrid || state.sharepoint;
+    if (!hasAny) return;
+    const panel = document.getElementById('synthesisPanel');
     panel.style.display = 'block';
-    document.getElementById('compareText').textContent = '';
-    document.getElementById('compareLoading').style.display = 'flex';
-    setStatus('Generating comparison…');
-
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('synthesisText').innerHTML = '';
+    document.getElementById('synthesisLoading').style.display = 'flex';
+    document.getElementById('btnSynthesize').disabled = true;
+    setStatus('Synthesizing all search results…');
     try {
-      const resp = await fetch('/api/compare', {
-        method: 'POST',
+      const resp = await fetch('/api/synthesize', {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query,
-          agentic_result: state.agentic,
-          computer_result: state.computer,
+        body:    JSON.stringify({
+          query:           getQuery(),
+          agentic_result:  state.agentic    || null,
+          hybrid_result:   state.hybrid     || null,
+          sp_result:       state.sharepoint || null,
         }),
       });
       const data = await resp.json();
       if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
-      document.getElementById('compareText').textContent = data.comparison;
-      setStatus('Comparison ready.');
+      document.getElementById('synthesisText').innerHTML = md(data.synthesis);
+      document.getElementById('synthesisRaw').textContent = data.synthesis;
+      document.getElementById('synthesisExportRow').style.display = 'flex';
+      setStatus('Synthesis complete.');
     } catch (e) {
-      document.getElementById('compareText').textContent = '⚠️ Comparison failed: ' + e.message;
-      setStatus('Comparison failed.');
+      document.getElementById('synthesisText').innerHTML =
+        `<div class="state-error">⚠️ ${esc(e.message)}</div>`;
+      setStatus('Synthesis failed: ' + e.message);
     } finally {
-      document.getElementById('compareLoading').style.display = 'none';
+      document.getElementById('synthesisLoading').style.display = 'none';
+      document.getElementById('btnSynthesize').disabled = false;
     }
   }
 
-  /* ── Flag functions ── */
+  // ═══════════════════════════════════════════════════════════════
+  //  SCREENSHOT UPLOAD + CONTEXT EXTRACTION
+  // ═══════════════════════════════════════════════════════════════
+
+  function szDragOver(e) {
+    e.preventDefault();
+    document.getElementById('screenshotZone').classList.add('drag-over');
+  }
+  function szDragLeave(e) {
+    document.getElementById('screenshotZone').classList.remove('drag-over');
+  }
+  function szDrop(e) {
+    e.preventDefault();
+    document.getElementById('screenshotZone').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) szProcess(file);
+  }
+  function szFileChosen(e) {
+    const file = e.target.files[0];
+    if (file) szProcess(file);
+  }
+
+  function szProcess(file) {
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target.result;
+      // Show zone hidden, show preview
+      document.getElementById('screenshotZone').style.display   = 'none';
+      document.getElementById('screenshotPreview').style.display = 'flex';
+      document.getElementById('screenshotThumb').src = dataUrl;
+      document.getElementById('szFilename').textContent = file.name;
+      document.getElementById('szStatus').textContent  = 'Analysing screenshot…';
+      document.getElementById('szStatus').className    = 'sp-status analysing';
+      document.getElementById('screenshotContextChip').style.display = 'none';
+      szContext = '';
+
+      // Send to backend for context extraction
+      try {
+        const b64 = dataUrl.split(',')[1];
+        const mime = file.type;
+        const resp = await fetch('/api/extract-screenshot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_b64: b64, mime_type: mime }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || 'Extraction failed');
+        szContext = data.context || '';
+        document.getElementById('szStatus').textContent = '✓ Context extracted — will be included in searches';
+        document.getElementById('szStatus').className   = 'sp-status done';
+        // Show collapsible chip with the extracted context
+        document.getElementById('szContextBody').textContent = szContext;
+        document.getElementById('screenshotContextChip').style.display = 'block';
+      } catch (err) {
+        document.getElementById('szStatus').textContent = '⚠ Extraction failed: ' + err.message + ' (screenshot will not be used)';
+        document.getElementById('szStatus').className   = 'sp-status error';
+        szContext = '';
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function szRemove() {
+    szContext = '';
+    document.getElementById('screenshotZone').style.display    = 'block';
+    document.getElementById('screenshotPreview').style.display  = 'none';
+    document.getElementById('screenshotContextChip').style.display = 'none';
+    document.getElementById('screenshotInput').value = '';
+    document.getElementById('szContextBody').textContent = '';
+  }
+
+  function szToggleChip() {
+    const chip = document.getElementById('screenshotContextChip');
+    const toggle = chip.querySelector('.scc-toggle');
+    chip.classList.toggle('collapsed');
+    toggle.textContent = chip.classList.contains('collapsed') ? '▸ Show' : '▾ Hide';
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ADMIN SPA
+  // ═══════════════════════════════════════════════════════════════
+  let admViewActive  = false;
+  let admLoaded      = false;
+  let admTableData   = {};
+  let admCurrentTab  = 'search_events';
+  let admSortCol     = null;
+  let admSortAsc     = true;
+
+  const ADM_TABLE_LABELS = {
+    search_events:    'Search Events',
+    synthesis_events: 'Synthesis Events'
+  };
+
+  const ADM_COL_LABELS = {
+    id: 'ID', ran_at: 'Time', loop_type: 'Loop', query: 'Query', branch: 'Branch',
+    status: 'Status', duration_sec: 'Time (s)', files_read: 'Files',
+    iterations: 'Iterations', searches: 'Searches', confidence_level: 'Confidence',
+    input_tokens: 'Input Tokens', output_tokens: 'Output Tokens', total_tokens: 'Total Tokens',
+    error_message: 'Error', sources_used: 'Sources Used'
+  };
+
+  function toggleAdminView() {
+    admViewActive = !admViewActive;
+    const mainView = document.getElementById('view-main');
+    const adminView = document.getElementById('view-admin');
+    const btn = document.getElementById('adminToggleBtn');
+    if (admViewActive) {
+      mainView.style.display = 'none';
+      adminView.style.display = 'block';
+      btn.textContent = '← Search';
+      btn.style.background = 'rgba(255,255,255,.12)';
+      btn.style.borderColor = 'rgba(255,255,255,.3)';
+      if (!admLoaded) { admLoadAll(); admLoaded = true; }
+    } else {
+      adminView.style.display = 'none';
+      mainView.style.display = 'block';
+      btn.textContent = 'Admin';
+      btn.style.background = 'rgba(30,111,212,.35)';
+      btn.style.borderColor = 'rgba(30,111,212,.5)';
+    }
+  }
+
+  async function admLoadAll() {
+    for (const t of ['search_events', 'synthesis_events']) {
+      try {
+        const res  = await fetch(`/admin/data/${t}`);
+        const data = await res.json();
+        admTableData[t] = data.rows || [];
+      } catch (e) { admTableData[t] = []; }
+    }
+    admUpdateSummary();
+    admRenderTable();
+  }
+
+  function admAvg(arr) {
+    if (!arr.length) return null;
+    return arr.reduce((a, b) => a + b, 0) / arr.length;
+  }
+
+  function admUpdateSummary() {
+    const searches = admTableData.search_events    || [];
+    const synths   = admTableData.synthesis_events || [];
+
+    document.getElementById('adm-stat-total').textContent = searches.length;
+    const uniqueQ = new Set(searches.map(r => (r.query || '').trim().toLowerCase())).size;
+    document.getElementById('adm-stat-unique').textContent = uniqueQ;
+    document.getElementById('adm-stat-unique-sub').textContent =
+      uniqueQ === searches.length ? 'all unique' : `of ${searches.length} total`;
+
+    const times = searches.filter(r => r.duration_sec).map(r => r.duration_sec);
+    if (times.length) {
+      const a = admAvg(times);
+      document.getElementById('adm-stat-time').textContent = a.toFixed(1) + 's';
+      document.getElementById('adm-stat-time-sub').textContent = `across ${times.length} run${times.length !== 1 ? 's' : ''}`;
+    } else {
+      document.getElementById('adm-stat-time').textContent = '—';
+    }
+
+    const highConf = searches.filter(r => (r.confidence_level || '').toLowerCase() === 'high').length;
+    document.getElementById('adm-stat-confidence').textContent =
+      searches.length ? Math.round(highConf / searches.length * 100) + '%' : '—';
+    document.getElementById('adm-stat-confidence-sub').textContent =
+      searches.length ? `${highConf} of ${searches.length} runs` : '';
+
+    document.getElementById('adm-stat-synth').textContent = synths.length;
+    const synthOK = synths.filter(r => r.status === 'success').length;
+    document.getElementById('adm-stat-synth-sub').textContent =
+      synths.length ? `${synthOK} success` : 'none yet';
+
+    // Token summary cards
+    const tokRows = searches.filter(r => r.total_tokens > 0);
+    if (tokRows.length) {
+      const avgTok = admAvg(tokRows.map(r => r.total_tokens));
+      document.getElementById('adm-stat-tok-avg').textContent = Math.round(avgTok).toLocaleString();
+      document.getElementById('adm-stat-tok-avg-sub').textContent = `across ${tokRows.length} tracked run${tokRows.length !== 1 ? 's' : ''}`;
+      const totalTok = tokRows.reduce((s, r) => s + r.total_tokens, 0);
+      document.getElementById('adm-stat-tok-total').textContent = totalTok.toLocaleString();
+      document.getElementById('adm-stat-tok-total-sub').textContent = `${tokRows.reduce((s,r)=>s+r.input_tokens,0).toLocaleString()} in / ${tokRows.reduce((s,r)=>s+r.output_tokens,0).toLocaleString()} out`;
+      const maxRow = tokRows.reduce((a, b) => b.total_tokens > a.total_tokens ? b : a, tokRows[0]);
+      document.getElementById('adm-stat-tok-max').textContent = maxRow.total_tokens.toLocaleString();
+      document.getElementById('adm-stat-tok-max-sub').textContent = (maxRow.loop_type || '') + ' — ' + (maxRow.query || '').slice(0, 40);
+    }
+
+    function loopStats(type, runsEl, filesEl, thirdEl, thirdKey, timeEl, tokEl, errorsEl) {
+      const rows = searches.filter(r => r.loop_type === type);
+      document.getElementById(runsEl).textContent = rows.length || '0';
+      const fAvg = admAvg(rows.filter(r => r.files_read).map(r => r.files_read));
+      document.getElementById(filesEl).textContent = fAvg != null ? fAvg.toFixed(1) : '—';
+      const tAvg = admAvg(rows.filter(r => r[thirdKey]).map(r => r[thirdKey]));
+      document.getElementById(thirdEl).textContent = tAvg != null ? tAvg.toFixed(1) : '—';
+      const dAvg = admAvg(rows.filter(r => r.duration_sec).map(r => r.duration_sec));
+      document.getElementById(timeEl).textContent = dAvg != null ? dAvg.toFixed(1) + 's' : '—';
+      const tokAvg = admAvg(rows.filter(r => r.total_tokens > 0).map(r => r.total_tokens));
+      document.getElementById(tokEl).textContent = tokAvg != null ? Math.round(tokAvg).toLocaleString() : '—';
+      document.getElementById(errorsEl).textContent = rows.filter(r => r.status === 'error').length;
+    }
+    loopStats('agentic',    'adm-ag-runs', 'adm-ag-files', 'adm-ag-iters', 'iterations', 'adm-ag-time', 'adm-ag-tokens', 'adm-ag-errors');
+    loopStats('sharepoint', 'adm-sp-runs', 'adm-sp-files', 'adm-sp-time', 'duration_sec', 'adm-sp-time', 'adm-sp-tokens', 'adm-sp-errors');
+  }
+
+  function admSwitchTab(event, table) {
+    admCurrentTab = table;
+    admSortCol = null; admSortAsc = true;
+    document.querySelectorAll('.adm-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('adm-table-title').textContent = ADM_TABLE_LABELS[table];
+    document.getElementById('adm-table-filter').value = '';
+    admRenderTable();
+  }
+
+  function admRenderTable() {
+    const rows = admTableData[admCurrentTab] || [];
+    const thead = document.getElementById('adm-thead');
+    const tbody = document.getElementById('adm-tbody');
+
+    if (rows.length === 0) {
+      thead.innerHTML = '';
+      tbody.innerHTML = '<tr><td class="adm-empty-msg" colspan="99">No data yet</td></tr>';
+      document.getElementById('adm-row-count').textContent = '0 rows';
+      return;
+    }
+
+    const columns = Object.keys(rows[0]);
+    let sorted = [...rows];
+    if (admSortCol !== null && columns.includes(admSortCol)) {
+      sorted.sort((a, b) => {
+        const va = a[admSortCol], vb = b[admSortCol];
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1; if (vb == null) return -1;
+        if (typeof va === 'number' && typeof vb === 'number') return admSortAsc ? va - vb : vb - va;
+        return admSortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+      });
+    }
+
+    const filter = (document.getElementById('adm-table-filter').value || '').toLowerCase();
+    if (filter) {
+      sorted = sorted.filter(row => columns.some(c => String(row[c] || '').toLowerCase().includes(filter)));
+    }
+
+    thead.innerHTML = '<tr>' + columns.map(c => {
+      const label = ADM_COL_LABELS[c] || c;
+      const isSorted = admSortCol === c;
+      const arrow = isSorted ? (admSortAsc ? '▲' : '▼') : '▽';
+      return `<th class="${isSorted ? 'sorted' : ''}" onclick="admSortBy('${c}')">${admEsc(label)} <span class="sort-arrow">${arrow}</span></th>`;
+    }).join('') + '</tr>';
+
+    tbody.innerHTML = sorted.map(row =>
+      '<tr>' + columns.map(c => {
+        let val = row[c];
+        if (val === null || val === undefined) val = '';
+        if (c === 'status') {
+          const cls = val === 'success' ? 'adm-status-success' : 'adm-status-error';
+          return `<td class="${cls}">${admEsc(val)}</td>`;
+        }
+        if (c === 'loop_type') {
+          const cls = { agentic: 'adm-loop-agentic', hybrid: 'adm-loop-hybrid', sharepoint: 'adm-loop-sharepoint' }[val] || '';
+          const icon = { agentic: '⚡', hybrid: '🔀', sharepoint: '🔷' }[val] || '';
+          return `<td class="${cls}">${icon} ${admEsc(val)}</td>`;
+        }
+        if (c === 'confidence_level' && val) {
+          const cls = { high: 'adm-conf-high', medium: 'adm-conf-medium', low: 'adm-conf-low' }[val.toLowerCase()] || '';
+          return `<td class="${cls}">${admEsc(val)}</td>`;
+        }
+        if (c === 'total_tokens' && val) {
+          const n = parseInt(val, 10);
+          const colour = n > 80000 ? 'color:#b91c1c;font-weight:600' : n > 40000 ? 'color:#d97706;font-weight:600' : 'color:#16a34a;font-weight:600';
+          return `<td style="${colour}">${n.toLocaleString()}</td>`;
+        }
+        if ((c === 'input_tokens' || c === 'output_tokens') && val) {
+          return `<td>${parseInt(val, 10).toLocaleString()}</td>`;
+        }
+        if (typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T?/)) {
+          val = new Date(val).toLocaleString();
+        }
+        if (typeof val === 'number' && !Number.isInteger(val)) val = val.toFixed(2);
+        return `<td title="${admEsc(String(val))}">${admEsc(String(val))}</td>`;
+      }).join('') + '</tr>'
+    ).join('');
+
+    document.getElementById('adm-row-count').textContent =
+      `${sorted.length} of ${rows.length} row${rows.length !== 1 ? 's' : ''}`;
+  }
+
+  function admSortBy(col) {
+    if (admSortCol === col) admSortAsc = !admSortAsc;
+    else { admSortCol = col; admSortAsc = true; }
+    admRenderTable();
+  }
+
+  function admApplyFilter() { admRenderTable(); }
+
+  function admExport() {
+    window.location.href = `/admin/export/${admCurrentTab}`;
+  }
+
+  function admEsc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Info modals ────────────────────────────────────────────────────────────
+  const INFO_CONTENT = {
+    agentic: {
+      title: '⚡ Agentic Loop — How it works',
+      body: `
+        <h4>Overview</h4>
+        <p>The Agentic Loop gives Claude full autonomy to search the <strong>CoraSystems/PPM</strong> Azure DevOps repository. Rather than following a fixed script, Claude decides what to search for next based on what it finds — just like a developer would.</p>
+
+        <h4>Step-by-step process</h4>
+        <ul>
+          <li><strong>Round 1:</strong> Claude generates 3–5 search terms from your question and fires them all at the ADO Code Search API in parallel.</li>
+          <li><strong>Rounds 2–12:</strong> After reading each file, Claude decides whether it needs more context — missing layers, deeper methods, related classes — and issues additional targeted searches.</li>
+          <li><strong>Truncation handling:</strong> If a file is too large to read fully (&gt;15,000 chars), Claude searches by the specific method or class name to retrieve the exact snippet at its actual location.</li>
+          <li><strong>Final answer:</strong> Once confident (or at the 12-round cap), Claude synthesises everything it read into a structured answer with code references.</li>
+        </ul>
+
+        <h4>What it searches</h4>
+        <p>Exclusively the <strong>CoraSystems/PPM</strong> repo on the branch you selected. No external sources, documentation, or web results.</p>
+
+        <hr class="info-divider"/>
+        <h4>Agentic vs Hybrid Loop</h4>
+        <table class="compare-table">
+          <thead><tr><th></th><th>⚡ Agentic</th><th>🔀 Hybrid</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Strategy</strong></td><td>Fully iterative — Claude decides each step</td><td>Structured search, then adaptive reading</td></tr>
+            <tr><td><strong>Adaptability</strong></td><td>Highest — can pivot at any step</td><td>High — adaptive in Phase 2 with upfront candidate pool</td></tr>
+            <tr><td><strong>Coverage</strong></td><td>Deep — follows full reference chain</td><td>Broad + deep — layer enforcement + reference chain</td></tr>
+            <tr><td><strong>Speed</strong></td><td>Slower — 60–120 s typical</td><td>Medium — 40–80 s typical</td></tr>
+            <tr><td><strong>Best for</strong></td><td>Complex, multi-layer traces where search terms are unclear</td><td>Most questions — balanced depth, speed, and coverage</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:.8rem;color:var(--muted)">Both loops use the same ADO Code Search and file-reading APIs against the same repository branch.</p>
+      `
+    },
+    hybrid: {
+      title: '🔀 Hybrid Loop — How it works',
+      body: `
+        <h4>Overview</h4>
+        <p>The Hybrid Loop combines <strong>structured multi-term search</strong> to build a candidate pool with the <strong>Agentic Loop's adaptive reference-chain reading</strong> — then a single clean synthesis pass.</p>
+
+        <h4>Step-by-step process</h4>
+        <ul>
+          <li><strong>Phase 1 — Structured search:</strong> Claude extracts 4–7 search terms and runs them all against ADO Code Search with camelCase fallbacks and layer-coverage enforcement .</li>
+          <li><strong>Phase 2 — Adaptive reading (up to 10 files):</strong> Claude is shown the ranked candidate pool and reads one file at a time. After each file, it examines the code for imports, method calls, and class names, then decides: <em>read a known candidate</em>, <em>search for a newly discovered class</em>, or <em>stop</em>. This follows the actual call chain rather than guessing file names upfront.</li>
+          <li><strong>Phase 3 — Single synthesis:</strong> Once the reference chain is covered, one structured synthesis pass produces the final answer.</li>
+        </ul>
+
+        <h4>Why this matters</h4>
+        <p>Picking files before reading code often misses the Service or Repository layer. The Hybrid Loop solves this: broad coverage from Phase 1, precise call-chain reading in Phase 2, and a hard cap that prevents over-searching.</p>
+
+        <hr class="info-divider"/>
+        <h4>Agentic vs Hybrid</h4>
+        <table class="compare-table">
+          <thead><tr><th></th><th>⚡ Agentic</th><th>🔀 Hybrid</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Search strategy</strong></td><td>Reactive — searches based on what it reads</td><td>Upfront broad search, then adaptive follow-up</td></tr>
+            <tr><td><strong>Reading strategy</strong></td><td>Adaptive — picks next file based on code content</td><td>Adaptive — follows reference chain one file at a time</td></tr>
+            <tr><td><strong>Layer coverage</strong></td><td>High — follows imports and method calls</td><td>High — reference chain + layer enforcement</td></tr>
+            <tr><td><strong>Speed</strong></td><td>Slower (60–120 s)</td><td>Medium (40–80 s)</td></tr>
+            <tr><td><strong>Best for</strong></td><td>Deep, multi-layer traces where search direction is unclear</td><td>Most questions — balances depth, speed, and coverage</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:.8rem;color:var(--muted)">Both loops use the same ADO Code Search and file-reading APIs against the same repository branch.</p>
+      `
+    },
+    sharepoint: {
+      title: '🔷 SharePoint KB — How it works',
+      body: `
+        <h4>Overview</h4>
+        <p>The SharePoint KB loop searches the <strong>PS Confluence knowledge base</strong> that has been exported to SharePoint. It surfaces user-facing documentation, guides, and support articles — it does <em>not</em> search source code.</p>
+
+        <h4>Step-by-step process</h4>
+        <ul>
+          <li><strong>Step 1 — Search:</strong> Your question is sent to the SharePoint full-text search endpoint, targeting the KB document library.</li>
+          <li><strong>Step 2 — Retrieve documents:</strong> The top matching documents are fetched and their content extracted.</li>
+          <li><strong>Step 3 — Synthesize:</strong> Claude summarises the relevant sections from each document into a coherent answer, citing the source documents.</li>
+        </ul>
+
+        <h4>What it searches</h4>
+        <p>Only the <strong>PS Confluence knowledge base</strong> content exported to SharePoint. This includes how-to guides, feature documentation, and support articles — not the PPM source code.</p>
+
+        <h4>When to use it</h4>
+        <ul>
+          <li>User-facing feature explanations and workflows</li>
+          <li>Support and troubleshooting guidance</li>
+          <li>Business process documentation</li>
+          <li>Questions about <em>how to use</em> a feature (vs. how it is implemented)</li>
+        </ul>
+
+        <hr class="info-divider"/>
+        <h4>How it compares to the ADO loops</h4>
+        <p>The Agentic and Hybrid loops both search the <strong>source code repository</strong> and are best for implementation questions. The SharePoint KB loop searches <strong>documentation</strong> and is best for functional or user-facing questions. Running all and using <strong>Synthesize All</strong> gives the most complete picture.</p>
+      `
+    }
+  };
+
+  function openInfoModal(loop, event) {
+    event.stopPropagation();
+    const content = INFO_CONTENT[loop];
+    if (!content) return;
+    document.getElementById('infoModalTitle').textContent = content.title;
+    document.getElementById('infoModalBody').innerHTML = content.body;
+    const overlay = document.getElementById('infoModalOverlay');
+    overlay.style.display = 'flex';
+    // Close on Escape
+    document._infoKeyHandler = function(e) {
+      if (e.key === 'Escape') closeInfoModal();
+    };
+    document.addEventListener('keydown', document._infoKeyHandler);
+  }
+
+  function closeInfoModal() {
+    document.getElementById('infoModalOverlay').style.display = 'none';
+    if (document._infoKeyHandler) {
+      document.removeEventListener('keydown', document._infoKeyHandler);
+      document._infoKeyHandler = null;
+    }
+  }
+
+  // ── Panel drag-resize ──────────────────────────────────────────────────────
+  function initPanelResize() {
+    document.querySelectorAll('.panel').forEach(panel => {
+      const handle = panel.querySelector('.panel-resize-handle');
+      if (!handle) return;
+
+      let startX = 0, startWidth = 0;
+
+      handle.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        startX     = e.clientX;
+        startWidth = panel.getBoundingClientRect().width;
+        handle.classList.add('resizing');
+
+        function onMouseMove(e) {
+          const dx = e.clientX - startX;
+          const newWidth = Math.max(220, startWidth + dx);
+          panel.style.flex = '0 0 ' + newWidth + 'px';
+          panel.style.width = newWidth + 'px';
+        }
+
+        function onMouseUp() {
+          handle.classList.remove('resizing');
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        }
+
+        document.body.style.cursor    = 'col-resize';
+        document.body.style.userSelect = 'none';
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup',   onMouseUp);
+      });
+
+      // Double-click handle → reset to equal flex width
+      handle.addEventListener('dblclick', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        panel.style.flex  = '1 1 0';
+        panel.style.width = '';
+      });
+    });
+  }
+
+  initPanelResize();
+
+  // ── Flag functions ──────────────────────────────────────────────────────
   function showFlagForm(loop) {
-    document.getElementById(`flagForm-${loop}`).style.display = 'block';
-    document.getElementById(`flagSuccess-${loop}`).style.display = 'none';
+    const id = 'flagForm' + loop.charAt(0).toUpperCase() + loop.slice(1);
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'block';
   }
   function hideFlagForm(loop) {
-    document.getElementById(`flagForm-${loop}`).style.display = 'none';
+    const id = 'flagForm' + loop.charAt(0).toUpperCase() + loop.slice(1);
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
   }
-
-  async function submitFlag(loop) {
-    const explanation = document.getElementById(`flagExplanation-${loop}`).value.trim();
-    if (!explanation) { alert('Please explain what was incorrect or missing.'); return; }
-
-    const query = getQuery();
-    const answer = state[loop]?.answer || '';
-
-    try {
-      const resp = await fetch('/api/flag', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, loop_type: loop, answer, explanation }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.success) throw new Error(data.error || 'Unknown error');
-
-      document.getElementById(`flagForm-${loop}`).style.display = 'none';
-      document.getElementById(`flagSuccess-${loop}`).style.display = 'block';
-    } catch (e) {
-      alert('Failed to submit feedback: ' + e.message);
-    }
+  function submitFlag(loop) {
+    const explId = 'flagExpl' + loop.charAt(0).toUpperCase() + loop.slice(1);
+    const explanation = document.getElementById(explId)?.value || '';
+    const queryEl = document.getElementById('queryInput') || document.getElementById('q');
+    const query = queryEl ? queryEl.value : '';
+    // Get the answer text from the hidden span
+    const answerMap = {agentic:'agAnswer', hybrid:'hybridAnswer', sharepoint:'spAnswer'};
+    const answerEl = document.getElementById(answerMap[loop]);
+    const answer = answerEl ? answerEl.textContent : '';
+    fetch('/api/flag', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query, loop_type: loop, answer, explanation})
+    }).then(r => r.json()).then(data => {
+      if (data.success) {
+        const successId = 'flagSuccess' + loop.charAt(0).toUpperCase() + loop.slice(1);
+        const successEl = document.getElementById(successId);
+        if (successEl) successEl.style.display = 'block';
+        setTimeout(() => hideFlagForm(loop), 2000);
+      }
+    });
   }
 </script>
 </body>
