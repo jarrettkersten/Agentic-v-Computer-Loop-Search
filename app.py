@@ -54,7 +54,7 @@ ADO_SEARCH_URL    = (
 MAX_AGENTIC_ITERATIONS = 12    # more headroom for complex multi-file questions
 MAX_SEARCH_RESULTS     = 12    # broader initial candidate pool per search term
 MAX_FILE_CHARS         = 15000 # read more of each file — key methods are often deep
-MAX_FILES_TO_READ      = 10    # read more files before synthesising
+MAX_FILES_TO_READ      = 18    # read more files before synthesising
 
 # Time-based search control ─────────────────────────────────────────────────
 # Agentic loop pauses at these elapsed-second marks and asks the user whether
@@ -70,6 +70,14 @@ SP_SITE_URL    = "https://corasystems.sharepoint.com/sites/ProfessionalServicesE
 SP_TENANT_ID   = os.environ.get("M365_TENANT_ID", "corasystems.com")
 SP_USERNAME    = os.environ.get("M365_USERNAME", "")
 SP_PASSWORD    = os.environ.get("M365_PASSWORD", "")
+# Optional: Azure AD App Registration credentials (client credentials flow).
+# If set, these take priority over username/password (ROPC) and are not subject
+# to Conditional Access policies that block ROPC from server IPs.
+# Setup: Azure AD → App registrations → New registration → API permissions →
+#        SharePoint → Sites.Read.All (Application) → Grant admin consent →
+#        Certificates & secrets → New client secret.
+SP_CLIENT_ID     = os.environ.get("M365_CLIENT_ID", "")
+SP_CLIENT_SECRET = os.environ.get("M365_CLIENT_SECRET", "")
 
 # Server-relative path to the target folder.
 # Content lives one level inside the parent — "PS Confluence Content for AI"
@@ -806,16 +814,21 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
         "If you cannot find a file you need, say which file and why it matters, then continue "
         "with what you have rather than stopping early.\n\n"
         "═══ WHEN TO STOP SEARCHING ═══\n"
-        "Once you have read files covering all relevant layers (UI page, code-behind, service, "
-        "data access), STOP and write your final answer — do NOT keep searching.\n"
-        "You have enough to answer when you have:\n"
-        "  • The .aspx/.ascx page that renders the UI for this feature\n"
-        "  • The .aspx.vb/.aspx.cs code-behind that handles the events\n"
-        "  • The service or business-logic class that processes the request\n"
-        "  • The repository/SQL that reads or writes the data\n"
-        "Do NOT keep searching for: CSS/styling, unrelated helper classes, alternative "
-        "implementations, or every file that mentions the topic. "
-        "A focused answer from 8-12 key files is better than an exhaustive answer from 25+ files."
+        "Do NOT stop searching until you have covered ALL of these layers:\n"
+        "  ✓ The .aspx/.ascx page that renders the UI\n"
+        "  ✓ The .aspx.vb/.aspx.cs code-behind that handles events\n"
+        "  ✓ The service or business-logic class (IXxxService / XxxService)\n"
+        "  ✓ The repository or data-access class (XxxRepository / XxxDA / XxxManager)\n"
+        "  ✓ Any SQL stored procedures or queries called from the repository\n"
+        "  ✓ Key helper / utility classes that the above files delegate to\n"
+        "  ✓ Any base classes or shared controls that define important inherited behaviour\n\n"
+        "You are NOT done until every layer above is checked. If a layer's file could not be "
+        "found (e.g. no stored proc exists), note that explicitly and move on — do not stop early.\n\n"
+        "AVOID reading: pure CSS/JS styling files, completely unrelated features, or files you "
+        "have already read in full. Skip CSS/layout-only .ascx controls unless the question is "
+        "specifically about layout.\n\n"
+        "TARGET DEPTH: For most questions a thorough answer requires 12–20 files. If you have "
+        "fewer than 10 files read and the question touches business logic, keep searching."
     )
 
     messages = [{"role": "user", "content": (
@@ -1244,8 +1257,8 @@ def run_hybrid_loop(query, branch):
             steps_log.append({"step": step_label, "action": f"Could not read {fp}: {e}"})
             return False
 
-    MAX_READS          = 10   # max files to read in the adaptive phase
-    MAX_TOTAL_ITERS    = 16   # hard ceiling to prevent infinite SEARCH loops
+    MAX_READS          = 20   # max files to read in the adaptive phase
+    MAX_TOTAL_ITERS    = 28   # hard ceiling to prevent infinite SEARCH loops
     reads_done         = 0
     last_fp            = None
     last_content       = None
@@ -1314,15 +1327,22 @@ def run_hybrid_loop(query, branch):
                     f"Unread candidates (already discovered — prefer READ over SEARCH):\n{candidate_list}\n\n"
                     f"{failed_block}"
                     "DECISION RULES (follow in order):\n"
-                    "1. If the answer needs a layer (Service/Repository/CodeBehind) already in the candidate list → READ it.\n"
+                    "1. If the answer needs a layer (Service/Repository/CodeBehind/SQL) already in the candidate list → READ it.\n"
                     "2. If you see a specific file referenced in code that is NOT in the candidate list → SEARCH once.\n"
                     "3. Never SEARCH a term that already returned 0 hits (listed above).\n"
                     "4. Never repeat the same SEARCH twice.\n"
-                    "5. If you have covered UI + at least one server-side layer → DONE.\n\n"
+                    "5. Say DONE only when ALL of these are covered (or confirmed not to exist):\n"
+                    "     • UI page (.aspx/.ascx)\n"
+                    "     • Code-behind (.aspx.vb/.aspx.cs)\n"
+                    "     • Service / business-logic class\n"
+                    "     • Repository / data-access class\n"
+                    "     • SQL stored procedure(s) or inline queries\n"
+                    "     • Key helpers / base classes referenced in the above\n"
+                    "   If you still have unread candidates from any of these layers, READ them first.\n\n"
                     "Reply with EXACTLY ONE line:\n"
                     "  READ: /full/path/FileName.ext   (pick the most relevant unread candidate)\n"
                     "  SEARCH: ExactClassName          (only if the file is genuinely missing from candidates)\n"
-                    "  DONE                            (enough layers covered to answer the question)"
+                    "  DONE                            (all layers above confirmed — ready to synthesise)"
                 ),
             }],
         )
@@ -1616,33 +1636,61 @@ def run_hybrid_loop(query, branch):
 # ---------------------------------------------------------------------------
 
 def _sp_get_token() -> str:
-    """Obtain a SharePoint access token via MSAL ROPC (username + password).
+    """Obtain a SharePoint access token, trying two auth methods in order:
+
+    1. Client Credentials (app registration) — preferred for server deployments.
+       Requires M365_CLIENT_ID and M365_CLIENT_SECRET env vars.
+       Needs Sites.Read.All *Application* permission + admin consent in Azure AD.
+       Not subject to user-targeted Conditional Access policies.
+
+    2. ROPC (username + password) — fallback if client credentials not configured.
+       Requires M365_USERNAME and M365_PASSWORD.
+       Will fail with AADSTS53003 if the tenant's Conditional Access policy blocks
+       ROPC flows from this server's IP (common for Railway/cloud deployments).
 
     Token is cached in memory and refreshed automatically when it expires.
-    NOTE: ROPC will fail if the account has MFA enforced — in that case an
-    Azure AD app registration (client credentials) is required instead.
     """
     if not MSAL_AVAILABLE:
         raise RuntimeError(
             "msal is not installed. Run: pip install msal --break-system-packages"
-        )
-    if not SP_USERNAME or not SP_PASSWORD:
-        raise ValueError(
-            "M365_USERNAME and M365_PASSWORD must be set in .env to use SharePoint search."
         )
 
     # Return cached token if still valid
     if _sp_token_cache.get("expires_at", 0) > time.time() + 60:
         return _sp_token_cache["access_token"]
 
-    # Microsoft Office well-known public client — no secret needed
-    CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"
-    # .default requests all SharePoint permissions the user already has
-    SCOPES    = ["https://corasystems.sharepoint.com/.default"]
+    SCOPES = ["https://corasystems.sharepoint.com/.default"]
+    authority = f"https://login.microsoftonline.com/{SP_TENANT_ID}"
 
+    # ── Path 1: Client Credentials (app registration) ────────────────────────
+    if SP_CLIENT_ID and SP_CLIENT_SECRET:
+        app_msal = _msal_mod.ConfidentialClientApplication(
+            SP_CLIENT_ID,
+            authority=authority,
+            client_credential=SP_CLIENT_SECRET,
+        )
+        result = app_msal.acquire_token_for_client(scopes=SCOPES)
+        if "access_token" not in result:
+            err = result.get("error_description") or result.get("error") or "Unknown error"
+            raise ValueError(f"SharePoint client-credentials auth failed: {err}")
+        _sp_token_cache["access_token"] = result["access_token"]
+        _sp_token_cache["expires_at"]   = time.time() + result.get("expires_in", 3600)
+        print("[SP] Authenticated via client credentials (app registration)", flush=True)
+        return result["access_token"]
+
+    # ── Path 2: ROPC (username + password) ───────────────────────────────────
+    if not SP_USERNAME or not SP_PASSWORD:
+        raise ValueError(
+            "SharePoint auth not configured. Set either:\n"
+            "  • M365_CLIENT_ID + M365_CLIENT_SECRET (app registration — recommended)\n"
+            "  • M365_USERNAME + M365_PASSWORD (ROPC — blocked by Conditional Access on some tenants)"
+        )
+
+    # Microsoft Office well-known public client — no secret needed
+    ROPC_CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"
     app_msal = _msal_mod.PublicClientApplication(
-        CLIENT_ID,
-        authority=f"https://login.microsoftonline.com/{SP_TENANT_ID}",
+        ROPC_CLIENT_ID,
+        authority=authority,
     )
     result = app_msal.acquire_token_by_username_password(
         username=SP_USERNAME,
@@ -1652,10 +1700,19 @@ def _sp_get_token() -> str:
 
     if "access_token" not in result:
         err = result.get("error_description") or result.get("error") or "Unknown auth error"
-        raise ValueError(f"SharePoint authentication failed: {err}")
+        # Detect the specific CA policy block and give a clear fix message
+        if "AADSTS53003" in str(err):
+            raise ValueError(
+                "SharePoint ROPC auth blocked by Conditional Access policy (AADSTS53003). "
+                "The tenant requires a compliant device or MFA for this account.\n"
+                "Fix: Register an Azure AD app, grant Sites.Read.All (Application), "
+                "get admin consent, then set M365_CLIENT_ID and M365_CLIENT_SECRET in Railway."
+            )
+        raise ValueError(f"SharePoint ROPC authentication failed: {err}")
 
     _sp_token_cache["access_token"] = result["access_token"]
     _sp_token_cache["expires_at"]   = time.time() + result.get("expires_in", 3600)
+    print("[SP] Authenticated via ROPC (username/password)", flush=True)
     return result["access_token"]
 
 
