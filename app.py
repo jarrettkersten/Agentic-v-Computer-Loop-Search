@@ -989,11 +989,16 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
                     _prog_parts.append(
                         f"📖 Reading {_fname}" + (f" (+{_off:,})" if _off else "")
                     )
+            _searches_so_far = sum(
+                1 for _it in iterations_log
+                for _tc2 in _it.get("tool_calls", [])
+                if _tc2.get("type") == "search"
+            ) + sum(1 for _tc2 in tool_calls_this_turn if _tc2.get("type") == "search")
             job["event_queue"].put({
                 "type":      "progress",
                 "iteration": iteration,
                 "files":     len(accumulated_files),
-                "searches":  total_searches,
+                "searches":  _searches_so_far,
                 "text":      " · ".join(_prog_parts) if _prog_parts else f"Iteration {iteration}",
             })
 
