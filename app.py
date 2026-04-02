@@ -153,7 +153,8 @@ def init_db():
                 input_tokens     INTEGER DEFAULT 0,
                 output_tokens    INTEGER DEFAULT 0,
                 total_tokens     INTEGER DEFAULT 0,
-                error_message    TEXT
+                error_message    TEXT,
+                user_email       TEXT    DEFAULT ''
             )
         """)
         # Migrate existing tables: add token columns if they don't already exist
@@ -167,6 +168,11 @@ def init_db():
                     cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
                 except Exception:
                     pass  # column already exists
+        # Migrate: add user_email column to search_events
+        try:
+            cur.execute("ALTER TABLE search_events ADD COLUMN user_email TEXT DEFAULT ''")
+        except Exception:
+            pass  # column already exists
         # Flagged queries table — stores responses users flag as unhelpful/missing
         cur.execute("""
             CREATE TABLE IF NOT EXISTS flagged_queries (
@@ -193,7 +199,8 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                        duration_sec: float, files_read: int = 0,
                        iterations: int = 0, searches: int = 0,
                        confidence_level: str = "", error_message: str = "",
-                       input_tokens: int = 0, output_tokens: int = 0):
+                       input_tokens: int = 0, output_tokens: int = 0,
+                       user_email: str = ""):
     """Record a single loop search run."""
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -202,13 +209,14 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
             """INSERT INTO search_events
                (loop_type, query, branch, status, duration_sec, files_read,
                 iterations, searches, confidence_level,
-                input_tokens, output_tokens, total_tokens, error_message)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                input_tokens, output_tokens, total_tokens, error_message,
+                user_email)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (loop_type, (query or "")[:300], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
              confidence_level or "",
              input_tokens, output_tokens, input_tokens + output_tokens,
-             error_message or ""),
+             error_message or "", user_email or ""),
         )
         conn.commit()
         conn.close()
@@ -1182,6 +1190,7 @@ def api_agentic_stream():
     _job_create(job_id)
     job    = _job_get(job_id)
     t0     = time.time()
+    _user_email = _current_user_email()
 
     def _run():
         try:
@@ -1195,10 +1204,11 @@ def api_agentic_stream():
                 result.get("confidence", {}).get("level", ""),
                 input_tokens=result.get("input_tokens",  0),
                 output_tokens=result.get("output_tokens", 0),
+                user_email=_user_email,
             )
         except Exception as e:
             track_search_event("agentic", query, branch, "error", time.time() - t0,
-                               error_message=str(e))
+                               error_message=str(e), user_email=_user_email)
             job["event_queue"].put({"type": "error", "message": str(e)})
         finally:
             _job_remove(job_id)
@@ -1249,6 +1259,7 @@ def api_agentic_start():
     _job_create(job_id)
     job = _job_get(job_id)
     t0  = time.time()
+    _user_email = _current_user_email()
 
     def _run():
         try:
@@ -1262,10 +1273,12 @@ def api_agentic_start():
                 result.get("confidence", {}).get("level", ""),
                 input_tokens=result.get("input_tokens",  0),
                 output_tokens=result.get("output_tokens", 0),
+                user_email=_user_email,
             )
         except Exception as e:
             track_search_event("agentic", query, branch, "error",
-                               time.time() - t0, error_message=str(e))
+                               time.time() - t0, error_message=str(e),
+                               user_email=_user_email)
             job["event_queue"].put({"type": "error", "message": str(e)})
         finally:
             # Keep job alive for 5 minutes after completion so the frontend
@@ -1330,6 +1343,7 @@ def api_agentic():
     if not branch:
         return jsonify({"error": "Please select a branch first."}), 400
     t0 = time.time()
+    _user_email = _current_user_email()
     try:
         result = run_agentic_loop(query, branch)
         track_search_event(
@@ -1341,11 +1355,12 @@ def api_agentic():
             result.get("confidence", {}).get("level", ""),
             input_tokens=result.get("input_tokens",  0),
             output_tokens=result.get("output_tokens", 0),
+            user_email=_user_email,
         )
         return jsonify({"success": True, "result": result})
     except Exception as e:
         track_search_event("agentic", query, branch, "error", time.time() - t0,
-                           error_message=str(e))
+                           error_message=str(e), user_email=_user_email)
         return jsonify({"error": str(e)}), 500
 
 
@@ -1552,6 +1567,44 @@ def api_admin_flags():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/admin/user-rankings")
+@admin_required
+def api_admin_user_rankings():
+    """Return per-user aggregates: query count, token usage, estimated cost."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(user_email, ''), 'unknown') AS user_email,
+                COUNT(*)                                    AS query_count,
+                SUM(COALESCE(input_tokens, 0))              AS total_input_tokens,
+                SUM(COALESCE(output_tokens, 0))             AS total_output_tokens,
+                SUM(COALESCE(total_tokens, 0))              AS total_tokens
+            FROM search_events
+            GROUP BY COALESCE(NULLIF(user_email, ''), 'unknown')
+            ORDER BY query_count DESC
+        """)
+        rankings = []
+        for row in cur.fetchall():
+            inp = row["total_input_tokens"] or 0
+            out = row["total_output_tokens"] or 0
+            cost = (inp / 1_000_000) * COST_PER_M_INPUT + (out / 1_000_000) * COST_PER_M_OUTPUT
+            rankings.append({
+                "user_email":          row["user_email"],
+                "query_count":         row["query_count"],
+                "total_input_tokens":  inp,
+                "total_output_tokens": out,
+                "total_tokens":        row["total_tokens"] or 0,
+                "estimated_cost":      round(cost, 4),
+            })
+        conn.close()
+        return jsonify({"rankings": rankings})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/admin/flags/<flag_id>", methods=["PATCH"])
 @admin_required
 def api_admin_update_flag(flag_id):
@@ -1729,6 +1782,7 @@ def api_v1_query():
         result.get("confidence", {}).get("level", ""),
         input_tokens=result.get("input_tokens", 0),
         output_tokens=result.get("output_tokens", 0),
+        user_email="external_api",
     )
 
     return jsonify({

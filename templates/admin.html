@@ -32,17 +32,27 @@ main{max-width:1600px;margin:28px auto;padding:0 24px}
 .summary-card .sub{font-size:.78rem;color:var(--muted);margin-top:4px}
 
 /* Loop breakdown row */
-.breakdown-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+.breakdown-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:1200px){.breakdown-row{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:700px){.breakdown-row{grid-template-columns:1fr}}
 .breakdown-card{background:var(--card);border-radius:var(--radius);padding:18px 22px;box-shadow:var(--shadow);border-top:3px solid var(--border)}
 .breakdown-card.agentic{border-color:#2563eb}
 .breakdown-card.hybrid{border-color:#0d9488}
 .breakdown-card.sharepoint{border-color:#0078d4}
+.breakdown-card.user-rankings{border-color:#7c3aed}
 .breakdown-card .bc-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:7px}
 .breakdown-card .bc-stat{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;padding:5px 0;border-bottom:1px solid var(--border)}
 .breakdown-card .bc-stat:last-child{border-bottom:none}
 .breakdown-card .bc-stat .bc-key{color:var(--muted)}
 .breakdown-card .bc-stat .bc-val{font-weight:700;color:var(--text)}
+/* User rankings scrollable list */
+.user-rank-list{max-height:220px;overflow-y:auto;font-size:.82rem}
+.user-rank-item{display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+.user-rank-item:last-child{border-bottom:none}
+.user-rank-item .ur-email{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-rank-item .ur-val{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.user-rank-header{display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:6px;padding:4px 0 8px;border-bottom:1.5px solid var(--border);font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.user-rank-header span:not(:first-child){text-align:right}
 
 /* Tabs */
 .tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--card);padding:4px;border-radius:10px;box-shadow:var(--shadow);width:fit-content}
@@ -160,6 +170,12 @@ footer{text-align:center;padding:32px 0;color:var(--muted);font-size:.74rem}
       <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="sp-tokens">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="sp-errors">—</span></div>
     </div>
+    <div class="breakdown-card user-rankings">
+      <div class="bc-label">👤 User Rankings</div>
+      <div id="user-rankings-content">
+        <div class="loading-msg" style="font-size:.82rem;padding:12px 0">Loading…</div>
+      </div>
+    </div>
   </div>
 
   <!-- Tabs -->
@@ -202,6 +218,7 @@ const COLUMN_LABELS = {
   status: 'Status', duration_sec: 'Time (s)', files_read: 'Files',
   iterations: 'Iterations', searches: 'Searches', confidence_level: 'Confidence',
   error_message: 'Error', sources_used: 'Sources Used',
+  user_email: 'User',
   answer: 'Answer', explanation: 'Explanation', flagged_by: 'Flagged By',
   flagged_at: 'Flagged At', reviewed_by: 'Reviewed By', reviewed_at: 'Reviewed At',
   admin_notes: 'Admin Notes'
@@ -233,6 +250,7 @@ async function loadAll() {
   }
   updateSummary();
   renderTable();
+  loadUserRankings();
 }
 
 function avg(arr) {
@@ -411,6 +429,48 @@ function esc(s) {
   return String(s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function loadUserRankings() {
+  const container = document.getElementById('user-rankings-content');
+  try {
+    const res = await fetch('/api/admin/user-rankings');
+    const data = await res.json();
+    const rankings = data.rankings || [];
+    if (!rankings.length) {
+      container.innerHTML = '<div class="empty-msg" style="font-size:.82rem;padding:12px 0">No data yet</div>';
+      return;
+    }
+    function fmtTok(n) {
+      if (n == null) return '—';
+      return n >= 1000000 ? (n / 1000000).toFixed(2) + 'M'
+           : n >= 1000    ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+           : String(n);
+    }
+    function fmtCost(n) {
+      return '$' + n.toFixed(2);
+    }
+    function shortEmail(e) {
+      if (!e || e === 'unknown' || e === 'anonymous') return e;
+      const at = e.indexOf('@');
+      return at > 0 ? e.substring(0, at) : e;
+    }
+    let html = '<div class="user-rank-header"><span>User</span><span>Queries</span><span>Tokens</span><span>Cost</span></div>';
+    html += '<div class="user-rank-list">';
+    rankings.forEach(r => {
+      html += `<div class="user-rank-item">` +
+        `<span class="ur-email" title="${esc(r.user_email)}">${esc(shortEmail(r.user_email))}</span>` +
+        `<span class="ur-val">${r.query_count}</span>` +
+        `<span class="ur-val">${fmtTok(r.total_tokens)}</span>` +
+        `<span class="ur-val">${fmtCost(r.estimated_cost)}</span>` +
+        `</div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+  } catch (e) {
+    console.warn('Could not load user rankings:', e);
+    container.innerHTML = '<div class="empty-msg" style="font-size:.82rem;padding:12px 0">Failed to load</div>';
+  }
 }
 
 loadAll();
