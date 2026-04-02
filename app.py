@@ -1467,10 +1467,7 @@ ADMIN_TABLES = {
 }
 
 
-@app.route("/admin")
-@admin_required
-def admin_dashboard():
-    return render_template("admin.html")
+# /admin route removed — admin dashboard lives in the main page (toggle button)
 
 
 @app.route("/admin/data/<table_name>")

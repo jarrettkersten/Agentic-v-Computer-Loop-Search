@@ -272,7 +272,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-summary-card .label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
 .adm-summary-card .value{font-size:1.8rem;font-weight:800;color:var(--brand)}
 .adm-summary-card .sub{font-size:.78rem;color:var(--muted);margin-top:4px}
-.adm-breakdown-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+.adm-breakdown-row{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px}
 @media(max-width:700px){.adm-breakdown-row{grid-template-columns:1fr}}
 .adm-breakdown-card{background:var(--card);border-radius:var(--radius);padding:18px 22px;box-shadow:var(--shadow);border-top:3px solid var(--border)}
 .adm-breakdown-card.agentic{border-color:#2563eb}
@@ -282,6 +282,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-breakdown-card .bc-stat:last-child{border-bottom:none}
 .adm-breakdown-card .bc-stat .bc-key{color:var(--muted)}
 .adm-breakdown-card .bc-stat .bc-val{font-weight:700;color:var(--text)}
+.adm-breakdown-card.user-rankings{border-color:#7c3aed}
+.adm-user-rank-list{max-height:220px;overflow-y:auto;font-size:.82rem}
+.adm-user-rank-item{display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+.adm-user-rank-item:last-child{border-bottom:none}
+.adm-user-rank-item .ur-email{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-user-rank-item .ur-val{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.adm-user-rank-header{display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:6px;padding:4px 0 8px;border-bottom:1.5px solid var(--border);font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.adm-user-rank-header span:not(:first-child){text-align:right}
 .adm-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--card);padding:4px;border-radius:10px;box-shadow:var(--shadow);width:fit-content}
 .adm-tab{padding:10px 22px;border-radius:8px;border:none;background:transparent;font-size:.88rem;font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;font-family:inherit}
 .adm-tab.active{background:var(--brand);color:#fff}
@@ -589,6 +597,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-ag-tokens">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Cost</span><span class="bc-val" id="adm-ag-cost" style="color:#6d28d9">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-ag-errors">—</span></div>
+    </div>
+    <div class="adm-breakdown-card user-rankings">
+      <div class="bc-label">👤 User Rankings</div>
+      <div id="adm-user-rankings-content">
+        <div class="adm-loading-msg" style="font-size:.82rem;padding:12px 0">Loading…</div>
+      </div>
     </div>
 
   </div>
@@ -1228,6 +1242,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     status: 'Status', duration_sec: 'Time (s)', files_read: 'Files',
     iterations: 'Iterations', searches: 'Searches', confidence_level: 'Confidence',
     input_tokens: 'Input Tokens', output_tokens: 'Output Tokens', total_tokens: 'Total Tokens', est_cost: 'Est. Cost',
+    user_email: 'User',
     error_message: 'Error', sources_used: 'Sources Used',
     answer: 'Answer', explanation: 'Explanation', flagged_by: 'Flagged By',
     flagged_at: 'Flagged At', reviewed_by: 'Reviewed By', reviewed_at: 'Reviewed At',
@@ -1276,6 +1291,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     } catch(e) { admTableData['flagged_queries'] = []; }
     admUpdateSummary();
     admRenderTable();
+    admLoadUserRankings();
   }
 
   async function admRefresh() {
@@ -1283,6 +1299,45 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     icon.classList.add('adm-refreshing');
     await admLoadAll();
     icon.classList.remove('adm-refreshing');
+  }
+
+  async function admLoadUserRankings() {
+    const container = document.getElementById('adm-user-rankings-content');
+    try {
+      const res = await fetch('/api/admin/user-rankings');
+      const data = await res.json();
+      const rankings = data.rankings || [];
+      if (!rankings.length) {
+        container.innerHTML = '<div class="adm-empty-msg" style="font-size:.82rem;padding:12px 0">No data yet</div>';
+        return;
+      }
+      function fmtTok(n) {
+        if (n == null) return '—';
+        return n >= 1000000 ? (n / 1000000).toFixed(2) + 'M'
+             : n >= 1000    ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+             : String(n);
+      }
+      function shortEmail(e) {
+        if (!e || e === 'unknown' || e === 'anonymous') return e;
+        const at = e.indexOf('@');
+        return at > 0 ? e.substring(0, at) : e;
+      }
+      let html = '<div class="adm-user-rank-header"><span>User</span><span>Queries</span><span>Tokens</span><span>Cost</span></div>';
+      html += '<div class="adm-user-rank-list">';
+      rankings.forEach(r => {
+        html += '<div class="adm-user-rank-item">' +
+          '<span class="ur-email" title="' + (r.user_email || '') + '">' + shortEmail(r.user_email) + '</span>' +
+          '<span class="ur-val">' + r.query_count + '</span>' +
+          '<span class="ur-val">' + fmtTok(r.total_tokens) + '</span>' +
+          '<span class="ur-val">' + formatCost(r.estimated_cost) + '</span>' +
+          '</div>';
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    } catch (e) {
+      console.warn('Could not load user rankings:', e);
+      container.innerHTML = '<div class="adm-empty-msg" style="font-size:.82rem;padding:12px 0">Failed to load</div>';
+    }
   }
 
   function admAvg(arr) {
