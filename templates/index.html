@@ -551,9 +551,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   <!-- Dashboard header with refresh -->
   <div class="adm-dashboard-header">
     <div class="adm-dashboard-title">Admin Dashboard</div>
-    <button class="adm-refresh-all" onclick="admRefreshAll()">
-      <span id="adm-refresh-all-icon">🔄</span> Refresh All
-    </button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="adm-refresh-all" onclick="admClearEvents()" style="color:#b91c1c;border-color:#fecaca">
+        🗑️ Clear Events
+      </button>
+      <button class="adm-refresh-all" onclick="admRefreshAll()">
+        <span id="adm-refresh-all-icon">🔄</span> Refresh All
+      </button>
+    </div>
   </div>
 
   <!-- Row 1: Search Activity (blue) + Performance (teal) -->
@@ -660,6 +665,28 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 20px;border-top:1px solid var(--border)">
       <div class="adm-row-count" id="adm-row-count"></div>
       <div id="adm-pagination" style="display:flex;align-items:center;gap:6px"></div>
+    </div>
+  </div>
+
+  <!-- Clear Events date-range modal -->
+  <div id="adm-clear-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:14px;padding:28px 32px;box-shadow:0 8px 32px rgba(0,0,0,.18);max-width:380px;width:90%">
+      <div style="font-size:.95rem;font-weight:700;margin-bottom:16px;color:var(--text)">Clear Search Events</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Select the date range of events to delete. This action cannot be undone.</div>
+      <div style="display:flex;gap:12px;margin-bottom:18px">
+        <div style="flex:1">
+          <label style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">Start Date</label>
+          <input type="date" id="adm-clear-start" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.84rem;font-family:inherit"/>
+        </div>
+        <div style="flex:1">
+          <label style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px">End Date</label>
+          <input type="date" id="adm-clear-end" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.84rem;font-family:inherit"/>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="admClearCancel()" style="padding:8px 18px;border-radius:7px;border:1.5px solid var(--border);background:#fff;font-size:.84rem;font-weight:600;cursor:pointer;font-family:inherit;color:var(--text)">Cancel</button>
+        <button onclick="admClearConfirm()" style="padding:8px 18px;border-radius:7px;border:none;background:#b91c1c;color:#fff;font-size:.84rem;font-weight:600;cursor:pointer;font-family:inherit">Delete Events</button>
+      </div>
     </div>
   </div>
 
@@ -1326,6 +1353,42 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     icon.classList.add('adm-refreshing');
     await admLoadAll();
     icon.classList.remove('adm-refreshing');
+  }
+
+  function admClearEvents() {
+    const modal = document.getElementById('adm-clear-modal');
+    // Default: start = earliest possible, end = today
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById('adm-clear-start').value = '2024-01-01';
+    document.getElementById('adm-clear-end').value = today;
+    modal.style.display = 'flex';
+  }
+  function admClearCancel() {
+    document.getElementById('adm-clear-modal').style.display = 'none';
+  }
+  async function admClearConfirm() {
+    const startDate = document.getElementById('adm-clear-start').value;
+    const endDate   = document.getElementById('adm-clear-end').value;
+    if (!startDate || !endDate) { alert('Please select both dates.'); return; }
+    if (startDate > endDate) { alert('Start date must be before end date.'); return; }
+    if (!confirm('Delete all search events from ' + startDate + ' to ' + endDate + '? This cannot be undone.')) return;
+    document.getElementById('adm-clear-modal').style.display = 'none';
+    try {
+      const res = await fetch('/api/admin/clear-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_date: startDate, end_date: endDate })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Cleared ' + data.deleted + ' events (' + data.range + ').');
+        await admLoadAll();
+      } else {
+        alert('Error: ' + (data.error || 'Unknown'));
+      }
+    } catch (e) {
+      alert('Failed to clear events: ' + e.message);
+    }
   }
 
   async function admLoadUserRankings() {

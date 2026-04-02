@@ -173,6 +173,20 @@ def init_db():
             cur.execute("ALTER TABLE search_events ADD COLUMN user_email TEXT DEFAULT ''")
         except Exception:
             pass  # column already exists
+        # API jobs table — async query processing
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS api_jobs (
+                id           TEXT    PRIMARY KEY,
+                status       TEXT    NOT NULL DEFAULT 'pending',
+                query        TEXT    NOT NULL,
+                branch       TEXT,
+                user_email   TEXT    DEFAULT 'external_api',
+                result_json  TEXT,
+                error        TEXT,
+                created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+                completed_at TEXT
+            )
+        """)
         # Flagged queries table — stores responses users flag as unhelpful/missing
         cur.execute("""
             CREATE TABLE IF NOT EXISTS flagged_queries (
@@ -1625,6 +1639,36 @@ def api_admin_update_flag(flag_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/admin/clear-events", methods=["POST"])
+@admin_required
+def api_admin_clear_events():
+    """Delete search_events rows within a date range.
+
+    JSON body:
+        start_date  – ISO date string (YYYY-MM-DD), inclusive  (required)
+        end_date    – ISO date string (YYYY-MM-DD), inclusive  (required)
+    """
+    data = request.get_json() or {}
+    start_date = (data.get("start_date") or "").strip()
+    end_date   = (data.get("end_date") or "").strip()
+    if not start_date or not end_date:
+        return jsonify({"error": "start_date and end_date are required (YYYY-MM-DD)"}), 400
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur  = conn.cursor()
+        cur.execute(
+            "DELETE FROM search_events WHERE date(ran_at) >= date(?) AND date(ran_at) <= date(?)",
+            (start_date, end_date),
+        )
+        conn.commit()
+        deleted = cur.rowcount
+        conn.close()
+        return jsonify({"success": True, "deleted": deleted,
+                        "range": f"{start_date} to {end_date}"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ---------------------------------------------------------------------------
 # Auth routes — Entra ID OAuth
 # ---------------------------------------------------------------------------
@@ -1703,34 +1747,101 @@ def _check_api_key():
     return None
 
 
+# ---------------------------------------------------------------------------
+# Async job runner — processes API queries in background threads
+# ---------------------------------------------------------------------------
+
+def _run_job_in_background(job_id, query, branch, user_email):
+    """Execute the agentic search for a job and write results to the DB."""
+    t0 = time.time()
+    try:
+        result = run_agentic_loop(query, branch)
+        total_time = round(time.time() - t0, 1)
+
+        response_payload = json.dumps({
+            "success": True,
+            "answer":  result.get("answer", ""),
+            "metadata": {
+                "branch":          branch,
+                "files_read":      result.get("total_files_read", 0),
+                "iterations":      result.get("total_iterations", 0),
+                "searches":        result.get("total_searches", 0),
+                "confidence":      result.get("confidence", {}).get("level", ""),
+                "elapsed_seconds": result.get("elapsed_seconds", total_time),
+                "input_tokens":    result.get("input_tokens", 0),
+                "output_tokens":   result.get("output_tokens", 0),
+            },
+        })
+
+        # Track in search_events
+        track_search_event(
+            "external_api", query, branch, "success",
+            total_time,
+            result.get("total_files_read", 0),
+            result.get("total_iterations", 0),
+            result.get("total_searches", 0),
+            result.get("confidence", {}).get("level", ""),
+            input_tokens=result.get("input_tokens", 0),
+            output_tokens=result.get("output_tokens", 0),
+            user_email=user_email,
+        )
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "UPDATE api_jobs SET status='completed', result_json=?, completed_at=datetime('now') WHERE id=?",
+            (response_payload, job_id),
+        )
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        total_time = round(time.time() - t0, 1)
+        error_payload = json.dumps({
+            "success": False,
+            "error":   str(e),
+            "metadata": {"total_time_sec": total_time},
+        })
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute(
+                "UPDATE api_jobs SET status='failed', error=?, result_json=?, completed_at=datetime('now') WHERE id=?",
+                (str(e), error_payload, job_id),
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+
 @app.route("/api/v1/query", methods=["POST"])
 def api_v1_query():
     """
     Unified external query endpoint.
 
-    Accepts a question and returns the agentic search answer from the
-    Cora PPM codebase — same as typing into "Your question" and clicking Search.
+    Supports two modes:
+      • Synchronous (default): blocks until search completes and returns the answer.
+      • Async (pass "async": true): returns a job_id immediately, poll /api/v1/query/<job_id> for results.
 
     Request JSON:
         {
             "query":  "How does the EAC Submit button work on the Project Forecasting page?",
-            "branch": "supported_release-1.25.2"   // optional, default: first available
+            "branch": "supported_release-1.25.2",   // optional, default: first available
+            "async":  true                           // optional, default: false (sync)
         }
 
-    Response JSON:
+    Sync Response JSON:
         {
             "success":  true,
-            "answer":   "## Answer\n...",
-            "metadata": {
-                "branch":          "supported_release-1.25.2",
-                "files_read":      12,
-                "iterations":      8,
-                "searches":        5,
-                "confidence":      "High",
-                "elapsed_seconds": 42.1,
-                "input_tokens":    18400,
-                "output_tokens":   3200
-            }
+            "answer":   "## Answer\\n...",
+            "metadata": { ... }
+        }
+
+    Async Response JSON (202 Accepted):
+        {
+            "job_id":    "abc-123",
+            "status":    "pending",
+            "poll_url":  "/api/v1/query/abc-123",
+            "message":   "Query submitted. Poll poll_url for results."
         }
 
     Auth: Bearer token via EXTERNAL_API_KEY env var.
@@ -1744,6 +1855,7 @@ def api_v1_query():
     data   = request.get_json(force=True) or {}
     query  = data.get("query", "").strip()
     branch = data.get("branch", "").strip()
+    use_async = data.get("async", False)
 
     if not query:
         return jsonify({"error": "No query provided."}), 400
@@ -1756,9 +1868,35 @@ def api_v1_query():
         except Exception:
             branch = "main"
 
+    user_email = request.headers.get("X-User-Email", "external_api").strip() or "external_api"
+
+    # ── Async mode: create job and return immediately ──
+    if use_async:
+        job_id = str(uuid.uuid4())
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute(
+                "INSERT INTO api_jobs (id, status, query, branch, user_email) VALUES (?, 'processing', ?, ?, ?)",
+                (job_id, query, branch, user_email),
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            return jsonify({"error": f"Could not create job: {e}"}), 500
+
+        t = threading.Thread(target=_run_job_in_background, args=(job_id, query, branch, user_email), daemon=True)
+        t.start()
+
+        return jsonify({
+            "job_id":   job_id,
+            "status":   "processing",
+            "poll_url": f"/api/v1/query/{job_id}",
+            "message":  "Query submitted. Poll poll_url for results.",
+        }), 202
+
+    # ── Sync mode (default): block until complete ──
     t0 = time.time()
 
-    # ── Run agentic search ──
     try:
         result = run_agentic_loop(query, branch)
     except Exception as e:
@@ -1770,7 +1908,6 @@ def api_v1_query():
 
     total_time = round(time.time() - t0, 1)
 
-    # ── Track usage ──
     track_search_event(
         "external_api", query, branch, "success",
         total_time,
@@ -1780,7 +1917,7 @@ def api_v1_query():
         result.get("confidence", {}).get("level", ""),
         input_tokens=result.get("input_tokens", 0),
         output_tokens=result.get("output_tokens", 0),
-        user_email="external_api",
+        user_email=user_email,
     )
 
     return jsonify({
@@ -1797,6 +1934,56 @@ def api_v1_query():
             "output_tokens":   result.get("output_tokens", 0),
         },
     })
+
+
+@app.route("/api/v1/query/<job_id>", methods=["GET"])
+def api_v1_query_status(job_id):
+    """
+    Poll for async query results.
+
+    Returns:
+      - 200 with full result when job is completed or failed
+      - 200 with status "processing" while the search is still running
+      - 404 if job_id not found
+
+    Auth: Bearer token via EXTERNAL_API_KEY env var.
+    """
+    auth_err = _check_api_key()
+    if auth_err:
+        return auth_err
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM api_jobs WHERE id=?", (job_id,)).fetchone()
+        conn.close()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not row:
+        return jsonify({"error": "Job not found.", "job_id": job_id}), 404
+
+    status = row["status"]
+
+    if status == "processing":
+        return jsonify({
+            "job_id":  job_id,
+            "status":  "processing",
+            "message": "Search is still running. Poll again shortly.",
+        })
+
+    # completed or failed — return the full result
+    result_json = row["result_json"]
+    if result_json:
+        result = json.loads(result_json)
+    else:
+        result = {"success": False, "error": row["error"] or "Unknown error"}
+
+    result["job_id"] = job_id
+    result["status"] = status
+    result["created_at"] = row["created_at"]
+    result["completed_at"] = row["completed_at"]
+    return jsonify(result)
 
 
 @app.route("/api/v1/health", methods=["GET"])
