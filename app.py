@@ -1461,7 +1461,8 @@ ADMIN_TABLES = {
     "search_events": (
         "SELECT id, ran_at, loop_type, query, branch, status, "
         "duration_sec, files_read, iterations, searches, confidence_level, "
-        "input_tokens, output_tokens, total_tokens, error_message "
+        "input_tokens, output_tokens, total_tokens, error_message, "
+        "COALESCE(user_email, '') AS user_email "
         "FROM search_events ORDER BY ran_at DESC LIMIT 500"
     ),
 }
