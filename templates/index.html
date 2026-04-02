@@ -265,12 +265,21 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 /* ── Admin view (SPA — swaps with main) ── */
 #view-admin{display:none}
 #view-admin main{width:95%;max-width:none;margin:28px auto;padding:0}
-.adm-summary-row{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
-@media(max-width:1100px){.adm-summary-row{grid-template-columns:repeat(3,1fr)}}
+.adm-dashboard-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.adm-dashboard-title{font-size:1.1rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:10px}
+.adm-refresh-all{padding:8px 18px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--text);font-size:.84rem;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;display:inline-flex;align-items:center;gap:7px}
+.adm-refresh-all:hover{background:var(--bg);border-color:#b0bfd0}
+.adm-summary-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:1100px){.adm-summary-row{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:700px){.adm-summary-row{grid-template-columns:1fr}}
-.adm-summary-card{background:var(--card);border-radius:var(--radius);padding:20px 24px;box-shadow:var(--shadow)}
+.adm-summary-card{background:var(--card);border-radius:var(--radius);padding:20px 24px;box-shadow:var(--shadow);border-left:3px solid var(--border)}
+.adm-summary-card.grp-search{border-left-color:#2563eb}
+.adm-summary-card.grp-perf{border-left-color:#0d9488}
+.adm-summary-card.grp-token{border-left-color:#d97706}
+.adm-summary-card.grp-cost{border-left-color:#7c3aed}
 .adm-summary-card .label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
 .adm-summary-card .value{font-size:1.8rem;font-weight:800;color:var(--brand)}
+.adm-summary-card.grp-cost .value{color:#7c3aed}
 .adm-summary-card .sub{font-size:.78rem;color:var(--muted);margin-top:4px}
 .adm-breakdown-row{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px}
 @media(max-width:700px){.adm-breakdown-row{grid-template-columns:1fr}}
@@ -283,6 +292,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-breakdown-card .bc-stat .bc-key{color:var(--muted)}
 .adm-breakdown-card .bc-stat .bc-val{font-weight:700;color:var(--text)}
 .adm-breakdown-card.user-rankings{border-color:#7c3aed}
+.adm-row-label{font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.adm-row-label .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .adm-user-rank-list{max-height:220px;overflow-y:auto;font-size:.82rem}
 .adm-user-rank-item{display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
 .adm-user-rank-item:last-child{border-bottom:none}
@@ -537,56 +548,66 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 <div id="view-admin">
 <main>
 
-  <!-- Summary cards -->
+  <!-- Dashboard header with refresh -->
+  <div class="adm-dashboard-header">
+    <div class="adm-dashboard-title">Admin Dashboard</div>
+    <button class="adm-refresh-all" onclick="admRefreshAll()">
+      <span id="adm-refresh-all-icon">🔄</span> Refresh All
+    </button>
+  </div>
+
+  <!-- Row 1: Search Activity (blue) + Performance (teal) -->
+  <div class="adm-row-label"><span class="dot" style="background:#2563eb"></span> Search Activity &amp; Performance</div>
   <div class="adm-summary-row">
-    <div class="adm-summary-card">
+    <div class="adm-summary-card grp-search">
       <div class="label">Total Searches</div>
       <div class="value" id="adm-stat-total">—</div>
       <div class="sub" id="adm-stat-total-sub"></div>
     </div>
-    <div class="adm-summary-card">
+    <div class="adm-summary-card grp-search">
       <div class="label">Unique Questions</div>
       <div class="value" id="adm-stat-unique">—</div>
       <div class="sub" id="adm-stat-unique-sub"></div>
     </div>
-    <div class="adm-summary-card">
+    <div class="adm-summary-card grp-perf">
       <div class="label">Avg Response Time</div>
       <div class="value" id="adm-stat-time">—</div>
       <div class="sub" id="adm-stat-time-sub"></div>
     </div>
-    <div class="adm-summary-card">
+    <div class="adm-summary-card grp-perf">
       <div class="label">High Confidence</div>
       <div class="value" id="adm-stat-confidence">—</div>
       <div class="sub" id="adm-stat-confidence-sub"></div>
     </div>
-
   </div>
 
-  <!-- Token & cost summary row -->
-  <div class="adm-summary-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px">
-    <div class="adm-summary-card">
+  <!-- Row 2: Token Usage (orange) + Cost (purple) -->
+  <div class="adm-row-label"><span class="dot" style="background:#d97706"></span> Token Usage &amp; Cost</div>
+  <div class="adm-summary-row">
+    <div class="adm-summary-card grp-token">
       <div class="label">Avg Tokens / Search</div>
       <div class="value" id="adm-stat-tok-avg">—</div>
       <div class="sub" id="adm-stat-tok-avg-sub"></div>
     </div>
-    <div class="adm-summary-card">
-      <div class="label">Total Tokens (all searches)</div>
+    <div class="adm-summary-card grp-token">
+      <div class="label">Total Tokens</div>
       <div class="value" id="adm-stat-tok-total">—</div>
       <div class="sub" id="adm-stat-tok-total-sub"></div>
     </div>
-    <div class="adm-summary-card">
+    <div class="adm-summary-card grp-token">
       <div class="label">Highest Token Search</div>
       <div class="value" id="adm-stat-tok-max">—</div>
       <div class="sub" id="adm-stat-tok-max-sub"></div>
     </div>
-    <div class="adm-summary-card" style="border-left:3px solid #6d28d9">
+    <div class="adm-summary-card grp-cost">
       <div class="label">Total Est. Cost</div>
-      <div class="value" id="adm-stat-cost-total" style="color:#6d28d9">—</div>
+      <div class="value" id="adm-stat-cost-total">—</div>
       <div class="sub" id="adm-stat-cost-total-sub"></div>
     </div>
   </div>
 
-  <!-- Per-loop breakdown -->
+  <!-- Row 3: Breakdown cards -->
+  <div class="adm-row-label"><span class="dot" style="background:#2563eb"></span> Breakdown &amp; Rankings</div>
   <div class="adm-breakdown-row">
     <div class="adm-breakdown-card agentic">
       <div class="bc-label">⚡ Agentic Loop</div>
@@ -595,7 +616,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       <div class="bc-stat"><span class="bc-key">Avg Iterations</span><span class="bc-val" id="adm-ag-iters">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-ag-time">—</span></div>
       <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-ag-tokens">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Cost</span><span class="bc-val" id="adm-ag-cost" style="color:#6d28d9">—</span></div>
+      <div class="bc-stat"><span class="bc-key">Avg Cost</span><span class="bc-val" id="adm-ag-cost" style="color:#7c3aed">—</span></div>
       <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-ag-errors">—</span></div>
     </div>
     <div class="adm-breakdown-card user-rankings">
@@ -604,7 +625,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <div class="adm-loading-msg" style="font-size:.82rem;padding:12px 0">Loading…</div>
       </div>
     </div>
-
   </div>
 
   <!-- Tabs -->
@@ -1296,6 +1316,13 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   async function admRefresh() {
     const icon = document.getElementById('adm-refresh-icon');
+    icon.classList.add('adm-refreshing');
+    await admLoadAll();
+    icon.classList.remove('adm-refreshing');
+  }
+
+  async function admRefreshAll() {
+    const icon = document.getElementById('adm-refresh-all-icon');
     icon.classList.add('adm-refreshing');
     await admLoadAll();
     icon.classList.remove('adm-refreshing');
