@@ -294,6 +294,15 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-breakdown-card.user-rankings{border-color:#7c3aed}
 .adm-row-label{font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;display:flex;align-items:center;gap:8px}
 .adm-row-label .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.adm-date-filter-bar{display:flex;align-items:center;gap:10px;margin-bottom:24px;padding:12px 18px;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);flex-wrap:wrap}
+.adm-date-filter-bar .filter-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.adm-quick-btn{padding:6px 14px;border-radius:6px;border:1.5px solid var(--border);background:#fff;font-size:.78rem;font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;font-family:inherit}
+.adm-quick-btn:hover{background:var(--bg);border-color:#b0bfd0;color:var(--text)}
+.adm-quick-btn.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.adm-date-input{padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:.8rem;font-family:inherit;color:var(--text)}
+.adm-date-input:focus{outline:none;border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
+.adm-date-sep{color:var(--muted);font-size:.82rem}
+.adm-date-active-label{font-size:.75rem;color:var(--brand-light);font-weight:600;margin-left:auto;white-space:nowrap}
 .adm-user-rank-list{max-height:220px;overflow-y:auto;font-size:.82rem}
 .adm-user-rank-item{display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
 .adm-user-rank-item:last-child{border-bottom:none}
@@ -369,14 +378,28 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .panel-resize-handle::after{content:'';position:absolute;top:50%;right:2px;transform:translateY(-50%);width:3px;height:28px;border-radius:2px;background:var(--border);transition:background .15s}
 .panel-resize-handle:hover::after,.panel-resize-handle.resizing::after{background:var(--brand-light)}
 
-/* ── Flag button & form ── */
-.btn-flag{background:none;border:1px solid var(--warn);color:var(--warn);border-radius:8px;padding:5px 12px;font-size:.78rem;cursor:pointer;transition:all .15s}
-.btn-flag:hover{background:var(--warn-bg)}
-.flag-form{background:var(--warn-bg);border:1px solid var(--warn);border-radius:10px;padding:12px;margin-top:10px}
+/* ── Flag buttons & forms ── */
+.flag-bar{display:flex;gap:8px;align-items:center;padding:8px 0;margin-bottom:8px;border-bottom:1px solid var(--border)}
+.flag-bar .flag-label{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-right:4px}
+.btn-flag-accurate{background:none;border:1.5px solid var(--success);color:var(--success);border-radius:8px;padding:5px 14px;font-size:.78rem;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-flag-accurate:hover{background:var(--success-bg)}
+.btn-flag-accurate.selected{background:var(--success);color:#fff}
+.btn-flag-inaccurate{background:none;border:1.5px solid var(--error);color:var(--error);border-radius:8px;padding:5px 14px;font-size:.78rem;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-flag-inaccurate:hover{background:var(--error-bg)}
+.btn-flag-inaccurate.selected{background:var(--error);color:#fff}
+.flag-form{border-radius:10px;padding:12px;margin-bottom:10px}
+.flag-form.inaccurate{background:var(--error-bg);border:1px solid var(--error)}
+.flag-form.accurate{background:var(--success-bg);border:1px solid var(--success)}
 .flag-form textarea{width:100%;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:.85rem;resize:vertical;font-family:inherit}
-.flag-submit{background:var(--warn);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:.82rem;cursor:pointer}
+.flag-submit{color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:.82rem;cursor:pointer;font-weight:600}
+.flag-submit.inaccurate{background:var(--error)}
+.flag-submit.accurate{background:var(--success)}
 .flag-cancel{background:none;border:1px solid var(--border);border-radius:8px;padding:6px 16px;font-size:.82rem;cursor:pointer;color:var(--muted)}
-.flag-success{color:var(--success);font-size:.85rem;margin-top:8px;font-weight:600}
+.flag-success{font-size:.85rem;margin-top:8px;font-weight:600}
+.flag-success.accurate{color:var(--success)}
+.flag-success.inaccurate{color:var(--error)}
+.flag-checkbox-row{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.84rem;color:var(--text)}
+.flag-checkbox-row input[type="checkbox"]{width:16px;height:16px;accent-color:var(--success);cursor:pointer}
 </style>
 </head>
 <body>
@@ -559,6 +582,22 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <span id="adm-refresh-all-icon">🔄</span> Refresh All
       </button>
     </div>
+  </div>
+
+  <!-- Date range filter bar -->
+  <div class="adm-date-filter-bar">
+    <span class="filter-label">Date Range</span>
+    <button class="adm-quick-btn" onclick="admSetQuickRange('7d', this)">7 Days</button>
+    <button class="adm-quick-btn" onclick="admSetQuickRange('30d', this)">30 Days</button>
+    <button class="adm-quick-btn" onclick="admSetQuickRange('90d', this)">90 Days</button>
+    <button class="adm-quick-btn" onclick="admSetQuickRange('ytd', this)">YTD</button>
+    <button class="adm-quick-btn active" id="adm-quick-all" onclick="admSetQuickRange('all', this)">All Time</button>
+    <span class="adm-date-sep">|</span>
+    <span class="filter-label">Custom</span>
+    <input type="date" class="adm-date-input" id="adm-filter-start" onchange="admApplyCustomDateRange()"/>
+    <span class="adm-date-sep">to</span>
+    <input type="date" class="adm-date-input" id="adm-filter-end" onchange="admApplyCustomDateRange()"/>
+    <span class="adm-date-active-label" id="adm-date-range-label">Showing: All Time</span>
   </div>
 
   <!-- Row 1: Search Activity (blue) + Performance (teal) -->
@@ -847,6 +886,66 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     URL.revokeObjectURL(a.href);
   }
 
+  // ── Export to Word / PDF ─────────────────────────────────────────────────
+  async function exportResult(format) {
+    if (!_lastResult) { alert('No search results to export.'); return; }
+    const btn = event.target;
+    const origText = btn.textContent;
+    btn.textContent = 'Generating…';
+    btn.disabled = true;
+
+    try {
+      const payload = {
+        format,
+        query: _lastQuery,
+        branch: _lastBranch,
+        metadata: {
+          confidence: _lastResult.confidence?.level || '',
+          elapsed_seconds: _lastResult.elapsed_seconds || 0,
+          total_tokens: (_lastResult.input_tokens || 0) + (_lastResult.output_tokens || 0),
+          input_tokens: _lastResult.input_tokens || 0,
+          output_tokens: _lastResult.output_tokens || 0,
+          files_read: _lastResult.total_files_read || 0,
+          iterations: _lastResult.total_iterations || 0,
+          searches: _lastResult.total_searches || 0,
+        },
+        sections: {
+          overview:  _lastSections.overview  || '',
+          user_guide: _lastSections.userGuide || '',
+          tech_ref:  _lastSections.techRef   || '',
+        }
+      };
+
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert('Export failed: ' + (err.error || res.statusText));
+        return;
+      }
+
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition') || '';
+      const fnMatch = cd.match(/filename="?([^"]+)"?/);
+      const filename = fnMatch ? fnMatch[1] : `search-results.${format}`;
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      alert('Export failed: ' + e.message);
+    } finally {
+      btn.textContent = origText;
+      btn.disabled = false;
+    }
+  }
+
   // ── Screenshot state ────────────────────────────────────────────────────────
   let szContext = '';       // extracted context string — injected into every search query
 
@@ -1029,6 +1128,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     const sections = splitSections(result.answer);
     const branch = result.branch;
 
+    // Store for flag submissions and exports
+    _storeResultForFlags(result, document.getElementById('queryInput')?.value || '', branch, sections);
+
     // ── Overview panel ──
     document.getElementById('overviewBody').innerHTML = `
       <div class="stats-row">
@@ -1041,19 +1143,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <div class="branch-tag">🌿 ${esc(branch)}</div>
       </div>
       ${renderConfidence(result.confidence)}
+      ${buildFlagBar('overview')}
+      <div id="flagArea_overview"></div>
       <div class="answer-body">${linkifyFilePaths(md(sections.overview), branch)}</div>
       <div class="export-row">
-        <button class="btn-copy" onclick="copyAnswer('agAnswer',this)" data-answer="${esc(result.answer)}">📋 Copy All</button>
-        <button class="btn-export-md" onclick="downloadMd('agAnswer','Cora PPM Search')">⬇️ .md</button>
-        <button class="btn-flag" onclick="showFlagForm('agentic')">🚩 Flag as unhelpful</button>
-      </div>
-      <div class="flag-form" id="flagFormAgentic" style="display:none">
-        <textarea id="flagExplAgentic" placeholder="What was incorrect or missing?" rows="3"></textarea>
-        <div style="display:flex;gap:8px;margin-top:6px">
-          <button class="flag-submit" onclick="submitFlag('agentic')">Submit</button>
-          <button class="flag-cancel" onclick="hideFlagForm('agentic')">Cancel</button>
-        </div>
-        <div class="flag-success" id="flagSuccessAgentic" style="display:none">✅ Flagged for admin review</div>
+        <button class="btn-export-md" onclick="exportResult('docx')">📄 Word</button>
+        <button class="btn-export-md" onclick="exportResult('pdf')">📕 PDF</button>
       </div>
       <span id="agAnswer" style="display:none">${esc(result.answer)}</span>
       <button class="log-toggle" data-label=" ADO tool call log" onclick="toggleLog('agLog')">▸ Show ADO tool call log</button>
@@ -1061,12 +1156,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     // ── User Guide panel ──
     document.getElementById('userGuideBody').innerHTML = sections.userGuide
-      ? `<div class="answer-body">${linkifyFilePaths(md(sections.userGuide), branch)}</div>`
+      ? `${buildFlagBar('user_guide')}<div id="flagArea_user_guide"></div><div class="answer-body">${linkifyFilePaths(md(sections.userGuide), branch)}</div>`
       : `<div class="state-idle"><span class="icon">📘</span><span>No user guide section in this response.</span></div>`;
 
     // ── Technical Reference panel ──
     document.getElementById('techRefBody').innerHTML = sections.techRef
-      ? `<div class="answer-body">${linkifyFilePaths(md(sections.techRef), branch)}</div>`
+      ? `${buildFlagBar('tech_ref')}<div id="flagArea_tech_ref"></div><div class="answer-body">${linkifyFilePaths(md(sections.techRef), branch)}</div>`
       : `<div class="state-idle"><span class="icon">🔧</span><span>No technical reference in this response.</span></div>`;
   }
 
@@ -1279,6 +1374,82 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   let admPage        = 1;
   let admPageSize    = 50;
 
+  // Date range filter state
+  let admDateStart   = null;  // ISO string YYYY-MM-DD or null (no filter)
+  let admDateEnd     = null;
+
+  function admSetQuickRange(preset, btn) {
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    let startStr = null;
+    let label = 'All Time';
+
+    if (preset === '7d') {
+      const d = new Date(today); d.setDate(d.getDate() - 7);
+      startStr = d.toISOString().slice(0, 10);
+      label = 'Last 7 Days';
+    } else if (preset === '30d') {
+      const d = new Date(today); d.setDate(d.getDate() - 30);
+      startStr = d.toISOString().slice(0, 10);
+      label = 'Last 30 Days';
+    } else if (preset === '90d') {
+      const d = new Date(today); d.setDate(d.getDate() - 90);
+      startStr = d.toISOString().slice(0, 10);
+      label = 'Last 90 Days';
+    } else if (preset === 'ytd') {
+      startStr = today.getFullYear() + '-01-01';
+      label = 'Year to Date';
+    } else {
+      startStr = null; // all
+    }
+
+    admDateStart = startStr;
+    admDateEnd = startStr ? todayStr : null;
+
+    // Update UI
+    document.querySelectorAll('.adm-quick-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('adm-filter-start').value = startStr || '';
+    document.getElementById('adm-filter-end').value = startStr ? todayStr : '';
+    document.getElementById('adm-date-range-label').textContent = 'Showing: ' + label;
+
+    admApplyDateFilter();
+  }
+
+  function admApplyCustomDateRange() {
+    const s = document.getElementById('adm-filter-start').value;
+    const e = document.getElementById('adm-filter-end').value;
+    if (s && e && s <= e) {
+      admDateStart = s;
+      admDateEnd = e;
+      document.querySelectorAll('.adm-quick-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('adm-date-range-label').textContent = 'Showing: ' + s + ' to ' + e;
+      admApplyDateFilter();
+    } else if (!s && !e) {
+      admDateStart = null;
+      admDateEnd = null;
+      document.querySelectorAll('.adm-quick-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('adm-quick-all').classList.add('active');
+      document.getElementById('adm-date-range-label').textContent = 'Showing: All Time';
+      admApplyDateFilter();
+    }
+  }
+
+  function admFilterByDate(rows, dateField) {
+    if (!admDateStart || !admDateEnd) return rows;
+    return rows.filter(r => {
+      const val = (r[dateField] || '').slice(0, 10);
+      return val >= admDateStart && val <= admDateEnd;
+    });
+  }
+
+  function admApplyDateFilter() {
+    admPage = 1;
+    admUpdateSummary();
+    admRenderTable();
+    admLoadUserRankings();
+  }
+
   const ADM_TABLE_LABELS = {
     search_events:    'Search Events',
     flagged_queries:  'Flagged Queries'
@@ -1293,7 +1464,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     error_message: 'Error', sources_used: 'Sources Used',
     answer: 'Answer', explanation: 'Explanation', flagged_by: 'Flagged By',
     flagged_at: 'Flagged At', reviewed_by: 'Reviewed By', reviewed_at: 'Reviewed At',
-    admin_notes: 'Admin Notes'
+    admin_notes: 'Admin Notes', flag_type: 'Flag Type', container: 'Container',
+    request_article: 'Article Req', branch: 'Branch', confidence_level: 'Confidence',
+    duration_sec: 'Time (s)', files_read: 'Files', iterations: 'Iterations',
+    searches: 'Searches'
   };
 
   function toggleAdminView() {
@@ -1394,7 +1568,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   async function admLoadUserRankings() {
     const container = document.getElementById('adm-user-rankings-content');
     try {
-      const res = await fetch('/api/admin/user-rankings');
+      let url = '/api/admin/user-rankings';
+      if (admDateStart && admDateEnd) {
+        url += '?start_date=' + encodeURIComponent(admDateStart) + '&end_date=' + encodeURIComponent(admDateEnd);
+      }
+      const res = await fetch(url);
       const data = await res.json();
       const rankings = data.rankings || [];
       if (!rankings.length) {
@@ -1436,7 +1614,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   }
 
   function admUpdateSummary() {
-    const searches = admTableData.search_events    || [];
+    const searches = admFilterByDate(admTableData.search_events || [], 'ran_at');
 
 
     document.getElementById('adm-stat-total').textContent = searches.length;
@@ -1524,7 +1702,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   function admGoToPage(p) { admPage = p; admRenderTable(); }
 
   function admRenderTable() {
-    const rows = admTableData[admCurrentTab] || [];
+    const dateField = admCurrentTab === 'search_events' ? 'ran_at' : 'flagged_at';
+    const rows = admFilterByDate(admTableData[admCurrentTab] || [], dateField);
     const thead = document.getElementById('adm-thead');
     const tbody = document.getElementById('adm-tbody');
     const pagination = document.getElementById('adm-pagination');
@@ -1597,6 +1776,18 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         if (c === 'est_cost' && val) {
           const fc = formatCost(val);
           return `<td style="font-weight:600;color:#6d28d9">${fc || '—'}</td>`;
+        }
+        if (c === 'flag_type') {
+          const icon = val === 'accurate' ? '✅' : '❌';
+          const cls = val === 'accurate' ? 'color:#16a34a;font-weight:600' : 'color:#b91c1c;font-weight:600';
+          return `<td style="${cls}">${icon} ${admEsc(val)}</td>`;
+        }
+        if (c === 'container') {
+          const labels = {overview:'📋 Overview', user_guide:'📘 User Guide', tech_ref:'🔧 Tech Ref'};
+          return `<td>${labels[val] || admEsc(val)}</td>`;
+        }
+        if (c === 'request_article') {
+          return `<td>${val ? '📝 Yes' : '—'}</td>`;
         }
         if (typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T?/)) {
           val = new Date(val).toLocaleString();
@@ -1754,37 +1945,145 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   initPanelResize();
 
   // ── Flag functions ──────────────────────────────────────────────────────
-  function showFlagForm(loop) {
-    const id = 'flagForm' + loop.charAt(0).toUpperCase() + loop.slice(1);
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'block';
+  // Store last result metadata so flags can include all response details
+  let _lastResult   = null;
+  let _lastQuery    = '';
+  let _lastBranch   = '';
+  let _lastSections = {};
+
+  function _storeResultForFlags(result, query, branch, sections) {
+    _lastResult   = result;
+    _lastQuery    = query;
+    _lastBranch   = branch;
+    _lastSections = sections || {};
   }
-  function hideFlagForm(loop) {
-    const id = 'flagForm' + loop.charAt(0).toUpperCase() + loop.slice(1);
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
+
+  // Container labels for admin display
+  const CONTAINER_LABELS = {
+    overview:  'Overview',
+    user_guide: 'User Guide',
+    tech_ref:  'Tech Reference'
+  };
+
+  function buildFlagBar(container) {
+    return `<div class="flag-bar" id="flagBar_${container}">
+      <span class="flag-label">Rate this response:</span>
+      <button class="btn-flag-accurate" onclick="showAccurateForm('${container}')">✅ Accurate / Helpful</button>
+      <button class="btn-flag-inaccurate" onclick="showInaccurateForm('${container}')">❌ Inaccurate / Incomplete</button>
+    </div>`;
   }
-  function submitFlag(loop) {
-    const explId = 'flagExpl' + loop.charAt(0).toUpperCase() + loop.slice(1);
-    const explanation = document.getElementById(explId)?.value || '';
+
+  function showAccurateForm(container) {
+    const area = document.getElementById('flagArea_' + container);
+    if (!area) return;
+    // Highlight button
+    const bar = document.getElementById('flagBar_' + container);
+    bar.querySelectorAll('.btn-flag-accurate').forEach(b => b.classList.add('selected'));
+    bar.querySelectorAll('.btn-flag-inaccurate').forEach(b => b.classList.remove('selected'));
+
+    area.innerHTML = `<div class="flag-form accurate">
+      <div class="flag-checkbox-row">
+        <input type="checkbox" id="flagArticle_${container}"/>
+        <label for="flagArticle_${container}">Request a Confluence article be created on this topic</label>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="flag-submit accurate" onclick="submitFlagNew('accurate','${container}')">Submit</button>
+        <button class="flag-cancel" onclick="cancelFlag('${container}')">Cancel</button>
+      </div>
+      <div class="flag-success accurate" id="flagSuccess_${container}" style="display:none"></div>
+    </div>`;
+  }
+
+  function showInaccurateForm(container) {
+    const area = document.getElementById('flagArea_' + container);
+    if (!area) return;
+    // Highlight button
+    const bar = document.getElementById('flagBar_' + container);
+    bar.querySelectorAll('.btn-flag-inaccurate').forEach(b => b.classList.add('selected'));
+    bar.querySelectorAll('.btn-flag-accurate').forEach(b => b.classList.remove('selected'));
+
+    area.innerHTML = `<div class="flag-form inaccurate">
+      <textarea id="flagExpl_${container}" placeholder="What was incorrect or missing? (required)" rows="3"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="flag-submit inaccurate" onclick="submitFlagNew('inaccurate','${container}')">Submit</button>
+        <button class="flag-cancel" onclick="cancelFlag('${container}')">Cancel</button>
+      </div>
+      <div class="flag-success inaccurate" id="flagSuccess_${container}" style="display:none"></div>
+    </div>`;
+  }
+
+  function cancelFlag(container) {
+    const area = document.getElementById('flagArea_' + container);
+    if (area) area.innerHTML = '';
+    const bar = document.getElementById('flagBar_' + container);
+    if (bar) {
+      bar.querySelectorAll('.btn-flag-accurate, .btn-flag-inaccurate').forEach(b => b.classList.remove('selected'));
+    }
+  }
+
+  function submitFlagNew(flagType, container) {
     const queryEl = document.getElementById('queryInput') || document.getElementById('q');
-    const query = queryEl ? queryEl.value : '';
-    // Get the answer text from the hidden span
-    const answerMap = {agentic:'agAnswer'};
-    const answerEl = document.getElementById(answerMap[loop]);
+    const query = queryEl ? queryEl.value : _lastQuery;
+    const answerEl = document.getElementById('agAnswer');
     const answer = answerEl ? answerEl.textContent : '';
+
+    let explanation = '';
+    let requestArticle = false;
+
+    if (flagType === 'inaccurate') {
+      const explEl = document.getElementById('flagExpl_' + container);
+      explanation = explEl ? explEl.value.trim() : '';
+      if (!explanation) {
+        alert('Please provide a rationale for why this response is inaccurate or incomplete.');
+        return;
+      }
+    } else {
+      const articleEl = document.getElementById('flagArticle_' + container);
+      requestArticle = articleEl ? articleEl.checked : false;
+    }
+
+    // Build payload with all response metadata
+    const payload = {
+      query,
+      loop_type: 'agentic',
+      answer,
+      flag_type: flagType,
+      container,
+      explanation,
+      request_article: requestArticle,
+      branch: _lastBranch,
+      confidence_level: _lastResult ? (_lastResult.confidence?.level || '') : '',
+      duration_sec: _lastResult ? (_lastResult.elapsed_seconds || 0) : 0,
+      input_tokens: _lastResult ? (_lastResult.input_tokens || 0) : 0,
+      output_tokens: _lastResult ? (_lastResult.output_tokens || 0) : 0,
+      total_tokens: _lastResult ? ((_lastResult.input_tokens || 0) + (_lastResult.output_tokens || 0)) : 0,
+      files_read: _lastResult ? (_lastResult.total_files_read || 0) : 0,
+      iterations: _lastResult ? (_lastResult.total_iterations || 0) : 0,
+      searches: _lastResult ? (_lastResult.total_searches || 0) : 0,
+    };
+
     fetch('/api/flag', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({query, loop_type: loop, answer, explanation})
+      body: JSON.stringify(payload)
     }).then(r => r.json()).then(data => {
       if (data.success) {
-        const successId = 'flagSuccess' + loop.charAt(0).toUpperCase() + loop.slice(1);
-        const successEl = document.getElementById(successId);
-        if (successEl) successEl.style.display = 'block';
-        setTimeout(() => hideFlagForm(loop), 2000);
+        const successEl = document.getElementById('flagSuccess_' + container);
+        if (successEl) {
+          successEl.textContent = flagType === 'accurate'
+            ? '✅ Marked as accurate' + (requestArticle ? ' — article requested' : '')
+            : '🚩 Flagged for admin review';
+          successEl.style.display = 'block';
+        }
+        // Disable the flag bar buttons
+        const bar = document.getElementById('flagBar_' + container);
+        if (bar) {
+          bar.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '.5'; b.style.cursor = 'default'; });
+        }
+      } else {
+        alert('Error: ' + (data.error || 'Unknown'));
       }
-    });
+    }).catch(e => alert('Failed to submit flag: ' + e.message));
   }
 </script>
 </body>

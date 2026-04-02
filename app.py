@@ -173,6 +173,25 @@ def init_db():
             cur.execute("ALTER TABLE search_events ADD COLUMN user_email TEXT DEFAULT ''")
         except Exception:
             pass  # column already exists
+        # Migrate: add new flag columns to flagged_queries
+        for col_def in (
+            "flag_type TEXT NOT NULL DEFAULT 'inaccurate'",
+            "container TEXT DEFAULT ''",
+            "request_article INTEGER DEFAULT 0",
+            "branch TEXT DEFAULT ''",
+            "confidence_level TEXT DEFAULT ''",
+            "duration_sec REAL DEFAULT 0",
+            "input_tokens INTEGER DEFAULT 0",
+            "output_tokens INTEGER DEFAULT 0",
+            "total_tokens INTEGER DEFAULT 0",
+            "files_read INTEGER DEFAULT 0",
+            "iterations INTEGER DEFAULT 0",
+            "searches INTEGER DEFAULT 0",
+        ):
+            try:
+                cur.execute(f"ALTER TABLE flagged_queries ADD COLUMN {col_def}")
+            except Exception:
+                pass
         # API jobs table — async query processing
         cur.execute("""
             CREATE TABLE IF NOT EXISTS api_jobs (
@@ -190,17 +209,29 @@ def init_db():
         # Flagged queries table — stores responses users flag as unhelpful/missing
         cur.execute("""
             CREATE TABLE IF NOT EXISTS flagged_queries (
-                id           TEXT PRIMARY KEY,
-                query        TEXT NOT NULL,
-                loop_type    TEXT NOT NULL,
-                answer       TEXT,
-                explanation  TEXT,
-                flagged_by   TEXT,
-                flagged_at   TEXT NOT NULL DEFAULT (datetime('now')),
-                status       TEXT NOT NULL DEFAULT 'pending',
-                reviewed_by  TEXT,
-                reviewed_at  TEXT,
-                admin_notes  TEXT
+                id                TEXT PRIMARY KEY,
+                query             TEXT NOT NULL,
+                loop_type         TEXT NOT NULL,
+                answer            TEXT,
+                explanation       TEXT,
+                flagged_by        TEXT,
+                flagged_at        TEXT NOT NULL DEFAULT (datetime('now')),
+                status            TEXT NOT NULL DEFAULT 'pending',
+                reviewed_by       TEXT,
+                reviewed_at       TEXT,
+                admin_notes       TEXT,
+                flag_type         TEXT NOT NULL DEFAULT 'inaccurate',
+                container         TEXT DEFAULT '',
+                request_article   INTEGER DEFAULT 0,
+                branch            TEXT DEFAULT '',
+                confidence_level  TEXT DEFAULT '',
+                duration_sec      REAL DEFAULT 0,
+                input_tokens      INTEGER DEFAULT 0,
+                output_tokens     INTEGER DEFAULT 0,
+                total_tokens      INTEGER DEFAULT 0,
+                files_read        INTEGER DEFAULT 0,
+                iterations        INTEGER DEFAULT 0,
+                searches          INTEGER DEFAULT 0
             )
         """)
         conn.commit()
@@ -1438,27 +1469,300 @@ def api_clarify():
 
 
 # ---------------------------------------------------------------------------
+# Export API — generate Word (.docx) or PDF from search results
+# ---------------------------------------------------------------------------
+
+from docx import Document as DocxDocument
+from docx.shared import Inches, Pt, Cm, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.style import WD_STYLE_TYPE
+import markdown as md_lib
+import re as _re
+
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.colors import HexColor
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph as RLParagraph, Spacer, Table as RLTable, TableStyle, HRFlowable
+from reportlab.lib import colors as rl_colors
+
+
+def _md_to_plain(text):
+    """Strip markdown to plain text (rough but effective)."""
+    text = _re.sub(r'```[\s\S]*?```', lambda m: m.group(0).strip('`').strip(), text)
+    text = _re.sub(r'`([^`]+)`', r'\1', text)
+    text = _re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+    text = _re.sub(r'\*([^*]+)\*', r'\1', text)
+    text = _re.sub(r'^#{1,6}\s+', '', text, flags=_re.MULTILINE)
+    text = _re.sub(r'^\s*[-*]\s+', '  • ', text, flags=_re.MULTILINE)
+    text = _re.sub(r'^\s*\d+\.\s+', '  ', text, flags=_re.MULTILINE)
+    text = _re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    return text.strip()
+
+
+def _build_docx(query, branch, metadata, sections):
+    """Build a .docx buffer from search result sections."""
+    doc = DocxDocument()
+
+    # Page margins
+    for section in doc.sections:
+        section.top_margin = Cm(2.54)
+        section.bottom_margin = Cm(2.54)
+        section.left_margin = Cm(2.54)
+        section.right_margin = Cm(2.54)
+
+    # Styles
+    style = doc.styles['Normal']
+    style.font.name = 'Arial'
+    style.font.size = Pt(11)
+    style.font.color.rgb = RGBColor(0x1A, 0x25, 0x35)
+
+    # Title
+    title = doc.add_heading('Cora Code Investigator', level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in title.runs:
+        run.font.color.rgb = RGBColor(0x1A, 0x25, 0x35)
+
+    # Query
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run(query)
+    run.font.size = Pt(13)
+    run.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
+
+    # Metadata row
+    meta_parts = []
+    if branch:
+        meta_parts.append(f"Branch: {branch}")
+    if metadata.get('confidence'):
+        meta_parts.append(f"Confidence: {metadata['confidence']}")
+    if metadata.get('elapsed_seconds'):
+        meta_parts.append(f"Time: {metadata['elapsed_seconds']}s")
+    if metadata.get('total_tokens'):
+        meta_parts.append(f"Tokens: {metadata['total_tokens']:,}")
+    if meta_parts:
+        mp = doc.add_paragraph(' | '.join(meta_parts))
+        mp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in mp.runs:
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(0x94, 0xA3, 0xB8)
+
+    doc.add_paragraph('')  # spacer
+
+    # Sections
+    section_config = [
+        ('overview', 'Overview', RGBColor(0x25, 0x63, 0xEB)),
+        ('user_guide', 'User Guide', RGBColor(0x16, 0xA3, 0x4A)),
+        ('tech_ref', 'Technical Reference', RGBColor(0xD9, 0x77, 0x06)),
+    ]
+
+    for key, label, color in section_config:
+        content = sections.get(key, '').strip()
+        if not content:
+            continue
+
+        heading = doc.add_heading(label, level=1)
+        for run in heading.runs:
+            run.font.color.rgb = color
+
+        # Add content as paragraphs
+        plain = _md_to_plain(content)
+        for line in plain.split('\n'):
+            line = line.rstrip()
+            if not line:
+                doc.add_paragraph('')
+            elif line.startswith('  • '):
+                doc.add_paragraph(line[4:], style='List Bullet')
+            else:
+                doc.add_paragraph(line)
+
+    # Footer
+    fp = doc.add_paragraph('')
+    fp.add_run('Generated by Cora Code Investigator').font.size = Pt(8)
+    fp.runs[0].font.color.rgb = RGBColor(0x94, 0xA3, 0xB8)
+    fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def _build_pdf(query, branch, metadata, sections):
+    """Build a PDF buffer from search result sections."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter,
+                            topMargin=0.75*inch, bottomMargin=0.75*inch,
+                            leftMargin=0.75*inch, rightMargin=0.75*inch)
+
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='DocTitle', fontName='Helvetica-Bold', fontSize=20,
+                              textColor=HexColor('#1A2535'), alignment=1, spaceAfter=6))
+    styles.add(ParagraphStyle(name='DocQuery', fontName='Helvetica', fontSize=12,
+                              textColor=HexColor('#64748B'), alignment=1, spaceAfter=4))
+    styles.add(ParagraphStyle(name='DocMeta', fontName='Helvetica', fontSize=8,
+                              textColor=HexColor('#94A3B8'), alignment=1, spaceAfter=16))
+    styles.add(ParagraphStyle(name='SectionHead', fontName='Helvetica-Bold', fontSize=14,
+                              spaceBefore=18, spaceAfter=8))
+    styles.add(ParagraphStyle(name='BodyText2', fontName='Helvetica', fontSize=10,
+                              textColor=HexColor('#1A2535'), leading=14, spaceAfter=4))
+    styles.add(ParagraphStyle(name='BulletItem', fontName='Helvetica', fontSize=10,
+                              textColor=HexColor('#1A2535'), leading=14,
+                              leftIndent=18, bulletIndent=6, spaceAfter=3))
+    styles.add(ParagraphStyle(name='Footer', fontName='Helvetica', fontSize=7,
+                              textColor=HexColor('#94A3B8'), alignment=1, spaceBefore=20))
+
+    elements = []
+    elements.append(RLParagraph('Cora Code Investigator', styles['DocTitle']))
+    elements.append(RLParagraph(query.replace('&', '&amp;').replace('<', '&lt;'), styles['DocQuery']))
+
+    meta_parts = []
+    if branch:
+        meta_parts.append(f"Branch: {branch}")
+    if metadata.get('confidence'):
+        meta_parts.append(f"Confidence: {metadata['confidence']}")
+    if metadata.get('elapsed_seconds'):
+        meta_parts.append(f"Time: {metadata['elapsed_seconds']}s")
+    if metadata.get('total_tokens'):
+        meta_parts.append(f"Tokens: {metadata['total_tokens']:,}")
+    if meta_parts:
+        elements.append(RLParagraph(' | '.join(meta_parts), styles['DocMeta']))
+
+    elements.append(HRFlowable(width="100%", thickness=1, color=HexColor('#E2E8F0'), spaceAfter=12))
+
+    section_config = [
+        ('overview', 'Overview', '#2563EB'),
+        ('user_guide', 'User Guide', '#16A34A'),
+        ('tech_ref', 'Technical Reference', '#D97706'),
+    ]
+
+    for key, label, color in section_config:
+        content = sections.get(key, '').strip()
+        if not content:
+            continue
+
+        head_style = ParagraphStyle(f'Head_{key}', parent=styles['SectionHead'],
+                                    textColor=HexColor(color))
+        elements.append(RLParagraph(label, head_style))
+
+        plain = _md_to_plain(content)
+        for line in plain.split('\n'):
+            line = line.rstrip()
+            if not line:
+                elements.append(Spacer(1, 6))
+            elif line.startswith('  • '):
+                safe = line[4:].replace('&', '&amp;').replace('<', '&lt;')
+                elements.append(RLParagraph(f'• {safe}', styles['BulletItem']))
+            else:
+                safe = line.replace('&', '&amp;').replace('<', '&lt;')
+                elements.append(RLParagraph(safe, styles['BodyText2']))
+
+    elements.append(RLParagraph('Generated by Cora Code Investigator', styles['Footer']))
+
+    doc.build(elements)
+    buf.seek(0)
+    return buf
+
+
+@app.route("/api/export", methods=["POST"])
+@login_required
+def api_export():
+    """Generate a Word (.docx) or PDF export of the search results.
+
+    JSON body:
+        format: "docx" or "pdf"
+        query: the search query
+        branch: branch searched
+        metadata: { confidence, elapsed_seconds, total_tokens, ... }
+        sections: { overview: "...", user_guide: "...", tech_ref: "..." }
+    """
+    data = request.get_json(force=True) or {}
+    fmt       = data.get("format", "docx").lower()
+    query     = data.get("query", "Search Results")
+    branch    = data.get("branch", "")
+    metadata  = data.get("metadata", {})
+    sections  = data.get("sections", {})
+
+    if fmt not in ("docx", "pdf"):
+        return jsonify({"error": "format must be 'docx' or 'pdf'"}), 400
+
+    try:
+        if fmt == "docx":
+            buf = _build_docx(query, branch, metadata, sections)
+            mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ext = "docx"
+        else:
+            buf = _build_pdf(query, branch, metadata, sections)
+            mimetype = "application/pdf"
+            ext = "pdf"
+
+        slug = _re.sub(r'[^a-z0-9]+', '-', query[:60].lower()).strip('-') or 'search-results'
+        filename = f"cora-investigator-{slug}.{ext}"
+
+        return Response(
+            buf.getvalue(),
+            mimetype=mimetype,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
 # Flag API — users flag unhelpful / missing responses
 # ---------------------------------------------------------------------------
 
 @app.route("/api/flag", methods=["POST"])
 @login_required
 def api_flag():
+    """Log a flag (accurate or inaccurate) for a search result container.
+
+    JSON body:
+        query, loop_type, answer, flag_type ('accurate'|'inaccurate'),
+        container ('overview'|'user_guide'|'tech_ref'),
+        explanation (required if inaccurate), request_article (bool, if accurate),
+        branch, confidence_level, duration_sec, input_tokens, output_tokens,
+        total_tokens, files_read, iterations, searches
+    """
     data = request.get_json() or {}
     query       = data.get("query", "").strip()
     loop_type   = data.get("loop_type", "").strip()
     answer      = data.get("answer", "").strip()
+    flag_type   = data.get("flag_type", "inaccurate").strip()
+    container   = data.get("container", "").strip()
     explanation = data.get("explanation", "").strip()
+    request_article = 1 if data.get("request_article") else 0
+
     if not query or not loop_type:
         return jsonify({"error": "query and loop_type are required"}), 400
+    if flag_type not in ("accurate", "inaccurate"):
+        return jsonify({"error": "flag_type must be 'accurate' or 'inaccurate'"}), 400
+    if flag_type == "inaccurate" and not explanation:
+        return jsonify({"error": "explanation is required for inaccurate flags"}), 400
+
+    # Default status based on flag type
+    status = "positive" if flag_type == "accurate" else "pending"
+
     flag_id = str(uuid.uuid4())
     try:
         conn = sqlite3.connect(DB_PATH)
         cur  = conn.cursor()
         cur.execute(
-            "INSERT INTO flagged_queries (id, query, loop_type, answer, explanation, flagged_by) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (flag_id, query, loop_type, answer, explanation, _current_user_email()),
+            "INSERT INTO flagged_queries "
+            "(id, query, loop_type, answer, explanation, flagged_by, status, "
+            " flag_type, container, request_article, "
+            " branch, confidence_level, duration_sec, "
+            " input_tokens, output_tokens, total_tokens, "
+            " files_read, iterations, searches) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (flag_id, query, loop_type, answer, explanation, _current_user_email(), status,
+             flag_type, container, request_article,
+             data.get("branch", ""), data.get("confidence_level", ""),
+             data.get("duration_sec", 0),
+             data.get("input_tokens", 0), data.get("output_tokens", 0),
+             data.get("total_tokens", 0),
+             data.get("files_read", 0), data.get("iterations", 0),
+             data.get("searches", 0)),
         )
         conn.commit()
         conn.close()
@@ -1582,12 +1886,22 @@ def api_admin_flags():
 @app.route("/api/admin/user-rankings")
 @admin_required
 def api_admin_user_rankings():
-    """Return per-user aggregates: query count, token usage, estimated cost."""
+    """Return per-user aggregates: query count, token usage, estimated cost.
+
+    Optional query params: start_date, end_date (YYYY-MM-DD) to scope the window.
+    """
     try:
+        start_date = request.args.get("start_date", "").strip()
+        end_date   = request.args.get("end_date", "").strip()
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        cur.execute("""
+        where_clause = ""
+        params = []
+        if start_date and end_date:
+            where_clause = "WHERE date(ran_at) >= date(?) AND date(ran_at) <= date(?)"
+            params = [start_date, end_date]
+        cur.execute(f"""
             SELECT
                 COALESCE(NULLIF(user_email, ''), 'unknown') AS user_email,
                 COUNT(*)                                    AS query_count,
@@ -1595,9 +1909,10 @@ def api_admin_user_rankings():
                 SUM(COALESCE(output_tokens, 0))             AS total_output_tokens,
                 SUM(COALESCE(total_tokens, 0))              AS total_tokens
             FROM search_events
+            {where_clause}
             GROUP BY COALESCE(NULLIF(user_email, ''), 'unknown')
             ORDER BY query_count DESC
-        """)
+        """, params)
         rankings = []
         for row in cur.fetchall():
             inp = row["total_input_tokens"] or 0
