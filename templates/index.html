@@ -415,7 +415,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     <span style="color:rgba(255,255,255,.7);font-size:.8rem">{{ user.get('displayName','') }}</span>
     <a href="/logout" style="color:rgba(255,255,255,.6);font-size:.78rem;text-decoration:none">Sign out</a>
     {% endif %}
-    <a href="/api-docs" class="admin-toggle-btn" style="text-decoration:none">API Docs</a>
+    <a href="/api-docs" target="_blank" rel="noopener" class="admin-toggle-btn" style="text-decoration:none">API Docs</a>
     <button class="admin-toggle-btn" id="adminToggleBtn" onclick="toggleAdminView()">Admin</button>
   </div>
 </header>
@@ -949,6 +949,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   // ── Screenshot state ────────────────────────────────────────────────────────
   let szContext = '';       // extracted context string — injected into every search query
+  let szExtracting = false; // true while screenshot context extraction is in-flight
 
   // ── Clarification state ─────────────────────────────────────────────────────
   let _clarifyDone    = false;   // true once user answered/skipped for this session
@@ -967,6 +968,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   async function runWithClarify(action) {
     const raw = document.getElementById('queryInput').value.trim();
     if (!raw) { setStatus('Please enter a question first.'); return; }
+    // Wait for screenshot context extraction to finish before searching
+    if (szExtracting) {
+      setStatus('Waiting for screenshot analysis to complete…');
+      await new Promise(resolve => {
+        const check = setInterval(() => { if (!szExtracting) { clearInterval(check); resolve(); } }, 200);
+      });
+      setStatus('');
+    }
     _pendingAction = action;
     // Only ask clarification once per session; if already done (or no question), run directly
     if (_clarifyDone) { _executePendingAction(); return; }
@@ -1320,6 +1329,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       document.getElementById('szStatus').className    = 'sp-status analysing';
       document.getElementById('screenshotContextChip').style.display = 'none';
       szContext = '';
+      szExtracting = true;
+      // Disable search button while extracting
+      document.getElementById('btnSearch').disabled = true;
 
       // Send to backend for context extraction
       try {
@@ -1342,6 +1354,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         document.getElementById('szStatus').textContent = '⚠ Extraction failed: ' + err.message + ' (screenshot will not be used)';
         document.getElementById('szStatus').className   = 'sp-status error';
         szContext = '';
+      } finally {
+        szExtracting = false;
+        document.getElementById('btnSearch').disabled = false;
       }
     };
     reader.readAsDataURL(file);

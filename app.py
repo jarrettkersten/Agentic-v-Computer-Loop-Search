@@ -1996,6 +1996,69 @@ def api_admin_clear_events():
 
 
 # ---------------------------------------------------------------------------
+# Admin — individual record lookups
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/search-events", methods=["GET"])
+@admin_required
+def api_admin_search_event_ids():
+    """Return a list of all search event IDs with basic metadata for browsing."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id, ran_at, loop_type, query, branch, status, "
+            "COALESCE(user_email, '') AS user_email "
+            "FROM search_events ORDER BY ran_at DESC"
+        ).fetchall()
+        conn.close()
+        return jsonify({
+            "success": True,
+            "count": len(rows),
+            "events": [dict(r) for r in rows],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/search-events/<int:event_id>", methods=["GET"])
+@admin_required
+def api_admin_search_event_detail(event_id):
+    """Return full details for a single search event by ID."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM search_events WHERE id = ?", (event_id,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            return jsonify({"error": f"Search event {event_id} not found"}), 404
+        return jsonify({"success": True, "event": dict(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/flags/<flag_id>/detail", methods=["GET"])
+@admin_required
+def api_admin_flag_detail(flag_id):
+    """Return full details for a single flagged query by ID,
+    including the original answer and all response containers."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM flagged_queries WHERE id = ?", (flag_id,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            return jsonify({"error": f"Flagged query {flag_id} not found"}), 404
+        return jsonify({"success": True, "flag": dict(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
 # Auth routes — Entra ID OAuth
 # ---------------------------------------------------------------------------
 

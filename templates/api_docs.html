@@ -180,8 +180,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
     <span style="font-weight:400;font-size:.88rem;opacity:.75">API Reference</span>
   </div>
   <div class="header-links">
-    <a href="/">Back to App</a>
-    {% if is_admin %}<a href="/admin">Admin</a>{% endif %}
+    {% if is_admin %}<a href="/admin" target="_blank" rel="noopener">Admin</a>{% endif %}
     {% if not auth_disabled and user %}
     <span class="header-badge">{{ user.get('name', user.get('email', 'User')) }}</span>
     {% endif %}
@@ -197,52 +196,29 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
     </div>
 
     <div class="sidebar-section">
-      <div class="sidebar-title">Core Search</div>
+      <div class="sidebar-title">Query</div>
+      <a class="sidebar-link" data-target="ep-v1-query"><span class="method-tag post">POST</span> /api/v1/query</a>
+      <a class="sidebar-link" data-target="ep-v1-poll"><span class="method-tag get">GET</span> /api/v1/query/:id</a>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Utilities</div>
+      <a class="sidebar-link" data-target="ep-v1-health"><span class="method-tag get">GET</span> /api/v1/health</a>
       <a class="sidebar-link" data-target="ep-branches"><span class="method-tag get">GET</span> /api/branches</a>
-      <a class="sidebar-link" data-target="ep-test"><span class="method-tag get">GET</span> /api/test</a>
-      <a class="sidebar-link" data-target="ep-clarify"><span class="method-tag post">POST</span> /api/clarify</a>
     </div>
 
     <div class="sidebar-section">
-      <div class="sidebar-title">Agentic Search</div>
-      <a class="sidebar-link" data-target="ep-agentic-stream"><span class="method-tag post">POST</span> /api/agentic/stream</a>
-      <a class="sidebar-link" data-target="ep-agentic-start"><span class="method-tag post">POST</span> /api/agentic/start</a>
-      <a class="sidebar-link" data-target="ep-agentic-poll"><span class="method-tag get">GET</span> /api/agentic/poll</a>
-      <a class="sidebar-link" data-target="ep-agentic-continue"><span class="method-tag post">POST</span> /api/agentic/continue</a>
-      <a class="sidebar-link" data-target="ep-agentic-stop"><span class="method-tag post">POST</span> /api/agentic/stop</a>
-      <a class="sidebar-link" data-target="ep-agentic-sync"><span class="method-tag post">POST</span> /api/agentic</a>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-title">Export &amp; Feedback</div>
-      <a class="sidebar-link" data-target="ep-export"><span class="method-tag post">POST</span> /api/export</a>
-      <a class="sidebar-link" data-target="ep-flag"><span class="method-tag post">POST</span> /api/flag</a>
-      <a class="sidebar-link" data-target="ep-screenshot"><span class="method-tag post">POST</span> /api/extract-screenshot</a>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-title">Admin</div>
+      <div class="sidebar-title">Admin Dashboard</div>
       <a class="sidebar-link" data-target="ep-admin-stats"><span class="method-tag get">GET</span> /api/admin/stats</a>
       <a class="sidebar-link" data-target="ep-admin-flags"><span class="method-tag get">GET</span> /api/admin/flags</a>
       <a class="sidebar-link" data-target="ep-admin-rankings"><span class="method-tag get">GET</span> /api/admin/user-rankings</a>
       <a class="sidebar-link" data-target="ep-admin-flag-update"><span class="method-tag patch">PATCH</span> /api/admin/flags/:id</a>
+      <a class="sidebar-link" data-target="ep-admin-event-list"><span class="method-tag get">GET</span> /api/admin/search-events</a>
+      <a class="sidebar-link" data-target="ep-admin-event-detail"><span class="method-tag get">GET</span> /api/admin/search-events/:id</a>
+      <a class="sidebar-link" data-target="ep-admin-flag-detail"><span class="method-tag get">GET</span> /api/admin/flags/:id/detail</a>
       <a class="sidebar-link" data-target="ep-admin-clear"><span class="method-tag post">POST</span> /api/admin/clear-events</a>
       <a class="sidebar-link" data-target="ep-admin-data"><span class="method-tag get">GET</span> /admin/data/:table</a>
       <a class="sidebar-link" data-target="ep-admin-export"><span class="method-tag get">GET</span> /admin/export/:table</a>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-title">External API (v1)</div>
-      <a class="sidebar-link" data-target="ep-v1-query"><span class="method-tag post">POST</span> /api/v1/query</a>
-      <a class="sidebar-link" data-target="ep-v1-poll"><span class="method-tag get">GET</span> /api/v1/query/:id</a>
-      <a class="sidebar-link" data-target="ep-v1-health"><span class="method-tag get">GET</span> /api/v1/health</a>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-title">Authentication</div>
-      <a class="sidebar-link" data-target="ep-login"><span class="method-tag get">GET</span> /login</a>
-      <a class="sidebar-link" data-target="ep-callback"><span class="method-tag get">GET</span> /auth/callback</a>
-      <a class="sidebar-link" data-target="ep-logout"><span class="method-tag get">GET</span> /logout</a>
     </div>
   </nav>
 
@@ -250,7 +226,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
   <main class="content" id="content">
     <div class="info-banner">
       <h1>Cora Code Investigator API</h1>
-      <p>Interactive reference for all API endpoints powering the Cora Code Investigator. Explore endpoint details, view request/response schemas, and test endpoints live.</p>
+      <p>External API reference for integrating with the Cora Code Investigator. Use these endpoints to query the Cora PPM codebase programmatically from tools like Jira, n8n, or custom integrations.</p>
       <div class="base-url">
         <span id="baseUrl"></span>
         <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('baseUrl').textContent)" title="Copy base URL">
@@ -258,16 +234,188 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
         </button>
       </div>
       <div class="auth-badges">
-        <span class="auth-badge cookie">Session Cookie — Entra ID login</span>
-        <span class="auth-badge bearer">Bearer Token — External API</span>
-        <span class="auth-badge public">Public — No auth required</span>
+        <span class="auth-badge bearer">Bearer Token — Required for query endpoints</span>
+        <span class="auth-badge cookie">Admin Login — Required for dashboard endpoints</span>
+        <span class="auth-badge public">Public — Health &amp; branch listing</span>
       </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════ -->
-    <!-- CORE SEARCH                                        -->
+    <!-- QUERY                                               -->
     <!-- ═══════════════════════════════════════════════════ -->
-    <div class="section-sep" id="section-core">Core Search</div>
+    <div class="section-sep" id="section-v1">Query</div>
+
+    <!-- POST /api/v1/query -->
+    <div class="endpoint-card" id="ep-v1-query">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="endpoint-method post">POST</span>
+        <span class="endpoint-path">/api/v1/query</span>
+        <span class="endpoint-desc">Unified query endpoint (sync/async)</span>
+        <span class="endpoint-auth auth-bearer">Bearer</span>
+        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-detail">
+          <p>The primary endpoint for external integrations (Jira, n8n, custom tools). Accepts a natural language query and returns the agentic search result. Supports both synchronous and asynchronous modes. Requires a Bearer token matching the <code>EXTERNAL_API_KEY</code> environment variable.</p>
+          <div class="param-section">
+            <h4>Headers</h4>
+            <table class="param-table">
+              <thead><tr><th>Name</th><th>Value</th><th>Required</th></tr></thead>
+              <tbody>
+                <tr><td class="param-name">Authorization</td><td class="param-type">Bearer &lt;EXTERNAL_API_KEY&gt;</td><td><span class="param-required">Required</span></td></tr>
+                <tr><td class="param-name">Content-Type</td><td class="param-type">application/json</td><td><span class="param-required">Required</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <h4>Request Body</h4>
+            <table class="param-table">
+              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td class="param-name">query</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Natural language question</td></tr>
+                <tr><td class="param-name">branch</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">ADO branch to search. Use <code>/api/branches</code> to list available branches</td></tr>
+                <tr><td class="param-name">async</td><td class="param-type">boolean</td><td><span class="param-optional">Optional</span></td><td class="param-desc">If <code>true</code>, returns a job_id immediately (202). Default: <span class="param-default">false</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <h4>Response (sync)</h4>
+            <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n..."</span>,
+  <span class="json-key">"metadata"</span>: {
+    <span class="json-key">"branch"</span>: <span class="json-str">"supported_release-1.25.2"</span>,
+    <span class="json-key">"files_read"</span>: <span class="json-num">18</span>,
+    <span class="json-key">"iterations"</span>: <span class="json-num">8</span>,
+    <span class="json-key">"searches"</span>: <span class="json-num">14</span>,
+    <span class="json-key">"confidence"</span>: <span class="json-str">"high"</span>,
+    <span class="json-key">"elapsed_seconds"</span>: <span class="json-num">47.2</span>,
+    <span class="json-key">"input_tokens"</span>: <span class="json-num">52000</span>,
+    <span class="json-key">"output_tokens"</span>: <span class="json-num">9200</span>
+  }
+}</pre></div>
+          </div>
+          <div class="param-section">
+            <h4>Response (async)</h4>
+            <div class="code-block"><span class="label">202 Accepted</span><pre>{
+  <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
+  <span class="json-key">"poll_url"</span>: <span class="json-str">"/api/v1/query/a1b2c3d4-..."</span>
+}</pre></div>
+          </div>
+        </div>
+        <div class="try-it">
+          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
+          <div class="try-field">
+            <label>Authorization (Bearer token)</label>
+            <input type="password" data-param="bearer" placeholder="Your EXTERNAL_API_KEY"/>
+          </div>
+          <div class="try-field">
+            <label>Request Body (JSON)</label>
+            <textarea data-param="body">{"query": "How does the EAC Submit button work?", "branch": "", "async": false}</textarea>
+          </div>
+          <div class="try-actions">
+            <button class="try-btn" onclick="tryEndpointBearer(this, 'POST', '/api/v1/query')">Send Request</button>
+            <span class="try-status"></span>
+          </div>
+          <div class="try-result"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GET /api/v1/query/<job_id> -->
+    <div class="endpoint-card" id="ep-v1-poll">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="endpoint-method get">GET</span>
+        <span class="endpoint-path">/api/v1/query/<span style="color:var(--brand-light)">{job_id}</span></span>
+        <span class="endpoint-desc">Poll async query result</span>
+        <span class="endpoint-auth auth-bearer">Bearer</span>
+        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-detail">
+          <p>Polls for the result of an async query started via <code>/api/v1/query</code>. Returns the result when complete, or a processing status with progress info.</p>
+          <div class="param-section">
+            <h4>Path Parameters</h4>
+            <table class="param-table">
+              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td class="param-name">job_id</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Job ID returned by the async query</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <h4>Response (completed)</h4>
+            <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n..."</span>,
+  <span class="json-key">"metadata"</span>: {...}
+}</pre></div>
+          </div>
+          <div class="param-section">
+            <h4>Response (still processing)</h4>
+            <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"status"</span>: <span class="json-str">"processing"</span>,
+  <span class="json-key">"message"</span>: <span class="json-str">"Query is still being processed..."</span>
+}</pre></div>
+          </div>
+        </div>
+        <div class="try-it">
+          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
+          <div class="try-field">
+            <label>Authorization (Bearer token)</label>
+            <input type="password" data-param="bearer" placeholder="Your EXTERNAL_API_KEY"/>
+          </div>
+          <div class="try-field">
+            <label>Job ID</label>
+            <input type="text" data-param="job_id" placeholder="a1b2c3d4-e5f6-..."/>
+          </div>
+          <div class="try-actions">
+            <button class="try-btn" onclick="tryEndpointBearerDynamic(this, 'GET', '/api/v1/query/{job_id}', ['job_id'])">Send Request</button>
+            <span class="try-status"></span>
+          </div>
+          <div class="try-result"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- ADMIN DASHBOARD                                     -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- UTILITIES                                           -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="section-sep" id="section-utilities">Utilities</div>
+
+    <!-- GET /api/v1/health -->
+    <div class="endpoint-card" id="ep-v1-health">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="endpoint-method get">GET</span>
+        <span class="endpoint-path">/api/v1/health</span>
+        <span class="endpoint-desc">API health check</span>
+        <span class="endpoint-auth auth-public">Public</span>
+        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-detail">
+          <p>Public health check endpoint for the external API. Returns whether the API key is configured and the service is ready.</p>
+          <div class="param-section">
+            <h4>Response</h4>
+            <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"status"</span>: <span class="json-str">"ok"</span>,
+  <span class="json-key">"api_ready"</span>: <span class="json-bool">true</span>
+}</pre></div>
+          </div>
+        </div>
+        <div class="try-it">
+          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
+          <div class="try-actions">
+            <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/v1/health')">Send Request</button>
+            <span class="try-status"></span>
+          </div>
+          <div class="try-result"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- GET /api/branches -->
     <div class="endpoint-card" id="ep-branches">
@@ -304,495 +452,11 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       </div>
     </div>
 
-    <!-- GET /api/test -->
-    <div class="endpoint-card" id="ep-test">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method get">GET</span>
-        <span class="endpoint-path">/api/test</span>
-        <span class="endpoint-desc">Diagnostic health check</span>
-        <span class="endpoint-auth auth-public">Public</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Runs diagnostics checking API key configuration, ADO connectivity, branch availability, and search functionality. Useful for verifying deployment health.</p>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"anthropic_key_set"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"ado_pat_set"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"branches_ok"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"search_ok"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"branches"</span>: [<span class="json-str">"develop"</span>, <span class="json-str">"..."</span>],
-  <span class="json-key">"sample_search_hits"</span>: <span class="json-num">5</span>
-}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/test')">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- POST /api/clarify -->
-    <div class="endpoint-card" id="ep-clarify">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/clarify</span>
-        <span class="endpoint-desc">Check if a query needs clarification</span>
-        <span class="endpoint-auth auth-public">Public</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Analyzes a user query and determines whether it needs clarification before running a full search. Returns a follow-up question if the query is ambiguous.</p>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">query</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">The user's natural language query</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"needs_clarification"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"question"</span>: <span class="json-str">"Are you asking about the EAC submit on Project Forecasting or the Timesheet page?"</span>
-}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"query": "How does the submit button work?"}</textarea>
-          </div>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'POST', '/api/clarify', true)">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
 
     <!-- ═══════════════════════════════════════════════════ -->
-    <!-- AGENTIC SEARCH                                     -->
+    <!-- ADMIN DASHBOARD                                     -->
     <!-- ═══════════════════════════════════════════════════ -->
-    <div class="section-sep" id="section-agentic">Agentic Search</div>
-
-    <!-- POST /api/agentic/stream -->
-    <div class="endpoint-card" id="ep-agentic-stream">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/agentic/stream</span>
-        <span class="endpoint-desc">SSE stream for agentic search</span>
-        <span class="endpoint-auth auth-login">Login</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Starts an agentic search loop and streams progress events via Server-Sent Events (SSE). The AI iteratively searches the ADO codebase using tool calls (code search + file reading) until it has enough context to answer. Events include iteration progress, tool calls, pause prompts, and the final result.</p>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">query</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Natural language question about the Cora PPM codebase</td></tr>
-                <tr><td class="param-name">branch</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">ADO branch to search. Defaults to latest supported_release branch</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response — SSE Events</h4>
-            <div class="code-block"><span class="label">text/event-stream</span><pre>event: iteration
-data: {"iteration": 1, "action": "Made 2 ADO tool call(s)."}
-
-event: tool_call
-data: {"tool": "ado_code_search", "input": {"search_query": "TimesheetGrid"}}
-
-event: pause
-data: {"elapsed_sec": 302, "message": "Search has been running for 5 min..."}
-
-event: done
-data: {"answer": "## Overview\n...", "confidence": {"level": "high"}, ...}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"query": "How does the timesheet page work?", "branch": ""}</textarea>
-          </div>
-          <p style="font-size:.78rem;color:var(--warn);margin-bottom:8px">Note: This endpoint returns an SSE stream. The try-it panel will show the raw streamed events.</p>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'POST', '/api/agentic/stream', true)">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- POST /api/agentic/start -->
-    <div class="endpoint-card" id="ep-agentic-start">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/agentic/start</span>
-        <span class="endpoint-desc">Start async agentic job</span>
-        <span class="endpoint-auth auth-login">Login</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Starts an agentic search as a background job and returns a job ID. Use <code>/api/agentic/poll/&lt;job_id&gt;</code> to retrieve progress events. This is the polling-based alternative to the SSE stream, useful when HTTP proxies enforce connection timeouts.</p>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">query</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Natural language question about the Cora PPM codebase</td></tr>
-                <tr><td class="param-name">branch</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">ADO branch to search</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">202 Accepted</span><pre>{
-  <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-e5f6-..."</span>
-}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"query": "How does the EAC Submit button work?", "branch": ""}</textarea>
-          </div>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'POST', '/api/agentic/start', true)">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- GET /api/agentic/poll/<job_id> -->
-    <div class="endpoint-card" id="ep-agentic-poll">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method get">GET</span>
-        <span class="endpoint-path">/api/agentic/poll/<span style="color:var(--brand-light)">{job_id}</span></span>
-        <span class="endpoint-desc">Poll agentic job events</span>
-        <span class="endpoint-auth auth-login">Login</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Retrieves queued SSE-style events from a running agentic job. Call repeatedly to drain the event queue. Returns an empty array when no new events are available. The final event will have <code>event: "done"</code>.</p>
-          <div class="param-section">
-            <h4>Path Parameters</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">job_id</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">The job ID returned by <code>/api/agentic/start</code></td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"events"</span>: [
-    {<span class="json-key">"event"</span>: <span class="json-str">"iteration"</span>, <span class="json-key">"data"</span>: {<span class="json-key">"iteration"</span>: <span class="json-num">1</span>, <span class="json-key">"action"</span>: <span class="json-str">"Made 2 ADO tool call(s)."</span>}},
-    {<span class="json-key">"event"</span>: <span class="json-str">"done"</span>, <span class="json-key">"data"</span>: {<span class="json-key">"answer"</span>: <span class="json-str">"..."</span>}}
-  ]
-}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Job ID</label>
-            <input type="text" data-param="job_id" placeholder="a1b2c3d4-e5f6-..."/>
-          </div>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpointDynamic(this, 'GET', '/api/agentic/poll/{job_id}', ['job_id'])">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- POST /api/agentic/continue -->
-    <div class="endpoint-card" id="ep-agentic-continue">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/agentic/continue</span>
-        <span class="endpoint-desc">Resume paused search</span>
-        <span class="endpoint-auth auth-login">Login</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Signals a paused agentic search job to continue. The search pauses automatically at elapsed-time thresholds (default: 5 min first, then every 2 min) to let the user decide whether to keep searching.</p>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">job_id</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Job ID of the paused search</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{<span class="json-key">"ok"</span>: <span class="json-bool">true</span>}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"job_id": ""}</textarea>
-          </div>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'POST', '/api/agentic/continue', true)">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- POST /api/agentic/stop -->
-    <div class="endpoint-card" id="ep-agentic-stop">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/agentic/stop</span>
-        <span class="endpoint-desc">Stop running search</span>
-        <span class="endpoint-auth auth-login">Login</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Signals a running agentic search job to stop immediately. The job will finalize with whatever context has been gathered so far.</p>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">job_id</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Job ID to stop</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{<span class="json-key">"ok"</span>: <span class="json-bool">true</span>}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"job_id": ""}</textarea>
-          </div>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'POST', '/api/agentic/stop', true)">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- POST /api/agentic (sync legacy) -->
-    <div class="endpoint-card" id="ep-agentic-sync">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/agentic</span>
-        <span class="endpoint-desc">Synchronous agentic search (legacy)</span>
-        <span class="endpoint-auth auth-login">Login</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Legacy synchronous endpoint that runs the full agentic search loop and returns the complete result in a single JSON response. Can be long-running (up to 11 minutes). Prefer <code>/api/agentic/start</code> + polling for production use.</p>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">query</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Natural language question about the codebase</td></tr>
-                <tr><td class="param-name">branch</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">ADO branch to search</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"result"</span>: {
-    <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n..."</span>,
-    <span class="json-key">"confidence"</span>: {<span class="json-key">"level"</span>: <span class="json-str">"high"</span>, <span class="json-key">"reasoning"</span>: <span class="json-str">"..."</span>},
-    <span class="json-key">"total_iterations"</span>: <span class="json-num">7</span>,
-    <span class="json-key">"total_searches"</span>: <span class="json-num">12</span>,
-    <span class="json-key">"total_files_read"</span>: <span class="json-num">15</span>,
-    <span class="json-key">"branch"</span>: <span class="json-str">"supported_release-1.25.2"</span>,
-    <span class="json-key">"input_tokens"</span>: <span class="json-num">45000</span>,
-    <span class="json-key">"output_tokens"</span>: <span class="json-num">8500</span>,
-    <span class="json-key">"elapsed_seconds"</span>: <span class="json-num">42.3</span>
-  }
-}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"query": "How does the EAC Submit button work?", "branch": ""}</textarea>
-          </div>
-          <p style="font-size:.78rem;color:var(--warn);margin-bottom:8px">Warning: This endpoint may take several minutes to return. Consider using /api/agentic/start + polling instead.</p>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'POST', '/api/agentic', true)">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════ -->
-    <!-- EXPORT & FEEDBACK                                  -->
-    <!-- ═══════════════════════════════════════════════════ -->
-    <div class="section-sep" id="section-export">Export &amp; Feedback</div>
-
-    <!-- POST /api/export -->
-    <div class="endpoint-card" id="ep-export">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/export</span>
-        <span class="endpoint-desc">Export search results as Word/PDF</span>
-        <span class="endpoint-auth auth-login">Login</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Exports a search result as a formatted Word (.docx) or PDF document. The exported document includes the query, branch, metadata, and the full answer content organized into sections.</p>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">format</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc"><code>"docx"</code> or <code>"pdf"</code></td></tr>
-                <tr><td class="param-name">query</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Original search query</td></tr>
-                <tr><td class="param-name">branch</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Branch that was searched</td></tr>
-                <tr><td class="param-name">metadata</td><td class="param-type">object</td><td><span class="param-required">Required</span></td><td class="param-desc">Search metadata (iterations, files_read, elapsed_sec, etc.)</td></tr>
-                <tr><td class="param-name">sections</td><td class="param-type">object[]</td><td><span class="param-required">Required</span></td><td class="param-desc">Array of {title, content} section objects</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response</h4>
-            <p style="font-size:.84rem;color:var(--muted)">Binary file download (<code>application/vnd.openxmlformats-officedocument.wordprocessingml.document</code> or <code>application/pdf</code>)</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- POST /api/flag -->
-    <div class="endpoint-card" id="ep-flag">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/flag</span>
-        <span class="endpoint-desc">Flag result as accurate/inaccurate</span>
-        <span class="endpoint-auth auth-login">Login</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Allows users to flag search results as accurate or inaccurate, with optional explanation. Flags are stored in the database for admin review and quality tracking.</p>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">query</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Original query</td></tr>
-                <tr><td class="param-name">loop_type</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Type of search loop used</td></tr>
-                <tr><td class="param-name">answer</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">The answer being flagged</td></tr>
-                <tr><td class="param-name">flag_type</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc"><code>"accurate"</code> or <code>"inaccurate"</code></td></tr>
-                <tr><td class="param-name">container</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Source container/panel identifier</td></tr>
-                <tr><td class="param-name">explanation</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">User explanation of why the result is flagged</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"flag_id"</span>: <span class="json-num">42</span>
-}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"query": "test query", "loop_type": "agentic", "answer": "test answer", "flag_type": "accurate", "container": "agentic", "explanation": ""}</textarea>
-          </div>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'POST', '/api/flag', true)">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- POST /api/extract-screenshot -->
-    <div class="endpoint-card" id="ep-screenshot">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/extract-screenshot</span>
-        <span class="endpoint-desc">Extract UI context from screenshot</span>
-        <span class="endpoint-auth auth-public">Public</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Accepts a base64-encoded screenshot image and uses Claude to extract UI context (page name, visible fields, error messages, data shown). The extracted context is returned as a plain-text string that can be appended to user queries for more targeted searches.</p>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">image_b64</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Base64-encoded image data</td></tr>
-                <tr><td class="param-name">mime_type</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Image MIME type. Default: <span class="param-default">image/png</span></td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"context"</span>: <span class="json-str">"This screenshot shows the Project Forecasting page with EAC columns visible..."</span>
-}</pre></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════ -->
-    <!-- ADMIN                                               -->
-    <!-- ═══════════════════════════════════════════════════ -->
-    <div class="section-sep" id="section-admin">Admin</div>
+    <div class="section-sep" id="section-admin">Admin Dashboard</div>
 
     <!-- GET /api/admin/stats -->
     <div class="endpoint-card" id="ep-admin-stats">
@@ -977,6 +641,178 @@ data: {"answer": "## Overview\n...", "confidence": {"level": "high"}, ...}</pre>
       </div>
     </div>
 
+    <!-- GET /api/admin/search-events -->
+    <div class="endpoint-card" id="ep-admin-event-list">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="endpoint-method get">GET</span>
+        <span class="endpoint-path">/api/admin/search-events</span>
+        <span class="endpoint-desc">List all search event IDs</span>
+        <span class="endpoint-auth auth-admin">Admin</span>
+        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-detail">
+          <p>Returns a list of all search events with their IDs and basic metadata (timestamp, query, branch, user). Use the returned IDs to fetch full details via <code>/api/admin/search-events/{id}</code>.</p>
+          <div class="param-section">
+            <h4>Response</h4>
+            <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"count"</span>: <span class="json-num">156</span>,
+  <span class="json-key">"events"</span>: [
+    {
+      <span class="json-key">"id"</span>: <span class="json-num">156</span>,
+      <span class="json-key">"ran_at"</span>: <span class="json-str">"2026-04-01 14:23:05"</span>,
+      <span class="json-key">"loop_type"</span>: <span class="json-str">"agentic"</span>,
+      <span class="json-key">"query"</span>: <span class="json-str">"How does EAC submit work?"</span>,
+      <span class="json-key">"branch"</span>: <span class="json-str">"supported_release-1.25.2"</span>,
+      <span class="json-key">"status"</span>: <span class="json-str">"success"</span>,
+      <span class="json-key">"user_email"</span>: <span class="json-str">"user@corasystems.com"</span>
+    },
+    <span class="json-str">...</span>
+  ]
+}</pre></div>
+          </div>
+        </div>
+        <div class="try-it">
+          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
+          <div class="try-actions">
+            <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/admin/search-events')">Send Request</button>
+            <span class="try-status"></span>
+          </div>
+          <div class="try-result"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GET /api/admin/search-events/:id -->
+    <div class="endpoint-card" id="ep-admin-event-detail">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="endpoint-method get">GET</span>
+        <span class="endpoint-path">/api/admin/search-events/<span style="color:var(--brand-light)">{id}</span></span>
+        <span class="endpoint-desc">Look up a search event by ID</span>
+        <span class="endpoint-auth auth-admin">Admin</span>
+        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-detail">
+          <p>Returns full details for a single search event, including query, branch, duration, token usage, confidence level, and user email.</p>
+          <div class="param-section">
+            <h4>Path Parameters</h4>
+            <table class="param-table">
+              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td class="param-name">id</td><td class="param-type">integer</td><td><span class="param-required">Required</span></td><td class="param-desc">The search event ID (auto-incremented integer)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <h4>Response</h4>
+            <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"event"</span>: {
+    <span class="json-key">"id"</span>: <span class="json-num">42</span>,
+    <span class="json-key">"ran_at"</span>: <span class="json-str">"2026-04-01 14:23:05"</span>,
+    <span class="json-key">"loop_type"</span>: <span class="json-str">"agentic"</span>,
+    <span class="json-key">"query"</span>: <span class="json-str">"How does the EAC submit button work?"</span>,
+    <span class="json-key">"branch"</span>: <span class="json-str">"supported_release-1.25.2"</span>,
+    <span class="json-key">"status"</span>: <span class="json-str">"success"</span>,
+    <span class="json-key">"duration_sec"</span>: <span class="json-num">47.2</span>,
+    <span class="json-key">"files_read"</span>: <span class="json-num">18</span>,
+    <span class="json-key">"iterations"</span>: <span class="json-num">8</span>,
+    <span class="json-key">"searches"</span>: <span class="json-num">14</span>,
+    <span class="json-key">"confidence_level"</span>: <span class="json-str">"high"</span>,
+    <span class="json-key">"input_tokens"</span>: <span class="json-num">52000</span>,
+    <span class="json-key">"output_tokens"</span>: <span class="json-num">9200</span>,
+    <span class="json-key">"total_tokens"</span>: <span class="json-num">61200</span>,
+    <span class="json-key">"error_message"</span>: <span class="json-null">null</span>,
+    <span class="json-key">"user_email"</span>: <span class="json-str">"user@corasystems.com"</span>
+  }
+}</pre></div>
+          </div>
+        </div>
+        <div class="try-it">
+          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
+          <div class="try-field">
+            <label>Event ID</label>
+            <input type="text" data-param="event_id" placeholder="42"/>
+          </div>
+          <div class="try-actions">
+            <button class="try-btn" onclick="tryEndpointDynamic(this, 'GET', '/api/admin/search-events/{event_id}', ['event_id'], false)">Send Request</button>
+            <span class="try-status"></span>
+          </div>
+          <div class="try-result"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GET /api/admin/flags/:id/detail -->
+    <div class="endpoint-card" id="ep-admin-flag-detail">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="endpoint-method get">GET</span>
+        <span class="endpoint-path">/api/admin/flags/<span style="color:var(--brand-light)">{flag_id}</span>/detail</span>
+        <span class="endpoint-desc">Look up a flagged query by ID</span>
+        <span class="endpoint-auth auth-admin">Admin</span>
+        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-detail">
+          <p>Returns full details for a single flagged query, including the original answer text, explanation, flag type, container, review status, admin notes, and all search metadata.</p>
+          <div class="param-section">
+            <h4>Path Parameters</h4>
+            <table class="param-table">
+              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td class="param-name">flag_id</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">The flagged query UUID</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <h4>Response</h4>
+            <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"flag"</span>: {
+    <span class="json-key">"id"</span>: <span class="json-str">"a1b2c3d4-e5f6-..."</span>,
+    <span class="json-key">"query"</span>: <span class="json-str">"How does the EAC submit button work?"</span>,
+    <span class="json-key">"loop_type"</span>: <span class="json-str">"agentic"</span>,
+    <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\nThe EAC submit button..."</span>,
+    <span class="json-key">"explanation"</span>: <span class="json-str">"Missing info about validation logic"</span>,
+    <span class="json-key">"flag_type"</span>: <span class="json-str">"inaccurate"</span>,
+    <span class="json-key">"container"</span>: <span class="json-str">"ProjectForecasting"</span>,
+    <span class="json-key">"request_article"</span>: <span class="json-num">1</span>,
+    <span class="json-key">"flagged_by"</span>: <span class="json-str">"user@corasystems.com"</span>,
+    <span class="json-key">"flagged_at"</span>: <span class="json-str">"2026-04-01 14:30:00"</span>,
+    <span class="json-key">"status"</span>: <span class="json-str">"pending"</span>,
+    <span class="json-key">"reviewed_by"</span>: <span class="json-null">null</span>,
+    <span class="json-key">"reviewed_at"</span>: <span class="json-null">null</span>,
+    <span class="json-key">"admin_notes"</span>: <span class="json-null">null</span>,
+    <span class="json-key">"branch"</span>: <span class="json-str">"supported_release-1.25.2"</span>,
+    <span class="json-key">"confidence_level"</span>: <span class="json-str">"high"</span>,
+    <span class="json-key">"duration_sec"</span>: <span class="json-num">47.2</span>,
+    <span class="json-key">"input_tokens"</span>: <span class="json-num">52000</span>,
+    <span class="json-key">"output_tokens"</span>: <span class="json-num">9200</span>,
+    <span class="json-key">"total_tokens"</span>: <span class="json-num">61200</span>,
+    <span class="json-key">"files_read"</span>: <span class="json-num">18</span>,
+    <span class="json-key">"iterations"</span>: <span class="json-num">8</span>,
+    <span class="json-key">"searches"</span>: <span class="json-num">14</span>
+  }
+}</pre></div>
+          </div>
+        </div>
+        <div class="try-it">
+          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
+          <div class="try-field">
+            <label>Flag ID</label>
+            <input type="text" data-param="flag_id" placeholder="a1b2c3d4-e5f6-..."/>
+          </div>
+          <div class="try-actions">
+            <button class="try-btn" onclick="tryEndpointDynamic(this, 'GET', '/api/admin/flags/{flag_id}/detail', ['flag_id'], false)">Send Request</button>
+            <span class="try-status"></span>
+          </div>
+          <div class="try-result"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- POST /api/admin/clear-events -->
     <div class="endpoint-card" id="ep-admin-clear">
       <div class="endpoint-header" onclick="toggleEndpoint(this)">
@@ -1087,240 +923,6 @@ data: {"answer": "## Overview\n...", "confidence": {"level": "high"}, ...}</pre>
       </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════ -->
-    <!-- EXTERNAL API v1                                     -->
-    <!-- ═══════════════════════════════════════════════════ -->
-    <div class="section-sep" id="section-v1">External API (v1)</div>
-
-    <!-- POST /api/v1/query -->
-    <div class="endpoint-card" id="ep-v1-query">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/v1/query</span>
-        <span class="endpoint-desc">Unified query endpoint (sync/async)</span>
-        <span class="endpoint-auth auth-bearer">Bearer</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>The primary endpoint for external integrations (Jira, n8n, custom tools). Accepts a natural language query and returns the agentic search result. Supports both synchronous and asynchronous modes. Requires a Bearer token matching the <code>EXTERNAL_API_KEY</code> environment variable.</p>
-          <div class="param-section">
-            <h4>Headers</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Value</th><th>Required</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">Authorization</td><td class="param-type">Bearer &lt;EXTERNAL_API_KEY&gt;</td><td><span class="param-required">Required</span></td></tr>
-                <tr><td class="param-name">Content-Type</td><td class="param-type">application/json</td><td><span class="param-required">Required</span></td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">query</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Natural language question</td></tr>
-                <tr><td class="param-name">branch</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">ADO branch to search</td></tr>
-                <tr><td class="param-name">async</td><td class="param-type">boolean</td><td><span class="param-optional">Optional</span></td><td class="param-desc">If <code>true</code>, returns a job_id immediately (202). Default: <span class="param-default">false</span></td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response (sync)</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n..."</span>,
-  <span class="json-key">"metadata"</span>: {
-    <span class="json-key">"branch"</span>: <span class="json-str">"supported_release-1.25.2"</span>,
-    <span class="json-key">"files_read"</span>: <span class="json-num">18</span>,
-    <span class="json-key">"iterations"</span>: <span class="json-num">8</span>,
-    <span class="json-key">"searches"</span>: <span class="json-num">14</span>,
-    <span class="json-key">"confidence"</span>: <span class="json-str">"high"</span>,
-    <span class="json-key">"elapsed_seconds"</span>: <span class="json-num">47.2</span>,
-    <span class="json-key">"input_tokens"</span>: <span class="json-num">52000</span>,
-    <span class="json-key">"output_tokens"</span>: <span class="json-num">9200</span>
-  }
-}</pre></div>
-          </div>
-          <div class="param-section">
-            <h4>Response (async)</h4>
-            <div class="code-block"><span class="label">202 Accepted</span><pre>{
-  <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
-  <span class="json-key">"poll_url"</span>: <span class="json-str">"/api/v1/query/a1b2c3d4-..."</span>
-}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Authorization (Bearer token)</label>
-            <input type="password" data-param="bearer" placeholder="Your EXTERNAL_API_KEY"/>
-          </div>
-          <div class="try-field">
-            <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"query": "How does the EAC Submit button work?", "branch": "", "async": false}</textarea>
-          </div>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpointBearer(this, 'POST', '/api/v1/query')">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- GET /api/v1/query/<job_id> -->
-    <div class="endpoint-card" id="ep-v1-poll">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method get">GET</span>
-        <span class="endpoint-path">/api/v1/query/<span style="color:var(--brand-light)">{job_id}</span></span>
-        <span class="endpoint-desc">Poll async query result</span>
-        <span class="endpoint-auth auth-bearer">Bearer</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Polls for the result of an async query started via <code>/api/v1/query</code>. Returns the result when complete, or a processing status with progress info.</p>
-          <div class="param-section">
-            <h4>Path Parameters</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">job_id</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Job ID returned by the async query</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response (completed)</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n..."</span>,
-  <span class="json-key">"metadata"</span>: {...}
-}</pre></div>
-          </div>
-          <div class="param-section">
-            <h4>Response (still processing)</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"status"</span>: <span class="json-str">"processing"</span>,
-  <span class="json-key">"message"</span>: <span class="json-str">"Query is still being processed..."</span>
-}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Authorization (Bearer token)</label>
-            <input type="password" data-param="bearer" placeholder="Your EXTERNAL_API_KEY"/>
-          </div>
-          <div class="try-field">
-            <label>Job ID</label>
-            <input type="text" data-param="job_id" placeholder="a1b2c3d4-e5f6-..."/>
-          </div>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpointBearerDynamic(this, 'GET', '/api/v1/query/{job_id}', ['job_id'])">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- GET /api/v1/health -->
-    <div class="endpoint-card" id="ep-v1-health">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method get">GET</span>
-        <span class="endpoint-path">/api/v1/health</span>
-        <span class="endpoint-desc">API health check</span>
-        <span class="endpoint-auth auth-public">Public</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Public health check endpoint for the external API. Returns whether the API key is configured and the service is ready.</p>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"status"</span>: <span class="json-str">"ok"</span>,
-  <span class="json-key">"api_ready"</span>: <span class="json-bool">true</span>
-}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/v1/health')">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════ -->
-    <!-- AUTHENTICATION                                      -->
-    <!-- ═══════════════════════════════════════════════════ -->
-    <div class="section-sep" id="section-auth">Authentication</div>
-
-    <!-- GET /login -->
-    <div class="endpoint-card" id="ep-login">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method get">GET</span>
-        <span class="endpoint-path">/login</span>
-        <span class="endpoint-desc">Initiate Entra ID OAuth flow</span>
-        <span class="endpoint-auth auth-public">Public</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Redirects the user to Microsoft Entra ID (Azure AD) login page. Disabled when <code>AUTH_DISABLED=true</code> or no <code>ENTRA_CLIENT_ID</code> is set. On success, redirects back to <code>/auth/callback</code>.</p>
-          <p style="font-size:.84rem;color:var(--muted)">Response: 302 redirect to Microsoft login</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- GET /auth/callback -->
-    <div class="endpoint-card" id="ep-callback">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method get">GET</span>
-        <span class="endpoint-path">/auth/callback</span>
-        <span class="endpoint-desc">OAuth callback handler</span>
-        <span class="endpoint-auth auth-public">Public</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Handles the OAuth 2.0 authorization code callback from Microsoft Entra ID. Exchanges the code for tokens, fetches user profile via Microsoft Graph API, and stores user info in the Flask session.</p>
-          <div class="param-section">
-            <h4>Query Parameters (set by Microsoft)</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">code</td><td class="param-type">string</td><td class="param-desc">Authorization code from Entra ID</td></tr>
-                <tr><td class="param-name">state</td><td class="param-type">string</td><td class="param-desc">CSRF state token</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p style="font-size:.84rem;color:var(--muted)">Response: 302 redirect to /</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- GET /logout -->
-    <div class="endpoint-card" id="ep-logout">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method get">GET</span>
-        <span class="endpoint-path">/logout</span>
-        <span class="endpoint-desc">Clear session &amp; sign out</span>
-        <span class="endpoint-auth auth-public">Public</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Clears the Flask session and redirects to Microsoft Entra ID logout. Ends the user's authenticated session completely.</p>
-          <p style="font-size:.84rem;color:var(--muted)">Response: 302 redirect to Entra ID logout URL</p>
-        </div>
-      </div>
-    </div>
 
   </main>
 </div>
