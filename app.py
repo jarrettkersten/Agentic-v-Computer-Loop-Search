@@ -1633,5 +1633,128 @@ def logout():
     )
 
 
+# ---------------------------------------------------------------------------
+# External API — unified query endpoint for other apps (Jira, n8n, etc.)
+# ---------------------------------------------------------------------------
+EXTERNAL_API_KEY = os.environ.get("EXTERNAL_API_KEY", "")
+
+
+def _check_api_key():
+    """Validate bearer token for external API calls. Returns error response or None."""
+    if not EXTERNAL_API_KEY:
+        return jsonify({"error": "External API not configured — set EXTERNAL_API_KEY env var."}), 503
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Missing or invalid Authorization header. Use: Bearer <api_key>"}), 401
+    token = auth_header[7:].strip()
+    if not secrets.compare_digest(token, EXTERNAL_API_KEY):
+        return jsonify({"error": "Invalid API key."}), 403
+    return None
+
+
+@app.route("/api/v1/query", methods=["POST"])
+def api_v1_query():
+    """
+    Unified external query endpoint.
+
+    Accepts a question and returns the agentic search answer from the
+    Cora PPM codebase — same as typing into "Your question" and clicking Search.
+
+    Request JSON:
+        {
+            "query":  "How does the EAC Submit button work on the Project Forecasting page?",
+            "branch": "supported_release-1.25.2"   // optional, default: first available
+        }
+
+    Response JSON:
+        {
+            "success":  true,
+            "answer":   "## Answer\n...",
+            "metadata": {
+                "branch":          "supported_release-1.25.2",
+                "files_read":      12,
+                "iterations":      8,
+                "searches":        5,
+                "confidence":      "High",
+                "elapsed_seconds": 42.1,
+                "input_tokens":    18400,
+                "output_tokens":   3200
+            }
+        }
+
+    Auth: Bearer token via EXTERNAL_API_KEY env var.
+    """
+    # ── Auth ──
+    auth_err = _check_api_key()
+    if auth_err:
+        return auth_err
+
+    # ── Parse request ──
+    data   = request.get_json(force=True) or {}
+    query  = data.get("query", "").strip()
+    branch = data.get("branch", "").strip()
+
+    if not query:
+        return jsonify({"error": "No query provided."}), 400
+
+    # ── Resolve branch ──
+    if not branch:
+        try:
+            branches = ado_get_branches()
+            branch = branches[0] if branches else "main"
+        except Exception:
+            branch = "main"
+
+    t0 = time.time()
+
+    # ── Run agentic search ──
+    try:
+        result = run_agentic_loop(query, branch)
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error":   str(e),
+            "metadata": {"total_time_sec": round(time.time() - t0, 1)},
+        }), 500
+
+    total_time = round(time.time() - t0, 1)
+
+    # ── Track usage ──
+    track_search_event(
+        "external_api", query, branch, "success",
+        total_time,
+        result.get("total_files_read", 0),
+        result.get("total_iterations", 0),
+        result.get("total_searches", 0),
+        result.get("confidence", {}).get("level", ""),
+        input_tokens=result.get("input_tokens", 0),
+        output_tokens=result.get("output_tokens", 0),
+    )
+
+    return jsonify({
+        "success": True,
+        "answer":  result.get("answer", ""),
+        "metadata": {
+            "branch":          branch,
+            "files_read":      result.get("total_files_read", 0),
+            "iterations":      result.get("total_iterations", 0),
+            "searches":        result.get("total_searches", 0),
+            "confidence":      result.get("confidence", {}).get("level", ""),
+            "elapsed_seconds": result.get("elapsed_seconds", total_time),
+            "input_tokens":    result.get("input_tokens", 0),
+            "output_tokens":   result.get("output_tokens", 0),
+        },
+    })
+
+
+@app.route("/api/v1/health", methods=["GET"])
+def api_v1_health():
+    """Public health check for the external API."""
+    return jsonify({
+        "status":    "ok",
+        "api_ready": bool(EXTERNAL_API_KEY),
+    })
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
