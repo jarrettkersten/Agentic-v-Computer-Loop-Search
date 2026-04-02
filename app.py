@@ -1115,6 +1115,17 @@ def index():
                            cost_per_m_output=COST_PER_M_OUTPUT)
 
 
+@app.route("/api-docs")
+@login_required
+def api_docs():
+    """Interactive Swagger-style API documentation page."""
+    user = session.get("user", {}) if not AUTH_DISABLED else {}
+    return render_template("api_docs.html",
+                           user=user,
+                           is_admin=_is_admin(),
+                           auth_disabled=AUTH_DISABLED)
+
+
 @app.route("/api/extract-screenshot", methods=["POST"])
 def api_extract_screenshot():
     """
