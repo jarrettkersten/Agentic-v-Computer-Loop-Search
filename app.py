@@ -16,7 +16,6 @@ import asyncio
 import base64
 import io
 import csv
-import sqlite3
 import time
 import threading
 import uuid
@@ -97,6 +96,27 @@ ADMIN_EMAILS = [e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").sp
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
 
+# Custom JSON serialisation so PostgreSQL datetime/date objects work with jsonify
+from flask.json.provider import DefaultJSONProvider
+import decimal
+
+class _CustomJSONProvider(DefaultJSONProvider):
+    def default(self, o):
+        if isinstance(o, (datetime,)):
+            return o.isoformat()
+        if isinstance(o, decimal.Decimal):
+            return float(o)
+        try:
+            from datetime import date as _date_type
+            if isinstance(o, _date_type):
+                return o.isoformat()
+        except Exception:
+            pass
+        return super().default(o)
+
+app.json_provider_class = _CustomJSONProvider
+app.json = _CustomJSONProvider(app)
+
 # ---------------------------------------------------------------------------
 # Agentic search job store — supports mid-search "continue?" prompts via SSE
 # ---------------------------------------------------------------------------
@@ -126,26 +146,58 @@ def _job_remove(job_id: str):
         _agentic_jobs.pop(job_id, None)
 
 # ---------------------------------------------------------------------------
-# Usage tracking — SQLite
+# Usage tracking — PostgreSQL
 # ---------------------------------------------------------------------------
-DB_PATH = os.path.join(os.environ.get("DB_DIR", os.path.dirname(os.path.abspath(__file__))), "usage.db")
-print(f"[db] DB_DIR={os.environ.get('DB_DIR','(not set — using app dir)')}  DB_PATH={DB_PATH}", flush=True)
+import psycopg2
+import psycopg2.extras
+from psycopg2 import pool as _pg_pool
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if not DATABASE_URL:
+    print("[db] WARNING: DATABASE_URL not set — database features will be unavailable", flush=True)
+else:
+    print(f"[db] DATABASE_URL is set (host hidden for security)", flush=True)
+
+# Simple thread-safe connection pool (min 1, max 10 connections)
+_db_pool = None
+def _get_pool():
+    global _db_pool
+    if _db_pool is None and DATABASE_URL:
+        _db_pool = _pg_pool.ThreadedConnectionPool(1, 10, DATABASE_URL)
+    return _db_pool
+
+def get_db_conn():
+    """Get a connection from the pool."""
+    p = _get_pool()
+    if p is None:
+        raise RuntimeError("DATABASE_URL is not configured")
+    return p.getconn()
+
+def put_db_conn(conn):
+    """Return a connection to the pool."""
+    p = _get_pool()
+    if p is not None:
+        p.putconn(conn)
 
 
 def init_db():
-    """Create usage tracking tables if they don't exist, and migrate token columns."""
+    """Create usage tracking tables if they don't exist, and migrate columns."""
+    if not DATABASE_URL:
+        print("[DB] Skipping init — no DATABASE_URL configured")
+        return
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_conn()
         cur  = conn.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS search_events (
-                id               INTEGER PRIMARY KEY AUTOINCREMENT,
-                ran_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+                id               SERIAL PRIMARY KEY,
+                ran_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 loop_type        TEXT    NOT NULL,
                 query            TEXT,
                 branch           TEXT,
                 status           TEXT    NOT NULL DEFAULT 'success',
-                duration_sec     REAL,
+                duration_sec     DOUBLE PRECISION,
                 files_read       INTEGER DEFAULT 0,
                 iterations       INTEGER DEFAULT 0,
                 searches         INTEGER DEFAULT 0,
@@ -157,41 +209,27 @@ def init_db():
                 user_email       TEXT    DEFAULT ''
             )
         """)
-        # Migrate existing tables: add token columns if they don't already exist
-        for table in ("search_events",):
-            for col_def in (
-                "input_tokens  INTEGER DEFAULT 0",
-                "output_tokens INTEGER DEFAULT 0",
-                "total_tokens  INTEGER DEFAULT 0",
-            ):
-                try:
-                    cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
-                except Exception:
-                    pass  # column already exists
-        # Migrate: add user_email column to search_events
-        try:
-            cur.execute("ALTER TABLE search_events ADD COLUMN user_email TEXT DEFAULT ''")
-        except Exception:
-            pass  # column already exists
-        # Migrate: add new flag columns to flagged_queries
-        for col_def in (
-            "flag_type TEXT NOT NULL DEFAULT 'inaccurate'",
-            "container TEXT DEFAULT ''",
-            "request_article INTEGER DEFAULT 0",
-            "branch TEXT DEFAULT ''",
-            "confidence_level TEXT DEFAULT ''",
-            "duration_sec REAL DEFAULT 0",
-            "input_tokens INTEGER DEFAULT 0",
-            "output_tokens INTEGER DEFAULT 0",
-            "total_tokens INTEGER DEFAULT 0",
-            "files_read INTEGER DEFAULT 0",
-            "iterations INTEGER DEFAULT 0",
-            "searches INTEGER DEFAULT 0",
-        ):
-            try:
-                cur.execute(f"ALTER TABLE flagged_queries ADD COLUMN {col_def}")
-            except Exception:
-                pass
+        # Migrate existing tables: add columns if they don't already exist
+        _safe_add_columns(cur, "search_events", [
+            ("input_tokens",  "INTEGER DEFAULT 0"),
+            ("output_tokens", "INTEGER DEFAULT 0"),
+            ("total_tokens",  "INTEGER DEFAULT 0"),
+            ("user_email",    "TEXT DEFAULT ''"),
+        ])
+        _safe_add_columns(cur, "flagged_queries", [
+            ("flag_type",         "TEXT NOT NULL DEFAULT 'inaccurate'"),
+            ("container",         "TEXT DEFAULT ''"),
+            ("request_article",   "INTEGER DEFAULT 0"),
+            ("branch",            "TEXT DEFAULT ''"),
+            ("confidence_level",  "TEXT DEFAULT ''"),
+            ("duration_sec",      "DOUBLE PRECISION DEFAULT 0"),
+            ("input_tokens",      "INTEGER DEFAULT 0"),
+            ("output_tokens",     "INTEGER DEFAULT 0"),
+            ("total_tokens",      "INTEGER DEFAULT 0"),
+            ("files_read",        "INTEGER DEFAULT 0"),
+            ("iterations",        "INTEGER DEFAULT 0"),
+            ("searches",          "INTEGER DEFAULT 0"),
+        ])
         # API jobs table — async query processing
         cur.execute("""
             CREATE TABLE IF NOT EXISTS api_jobs (
@@ -202,8 +240,8 @@ def init_db():
                 user_email   TEXT    DEFAULT 'external_api',
                 result_json  TEXT,
                 error        TEXT,
-                created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-                completed_at TEXT
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                completed_at TIMESTAMPTZ
             )
         """)
         # Flagged queries table — stores responses users flag as unhelpful/missing
@@ -215,17 +253,17 @@ def init_db():
                 answer            TEXT,
                 explanation       TEXT,
                 flagged_by        TEXT,
-                flagged_at        TEXT NOT NULL DEFAULT (datetime('now')),
+                flagged_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 status            TEXT NOT NULL DEFAULT 'pending',
                 reviewed_by       TEXT,
-                reviewed_at       TEXT,
+                reviewed_at       TIMESTAMPTZ,
                 admin_notes       TEXT,
                 flag_type         TEXT NOT NULL DEFAULT 'inaccurate',
                 container         TEXT DEFAULT '',
                 request_article   INTEGER DEFAULT 0,
                 branch            TEXT DEFAULT '',
                 confidence_level  TEXT DEFAULT '',
-                duration_sec      REAL DEFAULT 0,
+                duration_sec      DOUBLE PRECISION DEFAULT 0,
                 input_tokens      INTEGER DEFAULT 0,
                 output_tokens     INTEGER DEFAULT 0,
                 total_tokens      INTEGER DEFAULT 0,
@@ -235,9 +273,25 @@ def init_db():
             )
         """)
         conn.commit()
-        conn.close()
     except Exception as e:
         print(f"[DB] Warning: could not init tracking tables: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+def _safe_add_columns(cur, table, columns):
+    """Add columns to a table, ignoring errors if they already exist."""
+    for col_name, col_type in columns:
+        cur.execute("SAVEPOINT add_col")
+        try:
+            cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}")
+            cur.execute("RELEASE SAVEPOINT add_col")
+        except Exception:
+            # Column already exists — rollback the failed statement and continue
+            cur.execute("ROLLBACK TO SAVEPOINT add_col")
 
 
 def track_search_event(loop_type: str, query: str, branch: str, status: str,
@@ -247,8 +301,11 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                        input_tokens: int = 0, output_tokens: int = 0,
                        user_email: str = ""):
     """Record a single loop search run."""
+    if not DATABASE_URL:
+        return
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_conn()
         cur  = conn.cursor()
         cur.execute(
             """INSERT INTO search_events
@@ -256,7 +313,7 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                 iterations, searches, confidence_level,
                 input_tokens, output_tokens, total_tokens, error_message,
                 user_email)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (loop_type, (query or "")[:300], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
              confidence_level or "",
@@ -264,25 +321,33 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
              error_message or "", user_email or ""),
         )
         conn.commit()
-        conn.close()
     except Exception as e:
         print(f"[DB] Warning: could not track search event: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 
-def query_db(sql: str) -> list:
+def query_db(sql: str, params=None) -> list:
     """Run a SELECT and return rows as list of dicts."""
+    if not DATABASE_URL:
+        return []
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cur  = conn.cursor()
-        cur.execute(sql)
+        conn = get_db_conn()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql, params)
         rows = [dict(r) for r in cur.fetchall()]
-        conn.close()
         return rows
     except Exception as e:
         print(f"[DB] Warning: query failed: {e}")
         return []
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 # Initialise tables on startup
@@ -1755,8 +1820,9 @@ def api_flag():
     status = "positive" if flag_type == "accurate" else "pending"
 
     flag_id = str(uuid.uuid4())
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_conn()
         cur  = conn.cursor()
         cur.execute(
             "INSERT INTO flagged_queries "
@@ -1765,7 +1831,7 @@ def api_flag():
             " branch, confidence_level, duration_sec, "
             " input_tokens, output_tokens, total_tokens, "
             " files_read, iterations, searches) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (flag_id, query, loop_type, answer, explanation, _current_user_email(), status,
              flag_type, container, request_article,
              data.get("branch", ""), data.get("confidence_level", ""),
@@ -1776,10 +1842,14 @@ def api_flag():
              data.get("searches", 0)),
         )
         conn.commit()
-        conn.close()
         return jsonify({"success": True, "flag_id": flag_id})
     except Exception as e:
+        if conn:
+            conn.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -1835,10 +1905,10 @@ def admin_export_csv(table_name):
 @app.route("/api/admin/stats")
 @admin_required
 def api_admin_stats():
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT COUNT(*) as total FROM flagged_queries")
         total = cur.fetchone()["total"]
         cur.execute("SELECT status, COUNT(*) as cnt FROM flagged_queries GROUP BY status")
@@ -1850,14 +1920,13 @@ def api_admin_stats():
         top_queries = [{"query": row["query"], "count": row["cnt"]} for row in cur.fetchall()]
         cur.execute(
             "SELECT DATE(flagged_at) as day, COUNT(*) as cnt FROM flagged_queries "
-            "WHERE flagged_at >= DATE('now', '-30 days') GROUP BY day ORDER BY day"
+            "WHERE flagged_at >= NOW() - INTERVAL '30 days' GROUP BY day ORDER BY day"
         )
-        daily_trend = [{"date": row["day"], "count": row["cnt"]} for row in cur.fetchall()]
+        daily_trend = [{"date": str(row["day"]), "count": row["cnt"]} for row in cur.fetchall()]
         cur.execute(
             "SELECT loop_type, COUNT(*) as cnt FROM flagged_queries GROUP BY loop_type"
         )
         by_loop = {row["loop_type"]: row["cnt"] for row in cur.fetchall()}
-        conn.close()
         return jsonify({
             "total": total,
             "pending": by_status.get("pending", 0),
@@ -1870,28 +1939,33 @@ def api_admin_stats():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 @app.route("/api/admin/flags")
 @admin_required
 def api_admin_flags():
     status_filter = request.args.get("status", "")
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         if status_filter:
             cur.execute(
-                "SELECT * FROM flagged_queries WHERE status = ? ORDER BY flagged_at DESC",
+                "SELECT * FROM flagged_queries WHERE status = %s ORDER BY flagged_at DESC",
                 (status_filter,),
             )
         else:
             cur.execute("SELECT * FROM flagged_queries ORDER BY flagged_at DESC")
         rows = [dict(r) for r in cur.fetchall()]
-        conn.close()
         return jsonify({"flags": rows})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 @app.route("/api/admin/user-rankings")
@@ -1901,16 +1975,16 @@ def api_admin_user_rankings():
 
     Optional query params: start_date, end_date (YYYY-MM-DD) to scope the window.
     """
+    conn = None
     try:
         start_date = request.args.get("start_date", "").strip()
         end_date   = request.args.get("end_date", "").strip()
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         where_clause = ""
-        params = []
+        params: list = []
         if start_date and end_date:
-            where_clause = "WHERE date(ran_at) >= date(?) AND date(ran_at) <= date(?)"
+            where_clause = "WHERE ran_at::date >= %s::date AND ran_at::date <= %s::date"
             params = [start_date, end_date]
         cur.execute(f"""
             SELECT
@@ -1923,7 +1997,7 @@ def api_admin_user_rankings():
             {where_clause}
             GROUP BY COALESCE(NULLIF(user_email, ''), 'unknown')
             ORDER BY query_count DESC
-        """, params)
+        """, params if params else None)
         rankings = []
         for row in cur.fetchall():
             inp = row["total_input_tokens"] or 0
@@ -1937,10 +2011,12 @@ def api_admin_user_rankings():
                 "total_tokens":        row["total_tokens"] or 0,
                 "estimated_cost":      round(cost, 4),
             })
-        conn.close()
         return jsonify({"rankings": rankings})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 @app.route("/api/admin/flags/<flag_id>", methods=["PATCH"])
@@ -1951,18 +2027,23 @@ def api_admin_update_flag(flag_id):
     admin_notes = data.get("admin_notes", "")
     if new_status not in ("pending", "reviewed", "dismissed", "article_created"):
         return jsonify({"error": "Invalid status"}), 400
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_conn()
         cur  = conn.cursor()
         cur.execute(
-            "UPDATE flagged_queries SET status=?, admin_notes=?, reviewed_by=?, reviewed_at=datetime('now') WHERE id=?",
+            "UPDATE flagged_queries SET status=%s, admin_notes=%s, reviewed_by=%s, reviewed_at=NOW() WHERE id=%s",
             (new_status, admin_notes, _current_user_email(), flag_id),
         )
         conn.commit()
-        conn.close()
         return jsonify({"success": True})
     except Exception as e:
+        if conn:
+            conn.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 @app.route("/api/admin/clear-events", methods=["POST"])
@@ -1979,20 +2060,25 @@ def api_admin_clear_events():
     end_date   = (data.get("end_date") or "").strip()
     if not start_date or not end_date:
         return jsonify({"error": "start_date and end_date are required (YYYY-MM-DD)"}), 400
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_conn()
         cur  = conn.cursor()
         cur.execute(
-            "DELETE FROM search_events WHERE date(ran_at) >= date(?) AND date(ran_at) <= date(?)",
+            "DELETE FROM search_events WHERE ran_at::date >= %s::date AND ran_at::date <= %s::date",
             (start_date, end_date),
         )
-        conn.commit()
         deleted = cur.rowcount
-        conn.close()
+        conn.commit()
         return jsonify({"success": True, "deleted": deleted,
                         "range": f"{start_date} to {end_date}"})
     except Exception as e:
+        if conn:
+            conn.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -2003,40 +2089,46 @@ def api_admin_clear_events():
 @admin_required
 def api_admin_search_event_ids():
     """Return a list of all search event IDs with basic metadata for browsing."""
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
             "SELECT id, ran_at, loop_type, query, branch, status, "
             "COALESCE(user_email, '') AS user_email "
             "FROM search_events ORDER BY ran_at DESC"
-        ).fetchall()
-        conn.close()
+        )
+        rows = [dict(r) for r in cur.fetchall()]
         return jsonify({
             "success": True,
             "count": len(rows),
-            "events": [dict(r) for r in rows],
+            "events": rows,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 @app.route("/api/admin/search-events/<int:event_id>", methods=["GET"])
 @admin_required
 def api_admin_search_event_detail(event_id):
     """Return full details for a single search event by ID."""
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT * FROM search_events WHERE id = ?", (event_id,)
-        ).fetchone()
-        conn.close()
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM search_events WHERE id = %s", (event_id,))
+        row = cur.fetchone()
         if not row:
             return jsonify({"error": f"Search event {event_id} not found"}), 404
         return jsonify({"success": True, "event": dict(row)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 @app.route("/api/admin/flags/<flag_id>/detail", methods=["GET"])
@@ -2044,18 +2136,20 @@ def api_admin_search_event_detail(event_id):
 def api_admin_flag_detail(flag_id):
     """Return full details for a single flagged query by ID,
     including the original answer and all response containers."""
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT * FROM flagged_queries WHERE id = ?", (flag_id,)
-        ).fetchone()
-        conn.close()
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM flagged_queries WHERE id = %s", (flag_id,))
+        row = cur.fetchone()
         if not row:
             return jsonify({"error": f"Flagged query {flag_id} not found"}), 404
         return jsonify({"success": True, "flag": dict(row)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -2175,13 +2269,15 @@ def _run_job_in_background(job_id, query, branch, user_email):
             user_email=user_email,
         )
 
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute(
-            "UPDATE api_jobs SET status='completed', result_json=?, completed_at=datetime('now') WHERE id=?",
-            (response_payload, job_id),
-        )
-        conn.commit()
-        conn.close()
+        conn = get_db_conn()
+        try:
+            conn.cursor().execute(
+                "UPDATE api_jobs SET status='completed', result_json=%s, completed_at=NOW() WHERE id=%s",
+                (response_payload, job_id),
+            )
+            conn.commit()
+        finally:
+            put_db_conn(conn)
 
     except Exception as e:
         total_time = round(time.time() - t0, 1)
@@ -2191,13 +2287,15 @@ def _run_job_in_background(job_id, query, branch, user_email):
             "metadata": {"total_time_sec": total_time},
         })
         try:
-            conn = sqlite3.connect(DB_PATH)
-            conn.execute(
-                "UPDATE api_jobs SET status='failed', error=?, result_json=?, completed_at=datetime('now') WHERE id=?",
-                (str(e), error_payload, job_id),
-            )
-            conn.commit()
-            conn.close()
+            conn = get_db_conn()
+            try:
+                conn.cursor().execute(
+                    "UPDATE api_jobs SET status='failed', error=%s, result_json=%s, completed_at=NOW() WHERE id=%s",
+                    (str(e), error_payload, job_id),
+                )
+                conn.commit()
+            finally:
+                put_db_conn(conn)
         except Exception:
             pass
 
@@ -2262,16 +2360,21 @@ def api_v1_query():
     # ── Async mode: create job and return immediately ──
     if use_async:
         job_id = str(uuid.uuid4())
+        conn = None
         try:
-            conn = sqlite3.connect(DB_PATH)
-            conn.execute(
-                "INSERT INTO api_jobs (id, status, query, branch, user_email) VALUES (?, 'processing', ?, ?, ?)",
+            conn = get_db_conn()
+            conn.cursor().execute(
+                "INSERT INTO api_jobs (id, status, query, branch, user_email) VALUES (%s, 'processing', %s, %s, %s)",
                 (job_id, query, branch, user_email),
             )
             conn.commit()
-            conn.close()
         except Exception as e:
+            if conn:
+                conn.rollback()
             return jsonify({"error": f"Could not create job: {e}"}), 500
+        finally:
+            if conn:
+                put_db_conn(conn)
 
         t = threading.Thread(target=_run_job_in_background, args=(job_id, query, branch, user_email), daemon=True)
         t.start()
@@ -2341,13 +2444,17 @@ def api_v1_query_status(job_id):
     if auth_err:
         return auth_err
 
+    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM api_jobs WHERE id=?", (job_id,)).fetchone()
-        conn.close()
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM api_jobs WHERE id=%s", (job_id,))
+        row = cur.fetchone()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
     if not row:
         return jsonify({"error": "Job not found.", "job_id": job_id}), 404
