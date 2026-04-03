@@ -920,6 +920,22 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
           <p style="font-size:.84rem;color:var(--muted)">Response: CSV file download</p>
         </div>
+        <div class="try-it">
+          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
+          <div class="try-field">
+            <label>Table Name</label>
+            <select data-param="table_name">
+              <option value="search_events">search_events</option>
+              <option value="flagged_queries">flagged_queries</option>
+              <option value="api_jobs">api_jobs</option>
+            </select>
+          </div>
+          <div class="try-actions">
+            <button class="try-btn" onclick="(function(btn){const t=btn.closest('.try-it').querySelector('[data-param=table_name]').value;window.open('/admin/export/'+encodeURIComponent(t),'_blank')})(this)">Download CSV</button>
+            <span class="try-status"></span>
+          </div>
+          <div class="try-result"></div>
+        </div>
       </div>
     </div>
 
