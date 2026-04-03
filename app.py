@@ -12,6 +12,7 @@ No external sources. No general knowledge fallback.
 import os
 import sys
 import json
+import re
 import asyncio
 import base64
 import io
@@ -211,10 +212,11 @@ def init_db():
         """)
         # Migrate existing tables: add columns if they don't already exist
         _safe_add_columns(cur, "search_events", [
-            ("input_tokens",  "INTEGER DEFAULT 0"),
-            ("output_tokens", "INTEGER DEFAULT 0"),
-            ("total_tokens",  "INTEGER DEFAULT 0"),
-            ("user_email",    "TEXT DEFAULT ''"),
+            ("input_tokens",      "INTEGER DEFAULT 0"),
+            ("output_tokens",     "INTEGER DEFAULT 0"),
+            ("total_tokens",      "INTEGER DEFAULT 0"),
+            ("user_email",        "TEXT DEFAULT ''"),
+            ("response_sections", "TEXT DEFAULT ''"),
         ])
         _safe_add_columns(cur, "flagged_queries", [
             ("flag_type",         "TEXT NOT NULL DEFAULT 'inaccurate'"),
@@ -294,15 +296,60 @@ def _safe_add_columns(cur, table, columns):
             cur.execute("ROLLBACK TO SAVEPOINT add_col")
 
 
+def _detect_response_sections(answer: str) -> str:
+    """Return a comma-separated list of which response sections are present."""
+    if not answer:
+        return ""
+    sections = []
+    if re.search(r"## Overview", answer, re.IGNORECASE):
+        sections.append("Overview")
+    if re.search(r"## User Guide", answer, re.IGNORECASE):
+        sections.append("User Guide")
+    if re.search(r"## Technical Reference", answer, re.IGNORECASE):
+        sections.append("Technical Reference")
+    return ", ".join(sections) if sections else "Unstructured"
+
+
+def _split_answer_sections(answer: str) -> dict:
+    """Split the agentic answer into the three container sections."""
+    if not answer:
+        return {"overview": "", "user_guide": "", "technical_reference": ""}
+
+    overview_match = re.search(
+        r"## Overview\s*\n([\s\S]*?)(?=\n---\s*\n|\n## User Guide|$)", answer, re.IGNORECASE
+    )
+    guide_match = re.search(
+        r"## User Guide\s*\n([\s\S]*?)(?=\n---\s*\n|\n## Technical Reference|$)", answer, re.IGNORECASE
+    )
+    tech_match = re.search(
+        r"## Technical Reference\s*\n([\s\S]*?)$", answer, re.IGNORECASE
+    )
+
+    overview = overview_match.group(1).strip() if overview_match else ""
+    user_guide = guide_match.group(1).strip() if guide_match else ""
+    technical_reference = tech_match.group(1).strip() if tech_match else ""
+
+    # Fallback: if no sections found, put everything in overview
+    if not overview and not user_guide and not technical_reference:
+        overview = answer.strip()
+
+    return {
+        "overview": overview,
+        "user_guide": user_guide,
+        "technical_reference": technical_reference,
+    }
+
+
 def track_search_event(loop_type: str, query: str, branch: str, status: str,
                        duration_sec: float, files_read: int = 0,
                        iterations: int = 0, searches: int = 0,
                        confidence_level: str = "", error_message: str = "",
                        input_tokens: int = 0, output_tokens: int = 0,
-                       user_email: str = ""):
+                       user_email: str = "", answer: str = ""):
     """Record a single loop search run."""
     if not DATABASE_URL:
         return
+    response_sections = _detect_response_sections(answer)
     conn = None
     try:
         conn = get_db_conn()
@@ -312,13 +359,13 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                (loop_type, query, branch, status, duration_sec, files_read,
                 iterations, searches, confidence_level,
                 input_tokens, output_tokens, total_tokens, error_message,
-                user_email)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                user_email, response_sections)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (loop_type, (query or "")[:300], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
              confidence_level or "",
              input_tokens, output_tokens, input_tokens + output_tokens,
-             error_message or "", user_email or ""),
+             error_message or "", user_email or "", response_sections),
         )
         conn.commit()
     except Exception as e:
@@ -649,6 +696,11 @@ def _clean_answer(text: str) -> str:
         cleaned,
         flags=re.MULTILINE,
     ).strip()
+
+    # ── Normalize deep headings (####+ → ###) for better cross-app rendering ──
+    # Many external apps (Jira, Teams, embedded webviews) don't render h4+
+    # headings, causing raw #### to appear as literal text.
+    cleaned = re.sub(r"^#{4,}\s+", "### ", cleaned, flags=re.MULTILINE)
 
     # ── Add footnote if files were flagged as missing ─────────────────────────
     if missing_files:
@@ -1326,6 +1378,7 @@ def api_agentic_stream():
                 input_tokens=result.get("input_tokens",  0),
                 output_tokens=result.get("output_tokens", 0),
                 user_email=_user_email,
+                answer=result.get("answer", ""),
             )
         except Exception as e:
             track_search_event("agentic", query, branch, "error", time.time() - t0,
@@ -1395,6 +1448,7 @@ def api_agentic_start():
                 input_tokens=result.get("input_tokens",  0),
                 output_tokens=result.get("output_tokens", 0),
                 user_email=_user_email,
+                answer=result.get("answer", ""),
             )
         except Exception as e:
             track_search_event("agentic", query, branch, "error",
@@ -1477,6 +1531,7 @@ def api_agentic():
             input_tokens=result.get("input_tokens",  0),
             output_tokens=result.get("output_tokens", 0),
             user_email=_user_email,
+            answer=result.get("answer", ""),
         )
         return jsonify({"success": True, "result": result})
     except Exception as e:
@@ -1858,10 +1913,11 @@ def api_flag():
 
 ADMIN_TABLES = {
     "search_events": (
-        "SELECT id, ran_at, loop_type, query, branch, status, "
-        "duration_sec, files_read, iterations, searches, confidence_level, "
-        "input_tokens, output_tokens, total_tokens, error_message, "
-        "COALESCE(user_email, '') AS user_email "
+        "SELECT id, branch, confidence_level, duration_sec, error_message, "
+        "files_read, input_tokens, iterations, output_tokens, "
+        "query, ran_at, searches, status, total_tokens, "
+        "COALESCE(user_email, '') AS user_email, "
+        "COALESCE(response_sections, '') AS response_sections "
         "FROM search_events ORDER BY ran_at DESC LIMIT 500"
     ),
 }
@@ -2046,41 +2102,6 @@ def api_admin_update_flag(flag_id):
             put_db_conn(conn)
 
 
-@app.route("/api/admin/clear-events", methods=["POST"])
-@admin_required
-def api_admin_clear_events():
-    """Delete search_events rows within a date range.
-
-    JSON body:
-        start_date  – ISO date string (YYYY-MM-DD), inclusive  (required)
-        end_date    – ISO date string (YYYY-MM-DD), inclusive  (required)
-    """
-    data = request.get_json() or {}
-    start_date = (data.get("start_date") or "").strip()
-    end_date   = (data.get("end_date") or "").strip()
-    if not start_date or not end_date:
-        return jsonify({"error": "start_date and end_date are required (YYYY-MM-DD)"}), 400
-    conn = None
-    try:
-        conn = get_db_conn()
-        cur  = conn.cursor()
-        cur.execute(
-            "DELETE FROM search_events WHERE ran_at::date >= %s::date AND ran_at::date <= %s::date",
-            (start_date, end_date),
-        )
-        deleted = cur.rowcount
-        conn.commit()
-        return jsonify({"success": True, "deleted": deleted,
-                        "range": f"{start_date} to {end_date}"})
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        return jsonify({"error": str(e)}), 500
-    finally:
-        if conn:
-            put_db_conn(conn)
-
-
 # ---------------------------------------------------------------------------
 # Admin — individual record lookups
 # ---------------------------------------------------------------------------
@@ -2241,18 +2262,23 @@ def _run_job_in_background(job_id, query, branch, user_email):
         result = run_agentic_loop(query, branch)
         total_time = round(time.time() - t0, 1)
 
+        raw_answer = result.get("answer", "")
+        sections = _split_answer_sections(raw_answer)
+
         response_payload = json.dumps({
             "success": True,
-            "answer":  result.get("answer", ""),
+            "answer":  raw_answer,
+            "sections": sections,
             "metadata": {
-                "branch":          branch,
-                "files_read":      result.get("total_files_read", 0),
-                "iterations":      result.get("total_iterations", 0),
-                "searches":        result.get("total_searches", 0),
-                "confidence":      result.get("confidence", {}).get("level", ""),
-                "elapsed_seconds": result.get("elapsed_seconds", total_time),
-                "input_tokens":    result.get("input_tokens", 0),
-                "output_tokens":   result.get("output_tokens", 0),
+                "branch":            branch,
+                "files_read":        result.get("total_files_read", 0),
+                "iterations":        result.get("total_iterations", 0),
+                "searches":          result.get("total_searches", 0),
+                "confidence":        result.get("confidence", {}).get("level", ""),
+                "elapsed_seconds":   result.get("elapsed_seconds", total_time),
+                "input_tokens":      result.get("input_tokens", 0),
+                "output_tokens":     result.get("output_tokens", 0),
+                "response_sections": _detect_response_sections(raw_answer),
             },
         })
 
@@ -2267,6 +2293,7 @@ def _run_job_in_background(job_id, query, branch, user_email):
             input_tokens=result.get("input_tokens", 0),
             output_tokens=result.get("output_tokens", 0),
             user_email=user_email,
+            answer=result.get("answer", ""),
         )
 
         conn = get_db_conn()
@@ -2355,7 +2382,8 @@ def api_v1_query():
         except Exception:
             branch = "main"
 
-    user_email = request.headers.get("X-User-Email", "external_api").strip() or "external_api"
+    raw_email = request.headers.get("X-User-Email", "").strip()
+    user_email = f"external_api ({raw_email})" if raw_email else "external_api"
 
     # ── Async mode: create job and return immediately ──
     if use_async:
@@ -2410,20 +2438,26 @@ def api_v1_query():
         input_tokens=result.get("input_tokens", 0),
         output_tokens=result.get("output_tokens", 0),
         user_email=user_email,
+        answer=result.get("answer", ""),
     )
+
+    raw_answer = result.get("answer", "")
+    sections = _split_answer_sections(raw_answer)
 
     return jsonify({
         "success": True,
-        "answer":  result.get("answer", ""),
+        "answer":  raw_answer,
+        "sections": sections,
         "metadata": {
-            "branch":          branch,
-            "files_read":      result.get("total_files_read", 0),
-            "iterations":      result.get("total_iterations", 0),
-            "searches":        result.get("total_searches", 0),
-            "confidence":      result.get("confidence", {}).get("level", ""),
-            "elapsed_seconds": result.get("elapsed_seconds", total_time),
-            "input_tokens":    result.get("input_tokens", 0),
-            "output_tokens":   result.get("output_tokens", 0),
+            "branch":            branch,
+            "files_read":        result.get("total_files_read", 0),
+            "iterations":        result.get("total_iterations", 0),
+            "searches":          result.get("total_searches", 0),
+            "confidence":        result.get("confidence", {}).get("level", ""),
+            "elapsed_seconds":   result.get("elapsed_seconds", total_time),
+            "input_tokens":      result.get("input_tokens", 0),
+            "output_tokens":     result.get("output_tokens", 0),
+            "response_sections": _detect_response_sections(raw_answer),
         },
     })
 

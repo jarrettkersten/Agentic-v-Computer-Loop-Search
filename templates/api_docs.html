@@ -200,7 +200,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
     <div class="sidebar-section">
       <div class="sidebar-title">Query</div>
       <a class="sidebar-link" data-target="ep-query"><span class="method-tag post">POST</span> /api/query</a>
-      <a class="sidebar-link" data-target="ep-poll"><span class="method-tag get">GET</span> /api/query/:id</a>
+      <a class="sidebar-link" data-target="ep-poll"><span class="method-tag get">GET</span> /api/query/{id}</a>
     </div>
 
     <div class="sidebar-section">
@@ -214,13 +214,13 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       <a class="sidebar-link" data-target="ep-admin-stats"><span class="method-tag get">GET</span> /api/admin/stats</a>
       <a class="sidebar-link" data-target="ep-admin-flags"><span class="method-tag get">GET</span> /api/admin/flags</a>
       <a class="sidebar-link" data-target="ep-admin-rankings"><span class="method-tag get">GET</span> /api/admin/user-rankings</a>
-      <a class="sidebar-link" data-target="ep-admin-flag-update"><span class="method-tag patch">PATCH</span> /api/admin/flags/:id</a>
+      <a class="sidebar-link" data-target="ep-admin-flag-update"><span class="method-tag patch">PATCH</span> /api/admin/flags/{id}</a>
       <a class="sidebar-link" data-target="ep-admin-event-list"><span class="method-tag get">GET</span> /api/admin/search-events</a>
-      <a class="sidebar-link" data-target="ep-admin-event-detail"><span class="method-tag get">GET</span> /api/admin/search-events/:id</a>
-      <a class="sidebar-link" data-target="ep-admin-flag-detail"><span class="method-tag get">GET</span> /api/admin/flags/:id/detail</a>
-      <a class="sidebar-link" data-target="ep-admin-clear"><span class="method-tag post">POST</span> /api/admin/clear-events</a>
-      <a class="sidebar-link" data-target="ep-admin-data"><span class="method-tag get">GET</span> /admin/data/:table</a>
-      <a class="sidebar-link" data-target="ep-admin-export"><span class="method-tag get">GET</span> /admin/export/:table</a>
+      <a class="sidebar-link" data-target="ep-admin-event-detail"><span class="method-tag get">GET</span> /api/admin/search-events/{id}</a>
+      <a class="sidebar-link" data-target="ep-admin-flag-detail"><span class="method-tag get">GET</span> /api/admin/flags/{id}/detail</a>
+
+      <a class="sidebar-link" data-target="ep-admin-data"><span class="method-tag get">GET</span> /admin/data/{table}</a>
+      <a class="sidebar-link" data-target="ep-admin-export"><span class="method-tag get">GET</span> /admin/export/{table}</a>
     </div>
   </nav>
 
@@ -284,7 +284,12 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
             <h4>Response (sync)</h4>
             <div class="code-block"><span class="label">200 OK</span><pre>{
   <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n..."</span>,
+  <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n...## User Guide\n...## Technical Reference\n..."</span>,
+  <span class="json-key">"sections"</span>: {
+    <span class="json-key">"overview"</span>: <span class="json-str">"Plain-English explanation of the feature..."</span>,
+    <span class="json-key">"user_guide"</span>: <span class="json-str">"Step-by-step instructions for using..."</span>,
+    <span class="json-key">"technical_reference"</span>: <span class="json-str">"Full technical detail with code snippets..."</span>
+  },
   <span class="json-key">"metadata"</span>: {
     <span class="json-key">"branch"</span>: <span class="json-str">"supported_release-1.25.2"</span>,
     <span class="json-key">"files_read"</span>: <span class="json-num">18</span>,
@@ -293,7 +298,8 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
     <span class="json-key">"confidence"</span>: <span class="json-str">"high"</span>,
     <span class="json-key">"elapsed_seconds"</span>: <span class="json-num">47.2</span>,
     <span class="json-key">"input_tokens"</span>: <span class="json-num">52000</span>,
-    <span class="json-key">"output_tokens"</span>: <span class="json-num">9200</span>
+    <span class="json-key">"output_tokens"</span>: <span class="json-num">9200</span>,
+    <span class="json-key">"response_sections"</span>: <span class="json-str">"Overview, User Guide, Technical Reference"</span>
   }
 }</pre></div>
           </div>
@@ -313,7 +319,11 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
           <div class="try-field">
             <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"query": "How does the EAC Submit button work?", "branch": "", "async": false}</textarea>
+            <textarea data-param="body">{
+  "query": "How does the EAC Submit button work?",
+  "branch": "",
+  "async": false
+}</textarea>
           </div>
           <div class="try-actions">
             <button class="try-btn" onclick="tryEndpointBearer(this, 'POST', '/api/query')">Send Request</button>
@@ -632,7 +642,10 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
           <div class="try-field">
             <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"status": "reviewed", "admin_notes": "Confirmed accurate"}</textarea>
+            <textarea data-param="body">{
+  "status": "reviewed",
+  "admin_notes": "Confirmed accurate"
+}</textarea>
           </div>
           <div class="try-actions">
             <button class="try-btn" onclick="tryEndpointDynamic(this, 'PATCH', '/api/admin/flags/{flag_id}', ['flag_id'], true)">Send Request</button>
@@ -686,7 +699,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       </div>
     </div>
 
-    <!-- GET /api/admin/search-events/:id -->
+    <!-- GET /api/admin/search-events/{id} -->
     <div class="endpoint-card" id="ep-admin-event-detail">
       <div class="endpoint-header" onclick="toggleEndpoint(this)">
         <span class="endpoint-method get">GET</span>
@@ -727,7 +740,8 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
     <span class="json-key">"output_tokens"</span>: <span class="json-num">9200</span>,
     <span class="json-key">"total_tokens"</span>: <span class="json-num">61200</span>,
     <span class="json-key">"error_message"</span>: <span class="json-null">null</span>,
-    <span class="json-key">"user_email"</span>: <span class="json-str">"user@corasystems.com"</span>
+    <span class="json-key">"user_email"</span>: <span class="json-str">"user@corasystems.com"</span>,
+    <span class="json-key">"response_sections"</span>: <span class="json-str">"Overview, User Guide, Technical Reference"</span>
   }
 }</pre></div>
           </div>
@@ -747,7 +761,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       </div>
     </div>
 
-    <!-- GET /api/admin/flags/:id/detail -->
+    <!-- GET /api/admin/flags/{id}/detail -->
     <div class="endpoint-card" id="ep-admin-flag-detail">
       <div class="endpoint-header" onclick="toggleEndpoint(this)">
         <span class="endpoint-method get">GET</span>
@@ -808,53 +822,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
           <div class="try-actions">
             <button class="try-btn" onclick="tryEndpointDynamic(this, 'GET', '/api/admin/flags/{flag_id}/detail', ['flag_id'], false)">Send Request</button>
-            <span class="try-status"></span>
-          </div>
-          <div class="try-result"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- POST /api/admin/clear-events -->
-    <div class="endpoint-card" id="ep-admin-clear">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/admin/clear-events</span>
-        <span class="endpoint-desc">Delete search events by date range</span>
-        <span class="endpoint-auth auth-admin">Admin</span>
-        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="endpoint-body">
-        <div class="endpoint-detail">
-          <p>Deletes search event records within a specified date range. Useful for database maintenance.</p>
-          <div class="param-section">
-            <h4>Request Body</h4>
-            <table class="param-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-              <tbody>
-                <tr><td class="param-name">start_date</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Start of date range (YYYY-MM-DD)</td></tr>
-                <tr><td class="param-name">end_date</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">End of date range (YYYY-MM-DD)</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <h4>Response</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"deleted"</span>: <span class="json-num">128</span>,
-  <span class="json-key">"range"</span>: {<span class="json-key">"start"</span>: <span class="json-str">"2026-01-01"</span>, <span class="json-key">"end"</span>: <span class="json-str">"2026-02-01"</span>}
-}</pre></div>
-          </div>
-        </div>
-        <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
-          <div class="try-field">
-            <label>Request Body (JSON)</label>
-            <textarea data-param="body">{"start_date": "2026-01-01", "end_date": "2026-02-01"}</textarea>
-          </div>
-          <p style="font-size:.78rem;color:var(--error);margin-bottom:8px">Caution: This permanently deletes search event records.</p>
-          <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'POST', '/api/admin/clear-events', true)">Send Request</button>
             <span class="try-status"></span>
           </div>
           <div class="try-result"></div>
@@ -952,7 +919,23 @@ document.getElementById('baseUrl').textContent = window.location.origin;
 // ── Toggle endpoint expand/collapse ──
 function toggleEndpoint(header) {
   const card = header.closest('.endpoint-card');
+  const isOpening = !card.classList.contains('open');
+
+  // Collapse all other cards
+  document.querySelectorAll('.endpoint-card.open').forEach(c => {
+    if (c !== card) c.classList.remove('open');
+  });
+
   card.classList.toggle('open');
+
+  // If opening, scroll so the card header sits at the top of the viewport
+  if (isOpening) {
+    setTimeout(() => {
+      const headerHeight = document.querySelector('header').offsetHeight || 58;
+      const cardTop = card.getBoundingClientRect().top + window.scrollY - headerHeight - 12;
+      window.scrollTo({ top: cardTop, behavior: 'smooth' });
+    }, 50);
+  }
 }
 
 // ── Sidebar navigation ──
@@ -966,10 +949,22 @@ document.querySelectorAll('.sidebar-link').forEach(link => {
       clickNavActive = true;
       document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
       link.classList.add('active');
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      // Collapse all other cards, open the target
+      document.querySelectorAll('.endpoint-card.open').forEach(c => {
+        if (c !== target) c.classList.remove('open');
+      });
       if (!target.classList.contains('open')) {
-        target.querySelector('.endpoint-header').click();
+        target.classList.add('open');
       }
+
+      // Scroll so the card header sits at the top of the viewport
+      setTimeout(() => {
+        const headerHeight = document.querySelector('header').offsetHeight || 58;
+        const cardTop = target.getBoundingClientRect().top + window.scrollY - headerHeight - 12;
+        window.scrollTo({ top: cardTop, behavior: 'smooth' });
+      }, 50);
+
       // Re-enable observer after scroll settles
       setTimeout(() => { clickNavActive = false; }, 800);
     }
