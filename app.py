@@ -2383,18 +2383,25 @@ def api_v1_query():
     Submits a query for processing and returns a job_id immediately.
     Poll /api/query/<job_id> for results.
 
-    Optionally include a screenshot (base64) — Claude will extract UI context
-    and append it to the query automatically, just like the web UI.
+    Optionally include a screenshot — Claude will extract UI context and
+    append it to the query automatically, just like the web UI.
 
-    Request JSON:
+    Accepts two content types:
+
+    1) application/json — screenshot as base64 in the JSON body:
         {
-            "query":  "How does the EAC Submit button work on the Project Forecasting page?",
-            "branch": "supported_release-1.25.2",   // optional
-            "screenshot": {                          // optional
+            "query":  "Why is the EAC Submit button greyed out?",
+            "branch": "supported_release-1.25.2",
+            "screenshot": {
                 "image_b64": "<base64-encoded image>",
-                "mime_type": "image/png"             // optional, default: image/png
+                "mime_type": "image/png"
             }
         }
+
+    2) multipart/form-data — screenshot as a file upload:
+        query:      "Why is the EAC Submit button greyed out?"
+        branch:     "supported_release-1.25.2"    (optional)
+        screenshot: <file>                         (optional)
 
     Response JSON (202 Accepted):
         {
@@ -2402,7 +2409,7 @@ def api_v1_query():
             "status":    "processing",
             "poll_url":  "/api/query/abc-123",
             "message":   "Query submitted. Poll poll_url for results.",
-            "screenshot_context": "..."              // only present if screenshot was provided
+            "screenshot_context": "..."
         }
 
     Auth: Bearer token via EXTERNAL_API_KEY env var.
@@ -2412,10 +2419,27 @@ def api_v1_query():
     if auth_err:
         return auth_err
 
-    # ── Parse request ──
-    data   = request.get_json(force=True) or {}
-    query  = data.get("query", "").strip()
-    branch = data.get("branch", "").strip()
+    # ── Parse request (JSON or multipart/form-data) ──
+    image_b64 = ""
+    mime_type = "image/png"
+
+    if request.content_type and "multipart/form-data" in request.content_type:
+        # ── Multipart: fields + file upload ──
+        query  = (request.form.get("query") or "").strip()
+        branch = (request.form.get("branch") or "").strip()
+        file   = request.files.get("screenshot")
+        if file and file.filename:
+            image_b64 = base64.b64encode(file.read()).decode()
+            mime_type  = file.content_type or "image/png"
+    else:
+        # ── JSON body ──
+        data   = request.get_json(force=True) or {}
+        query  = data.get("query", "").strip()
+        branch = data.get("branch", "").strip()
+        screenshot_data = data.get("screenshot")
+        if screenshot_data and isinstance(screenshot_data, dict):
+            image_b64 = screenshot_data.get("image_b64", "").strip()
+            mime_type  = screenshot_data.get("mime_type", "image/png").strip()
 
     if not query:
         return jsonify({"error": "No query provided."}), 400
@@ -2433,15 +2457,11 @@ def api_v1_query():
 
     # ── Extract screenshot context (if provided) ──
     screenshot_context = ""
-    screenshot_data = data.get("screenshot")
-    if screenshot_data and isinstance(screenshot_data, dict):
-        image_b64 = screenshot_data.get("image_b64", "").strip()
-        mime_type = screenshot_data.get("mime_type", "image/png").strip()
-        if image_b64:
-            try:
-                screenshot_context = _extract_screenshot_context(image_b64, mime_type)
-            except Exception as e:
-                return jsonify({"error": f"Screenshot extraction failed: {e}"}), 400
+    if image_b64:
+        try:
+            screenshot_context = _extract_screenshot_context(image_b64, mime_type)
+        except Exception as e:
+            return jsonify({"error": f"Screenshot extraction failed: {e}"}), 400
 
     # ── Build final query with screenshot context (matches UI behavior) ──
     final_query = query
