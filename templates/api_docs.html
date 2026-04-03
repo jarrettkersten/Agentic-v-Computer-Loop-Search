@@ -46,7 +46,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
 .header-links a:hover { color: #fff; background: rgba(255,255,255,.1) }
 
 /* ── Layout ── */
-.layout { display: flex; max-width: 1440px; margin: 0 auto; min-height: calc(100vh - 58px) }
+.layout { display: flex; max-width: 90%; margin: 0 auto; min-height: calc(100vh - 58px) }
 
 /* ── Sidebar ── */
 .sidebar { width: 280px; background: var(--card); border-right: 1px solid var(--border); padding: 20px 0; overflow-y: auto; position: sticky; top: 58px; height: calc(100vh - 58px); flex-shrink: 0 }
@@ -55,7 +55,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
 .sidebar-link { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px; text-decoration: none; color: var(--text); font-size: .84rem; transition: all .12s; cursor: pointer }
 .sidebar-link:hover { background: var(--bg) }
 .sidebar-link.active { background: var(--brand-light); color: #fff }
-.sidebar-link.active .method-tag { color: #fff; border-color: rgba(255,255,255,.3) }
+.sidebar-link.active .method-tag { background: rgba(255,255,255,.2); border-color: rgba(255,255,255,.35); color: #fff; font-weight: 700 }
 .method-tag { font-size: .65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; min-width: 38px; text-align: center; letter-spacing: .03em; flex-shrink: 0 }
 .method-tag.get { color: var(--get); background: var(--get-bg); border: 1px solid var(--get-border) }
 .method-tag.post { color: var(--post); background: var(--post-bg); border: 1px solid var(--post-border) }
@@ -175,14 +175,16 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
 
 <header>
   <div class="logo">
-    <a href="/">Cora Code Investigator</a>
+    <img src="https://corasystems.com/_next/static/media/cora-logo-white.3ac9db11.svg" alt="Cora" height="22" style="display:block"/>
+    <span class="sep"></span>
+    <a href="/" style="color:#fff;text-decoration:none">Cora Code Investigator</a>
     <span class="sep"></span>
     <span style="font-weight:400;font-size:.88rem;opacity:.75">API Reference</span>
   </div>
   <div class="header-links">
-    {% if is_admin %}<a href="/admin" target="_blank" rel="noopener">Admin</a>{% endif %}
     {% if not auth_disabled and user %}
-    <span class="header-badge">{{ user.get('name', user.get('email', 'User')) }}</span>
+    <span style="color:rgba(255,255,255,.7);font-size:.8rem">{{ user.get('displayName', user.get('name', user.get('email', ''))) }}</span>
+    <a href="/logout" style="color:rgba(255,255,255,.6);font-size:.78rem;text-decoration:none">Sign out</a>
     {% endif %}
   </div>
 </header>
@@ -197,13 +199,13 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
 
     <div class="sidebar-section">
       <div class="sidebar-title">Query</div>
-      <a class="sidebar-link" data-target="ep-v1-query"><span class="method-tag post">POST</span> /api/v1/query</a>
-      <a class="sidebar-link" data-target="ep-v1-poll"><span class="method-tag get">GET</span> /api/v1/query/:id</a>
+      <a class="sidebar-link" data-target="ep-query"><span class="method-tag post">POST</span> /api/query</a>
+      <a class="sidebar-link" data-target="ep-poll"><span class="method-tag get">GET</span> /api/query/:id</a>
     </div>
 
     <div class="sidebar-section">
       <div class="sidebar-title">Utilities</div>
-      <a class="sidebar-link" data-target="ep-v1-health"><span class="method-tag get">GET</span> /api/v1/health</a>
+      <a class="sidebar-link" data-target="ep-health"><span class="method-tag get">GET</span> /api/health</a>
       <a class="sidebar-link" data-target="ep-branches"><span class="method-tag get">GET</span> /api/branches</a>
     </div>
 
@@ -243,13 +245,13 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
     <!-- ═══════════════════════════════════════════════════ -->
     <!-- QUERY                                               -->
     <!-- ═══════════════════════════════════════════════════ -->
-    <div class="section-sep" id="section-v1">Query</div>
+    <div class="section-sep" id="section-query">Query</div>
 
-    <!-- POST /api/v1/query -->
-    <div class="endpoint-card" id="ep-v1-query">
+    <!-- POST /api/query -->
+    <div class="endpoint-card" id="ep-query">
       <div class="endpoint-header" onclick="toggleEndpoint(this)">
         <span class="endpoint-method post">POST</span>
-        <span class="endpoint-path">/api/v1/query</span>
+        <span class="endpoint-path">/api/query</span>
         <span class="endpoint-desc">Unified query endpoint (sync/async)</span>
         <span class="endpoint-auth auth-bearer">Bearer</span>
         <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
@@ -299,7 +301,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
             <h4>Response (async)</h4>
             <div class="code-block"><span class="label">202 Accepted</span><pre>{
   <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
-  <span class="json-key">"poll_url"</span>: <span class="json-str">"/api/v1/query/a1b2c3d4-..."</span>
+  <span class="json-key">"poll_url"</span>: <span class="json-str">"/api/query/a1b2c3d4-..."</span>
 }</pre></div>
           </div>
         </div>
@@ -314,7 +316,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
             <textarea data-param="body">{"query": "How does the EAC Submit button work?", "branch": "", "async": false}</textarea>
           </div>
           <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpointBearer(this, 'POST', '/api/v1/query')">Send Request</button>
+            <button class="try-btn" onclick="tryEndpointBearer(this, 'POST', '/api/query')">Send Request</button>
             <span class="try-status"></span>
           </div>
           <div class="try-result"></div>
@@ -322,18 +324,18 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       </div>
     </div>
 
-    <!-- GET /api/v1/query/<job_id> -->
-    <div class="endpoint-card" id="ep-v1-poll">
+    <!-- GET /api/query/<job_id> -->
+    <div class="endpoint-card" id="ep-poll">
       <div class="endpoint-header" onclick="toggleEndpoint(this)">
         <span class="endpoint-method get">GET</span>
-        <span class="endpoint-path">/api/v1/query/<span style="color:var(--brand-light)">{job_id}</span></span>
+        <span class="endpoint-path">/api/query/<span style="color:var(--brand-light)">{job_id}</span></span>
         <span class="endpoint-desc">Poll async query result</span>
         <span class="endpoint-auth auth-bearer">Bearer</span>
         <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="endpoint-body">
         <div class="endpoint-detail">
-          <p>Polls for the result of an async query started via <code>/api/v1/query</code>. Returns the result when complete, or a processing status with progress info.</p>
+          <p>Polls for the result of an async query started via <code>/api/query</code>. Returns the result when complete, or a processing status with progress info.</p>
           <div class="param-section">
             <h4>Path Parameters</h4>
             <table class="param-table">
@@ -370,7 +372,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
             <input type="text" data-param="job_id" placeholder="a1b2c3d4-e5f6-..."/>
           </div>
           <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpointBearerDynamic(this, 'GET', '/api/v1/query/{job_id}', ['job_id'])">Send Request</button>
+            <button class="try-btn" onclick="tryEndpointBearerDynamic(this, 'GET', '/api/query/{job_id}', ['job_id'])">Send Request</button>
             <span class="try-status"></span>
           </div>
           <div class="try-result"></div>
@@ -386,11 +388,11 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
     <!-- ═══════════════════════════════════════════════════ -->
     <div class="section-sep" id="section-utilities">Utilities</div>
 
-    <!-- GET /api/v1/health -->
-    <div class="endpoint-card" id="ep-v1-health">
+    <!-- GET /api/health -->
+    <div class="endpoint-card" id="ep-health">
       <div class="endpoint-header" onclick="toggleEndpoint(this)">
         <span class="endpoint-method get">GET</span>
-        <span class="endpoint-path">/api/v1/health</span>
+        <span class="endpoint-path">/api/health</span>
         <span class="endpoint-desc">API health check</span>
         <span class="endpoint-auth auth-public">Public</span>
         <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
@@ -409,7 +411,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
         <div class="try-it">
           <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/v1/health')">Send Request</button>
+            <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/health')">Send Request</button>
             <span class="try-status"></span>
           </div>
           <div class="try-result"></div>
@@ -954,17 +956,22 @@ function toggleEndpoint(header) {
 }
 
 // ── Sidebar navigation ──
+let clickNavActive = false;
 document.querySelectorAll('.sidebar-link').forEach(link => {
   link.addEventListener('click', e => {
     e.preventDefault();
     const target = document.getElementById(link.dataset.target);
     if (target) {
+      // Pause observer-based highlighting during click navigation
+      clickNavActive = true;
+      document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+      link.classList.add('active');
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       if (!target.classList.contains('open')) {
         target.querySelector('.endpoint-header').click();
       }
-      document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
-      link.classList.add('active');
+      // Re-enable observer after scroll settles
+      setTimeout(() => { clickNavActive = false; }, 800);
     }
   });
 });
@@ -1103,6 +1110,7 @@ async function tryEndpointBearerDynamic(btn, method, urlTemplate, params) {
 
 // ── Active sidebar tracking on scroll ──
 const observer = new IntersectionObserver(entries => {
+  if (clickNavActive) return; // Don't override click-based highlight
   for (const entry of entries) {
     if (entry.isIntersecting) {
       const id = entry.target.id;

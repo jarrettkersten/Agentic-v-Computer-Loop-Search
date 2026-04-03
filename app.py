@@ -2300,14 +2300,14 @@ def _run_job_in_background(job_id, query, branch, user_email):
             pass
 
 
-@app.route("/api/v1/query", methods=["POST"])
+@app.route("/api/query", methods=["POST"])
 def api_v1_query():
     """
     Unified external query endpoint.
 
     Supports two modes:
       • Synchronous (default): blocks until search completes and returns the answer.
-      • Async (pass "async": true): returns a job_id immediately, poll /api/v1/query/<job_id> for results.
+      • Async (pass "async": true): returns a job_id immediately, poll /api/query/<job_id> for results.
 
     Request JSON:
         {
@@ -2327,7 +2327,7 @@ def api_v1_query():
         {
             "job_id":    "abc-123",
             "status":    "pending",
-            "poll_url":  "/api/v1/query/abc-123",
+            "poll_url":  "/api/query/abc-123",
             "message":   "Query submitted. Poll poll_url for results."
         }
 
@@ -2382,7 +2382,7 @@ def api_v1_query():
         return jsonify({
             "job_id":   job_id,
             "status":   "processing",
-            "poll_url": f"/api/v1/query/{job_id}",
+            "poll_url": f"/api/query/{job_id}",
             "message":  "Query submitted. Poll poll_url for results.",
         }), 202
 
@@ -2428,7 +2428,7 @@ def api_v1_query():
     })
 
 
-@app.route("/api/v1/query/<job_id>", methods=["GET"])
+@app.route("/api/query/<job_id>", methods=["GET"])
 def api_v1_query_status(job_id):
     """
     Poll for async query results.
@@ -2482,7 +2482,7 @@ def api_v1_query_status(job_id):
     return jsonify(result)
 
 
-@app.route("/api/v1/health", methods=["GET"])
+@app.route("/api/health", methods=["GET"])
 def api_v1_health():
     """Public health check for the external API."""
     return jsonify({
