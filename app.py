@@ -217,6 +217,7 @@ def init_db():
             ("total_tokens",      "INTEGER DEFAULT 0"),
             ("user_email",        "TEXT DEFAULT ''"),
             ("response_sections", "TEXT DEFAULT ''"),
+            ("job_id",            "TEXT DEFAULT ''"),
         ])
         _safe_add_columns(cur, "flagged_queries", [
             ("flag_type",         "TEXT NOT NULL DEFAULT 'inaccurate'"),
@@ -345,7 +346,8 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                        iterations: int = 0, searches: int = 0,
                        confidence_level: str = "", error_message: str = "",
                        input_tokens: int = 0, output_tokens: int = 0,
-                       user_email: str = "", answer: str = ""):
+                       user_email: str = "", answer: str = "",
+                       job_id: str = ""):
     """Record a single loop search run."""
     if not DATABASE_URL:
         return
@@ -359,13 +361,14 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                (loop_type, query, branch, status, duration_sec, files_read,
                 iterations, searches, confidence_level,
                 input_tokens, output_tokens, total_tokens, error_message,
-                user_email, response_sections)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                user_email, response_sections, job_id)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (loop_type, (query or "")[:300], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
              confidence_level or "",
              input_tokens, output_tokens, input_tokens + output_tokens,
-             error_message or "", user_email or "", response_sections),
+             error_message or "", user_email or "", response_sections,
+             job_id or ""),
         )
         conn.commit()
     except Exception as e:
@@ -1917,7 +1920,8 @@ ADMIN_TABLES = {
         "files_read, input_tokens, iterations, output_tokens, "
         "query, ran_at, searches, status, total_tokens, "
         "COALESCE(user_email, '') AS user_email, "
-        "COALESCE(response_sections, '') AS response_sections "
+        "COALESCE(response_sections, '') AS response_sections, "
+        "COALESCE(job_id, '') AS job_id "
         "FROM search_events ORDER BY ran_at DESC LIMIT 500"
     ),
     "flagged_queries": (
@@ -2142,7 +2146,8 @@ def api_admin_search_event_ids():
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             "SELECT id, ran_at, loop_type, query, branch, status, "
-            "COALESCE(user_email, '') AS user_email "
+            "COALESCE(user_email, '') AS user_email, "
+            "COALESCE(job_id, '') AS job_id "
             "FROM search_events ORDER BY ran_at DESC"
         )
         rows = [dict(r) for r in cur.fetchall()]
@@ -2320,6 +2325,7 @@ def _run_job_in_background(job_id, query, branch, user_email):
             output_tokens=result.get("output_tokens", 0),
             user_email=user_email,
             answer=result.get("answer", ""),
+            job_id=job_id,
         )
 
         conn = get_db_conn()
@@ -2356,30 +2362,21 @@ def _run_job_in_background(job_id, query, branch, user_email):
 @app.route("/api/query", methods=["POST"])
 def api_v1_query():
     """
-    Unified external query endpoint.
+    External query endpoint (async).
 
-    Supports two modes:
-      • Synchronous (default): blocks until search completes and returns the answer.
-      • Async (pass "async": true): returns a job_id immediately, poll /api/query/<job_id> for results.
+    Submits a query for processing and returns a job_id immediately.
+    Poll /api/query/<job_id> for results.
 
     Request JSON:
         {
             "query":  "How does the EAC Submit button work on the Project Forecasting page?",
-            "branch": "supported_release-1.25.2",   // optional, default: first available
-            "async":  true                           // optional, default: false (sync)
+            "branch": "supported_release-1.25.2"   // optional, default: first available
         }
 
-    Sync Response JSON:
-        {
-            "success":  true,
-            "answer":   "## Answer\\n...",
-            "metadata": { ... }
-        }
-
-    Async Response JSON (202 Accepted):
+    Response JSON (202 Accepted):
         {
             "job_id":    "abc-123",
-            "status":    "pending",
+            "status":    "processing",
             "poll_url":  "/api/query/abc-123",
             "message":   "Query submitted. Poll poll_url for results."
         }
@@ -2395,7 +2392,6 @@ def api_v1_query():
     data   = request.get_json(force=True) or {}
     query  = data.get("query", "").strip()
     branch = data.get("branch", "").strip()
-    use_async = data.get("async", False)
 
     if not query:
         return jsonify({"error": "No query provided."}), 400
@@ -2411,81 +2407,33 @@ def api_v1_query():
     raw_email = request.headers.get("X-User-Email", "").strip()
     user_email = f"external_api ({raw_email})" if raw_email else "external_api"
 
-    # ── Async mode: create job and return immediately ──
-    if use_async:
-        job_id = str(uuid.uuid4())
-        conn = None
-        try:
-            conn = get_db_conn()
-            conn.cursor().execute(
-                "INSERT INTO api_jobs (id, status, query, branch, user_email) VALUES (%s, 'processing', %s, %s, %s)",
-                (job_id, query, branch, user_email),
-            )
-            conn.commit()
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            return jsonify({"error": f"Could not create job: {e}"}), 500
-        finally:
-            if conn:
-                put_db_conn(conn)
-
-        t = threading.Thread(target=_run_job_in_background, args=(job_id, query, branch, user_email), daemon=True)
-        t.start()
-
-        return jsonify({
-            "job_id":   job_id,
-            "status":   "processing",
-            "poll_url": f"/api/query/{job_id}",
-            "message":  "Query submitted. Poll poll_url for results.",
-        }), 202
-
-    # ── Sync mode (default): block until complete ──
-    t0 = time.time()
-
+    # ── Create job and return immediately ──
+    job_id = str(uuid.uuid4())
+    conn = None
     try:
-        result = run_agentic_loop(query, branch)
+        conn = get_db_conn()
+        conn.cursor().execute(
+            "INSERT INTO api_jobs (id, status, query, branch, user_email) VALUES (%s, 'processing', %s, %s, %s)",
+            (job_id, query, branch, user_email),
+        )
+        conn.commit()
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error":   str(e),
-            "metadata": {"total_time_sec": round(time.time() - t0, 1)},
-        }), 500
+        if conn:
+            conn.rollback()
+        return jsonify({"error": f"Could not create job: {e}"}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
-    total_time = round(time.time() - t0, 1)
-
-    track_search_event(
-        "external_api", query, branch, "success",
-        total_time,
-        result.get("total_files_read", 0),
-        result.get("total_iterations", 0),
-        result.get("total_searches", 0),
-        result.get("confidence", {}).get("level", ""),
-        input_tokens=result.get("input_tokens", 0),
-        output_tokens=result.get("output_tokens", 0),
-        user_email=user_email,
-        answer=result.get("answer", ""),
-    )
-
-    raw_answer = result.get("answer", "")
-    sections = _split_answer_sections(raw_answer)
+    t = threading.Thread(target=_run_job_in_background, args=(job_id, query, branch, user_email), daemon=True)
+    t.start()
 
     return jsonify({
-        "success": True,
-        "answer":  raw_answer,
-        "sections": sections,
-        "metadata": {
-            "branch":            branch,
-            "files_read":        result.get("total_files_read", 0),
-            "iterations":        result.get("total_iterations", 0),
-            "searches":          result.get("total_searches", 0),
-            "confidence":        result.get("confidence", {}).get("level", ""),
-            "elapsed_seconds":   result.get("elapsed_seconds", total_time),
-            "input_tokens":      result.get("input_tokens", 0),
-            "output_tokens":     result.get("output_tokens", 0),
-            "response_sections": _detect_response_sections(raw_answer),
-        },
-    })
+        "job_id":   job_id,
+        "status":   "processing",
+        "poll_url": f"/api/query/{job_id}",
+        "message":  "Query submitted. Poll poll_url for results.",
+    }), 202
 
 
 @app.route("/api/query/<job_id>", methods=["GET"])
@@ -2497,6 +2445,14 @@ def api_v1_query_status(job_id):
       - 200 with full result when job is completed or failed
       - 200 with status "processing" while the search is still running
       - 404 if job_id not found
+
+    Query parameters for completed jobs:
+      - fields: comma-separated list of top-level fields to return.
+                Valid values: answer, sections, metadata.
+                Default: all fields returned.
+      - section: return only a specific section by name.
+                 Valid values: overview, user_guide, technical_reference.
+                 When set, returns only that section's content under a "section" key.
 
     Auth: Bearer token via EXTERNAL_API_KEY env var.
     """
@@ -2528,16 +2484,61 @@ def api_v1_query_status(job_id):
             "message": "Search is still running. Poll again shortly.",
         })
 
-    # completed or failed — return the full result
+    # completed or failed — parse stored result
     result_json = row["result_json"]
     if result_json:
         result = json.loads(result_json)
     else:
         result = {"success": False, "error": row["error"] or "Unknown error"}
 
-    result["job_id"] = job_id
-    result["status"] = status
-    result["created_at"] = row["created_at"]
+    # ── Apply response filters (only for successful completions) ──
+    fields_param  = request.args.get("fields", "").strip()
+    section_param = request.args.get("section", "").strip()
+
+    VALID_SECTIONS = {"overview", "user_guide", "technical_reference"}
+
+    # If a specific section is requested, return just that section
+    if section_param and result.get("success"):
+        if section_param not in VALID_SECTIONS:
+            return jsonify({
+                "error": f"Invalid section '{section_param}'. "
+                         f"Valid values: {', '.join(sorted(VALID_SECTIONS))}",
+            }), 400
+        sections = result.get("sections", {})
+        return jsonify({
+            "job_id":       job_id,
+            "status":       status,
+            "success":      True,
+            "section_name": section_param,
+            "section":      sections.get(section_param, ""),
+        })
+
+    # If specific fields are requested, filter the response
+    if fields_param and result.get("success"):
+        VALID_FIELDS = {"answer", "sections", "metadata"}
+        requested = {f.strip() for f in fields_param.split(",") if f.strip()}
+        invalid = requested - VALID_FIELDS
+        if invalid:
+            return jsonify({
+                "error": f"Invalid fields: {', '.join(sorted(invalid))}. "
+                         f"Valid values: {', '.join(sorted(VALID_FIELDS))}",
+            }), 400
+        filtered = {
+            "job_id":  job_id,
+            "status":  status,
+            "success": True,
+        }
+        for field in requested:
+            if field in result:
+                filtered[field] = result[field]
+        filtered["created_at"]   = row["created_at"]
+        filtered["completed_at"] = row["completed_at"]
+        return jsonify(filtered)
+
+    # Default: return everything
+    result["job_id"]       = job_id
+    result["status"]       = status
+    result["created_at"]   = row["created_at"]
     result["completed_at"] = row["completed_at"]
     return jsonify(result)
 

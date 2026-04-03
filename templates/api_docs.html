@@ -250,13 +250,13 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       <div class="endpoint-header" onclick="toggleEndpoint(this)">
         <span class="endpoint-method post">POST</span>
         <span class="endpoint-path">/api/query</span>
-        <span class="endpoint-desc">Unified query endpoint (sync/async)</span>
+        <span class="endpoint-desc">Submit a query (async)</span>
         <span class="endpoint-auth auth-bearer">Bearer</span>
         <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="endpoint-body">
         <div class="endpoint-detail">
-          <p>The primary endpoint for external integrations (Jira, n8n, custom tools). Accepts a natural language query and returns the agentic search result. Supports both synchronous and asynchronous modes. Requires a Bearer token matching the <code>EXTERNAL_API_KEY</code> environment variable.</p>
+          <p>The primary endpoint for external integrations (Jira, n8n, custom tools). Submits a natural language query and returns a <code>job_id</code> immediately. Poll <code>/api/query/{job_id}</code> for results. Requires a Bearer token matching the <code>EXTERNAL_API_KEY</code> environment variable.</p>
           <div class="param-section">
             <h4>Headers</h4>
             <table class="param-table">
@@ -274,38 +274,16 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
               <tbody>
                 <tr><td class="param-name">query</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Natural language question</td></tr>
                 <tr><td class="param-name">branch</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">ADO branch to search. Use <code>/api/branches</code> to list available branches</td></tr>
-                <tr><td class="param-name">async</td><td class="param-type">boolean</td><td><span class="param-optional">Optional</span></td><td class="param-desc">If <code>true</code>, returns a job_id immediately (202). Default: <span class="param-default">false</span></td></tr>
               </tbody>
             </table>
           </div>
           <div class="param-section">
-            <h4>Response (sync)</h4>
-            <div class="code-block"><span class="label">200 OK</span><pre>{
-  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n...## User Guide\n...## Technical Reference\n..."</span>,
-  <span class="json-key">"sections"</span>: {
-    <span class="json-key">"overview"</span>: <span class="json-str">"Plain-English explanation of the feature..."</span>,
-    <span class="json-key">"user_guide"</span>: <span class="json-str">"Step-by-step instructions for using..."</span>,
-    <span class="json-key">"technical_reference"</span>: <span class="json-str">"Full technical detail with code snippets..."</span>
-  },
-  <span class="json-key">"metadata"</span>: {
-    <span class="json-key">"branch"</span>: <span class="json-str">"supported_release-1.25.2"</span>,
-    <span class="json-key">"files_read"</span>: <span class="json-num">18</span>,
-    <span class="json-key">"iterations"</span>: <span class="json-num">8</span>,
-    <span class="json-key">"searches"</span>: <span class="json-num">14</span>,
-    <span class="json-key">"confidence"</span>: <span class="json-str">"high"</span>,
-    <span class="json-key">"elapsed_seconds"</span>: <span class="json-num">47.2</span>,
-    <span class="json-key">"input_tokens"</span>: <span class="json-num">52000</span>,
-    <span class="json-key">"output_tokens"</span>: <span class="json-num">9200</span>,
-    <span class="json-key">"response_sections"</span>: <span class="json-str">"Overview, User Guide, Technical Reference"</span>
-  }
-}</pre></div>
-          </div>
-          <div class="param-section">
-            <h4>Response (async)</h4>
+            <h4>Response</h4>
             <div class="code-block"><span class="label">202 Accepted</span><pre>{
   <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
-  <span class="json-key">"poll_url"</span>: <span class="json-str">"/api/query/a1b2c3d4-..."</span>
+  <span class="json-key">"status"</span>: <span class="json-str">"processing"</span>,
+  <span class="json-key">"poll_url"</span>: <span class="json-str">"/api/query/a1b2c3d4-..."</span>,
+  <span class="json-key">"message"</span>: <span class="json-str">"Query submitted. Poll poll_url for results."</span>
 }</pre></div>
           </div>
         </div>
@@ -318,8 +296,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
             <label>Request Body (JSON)</label>
             <textarea data-param="body">{
   "query": "How does the EAC Submit button work?",
-  "branch": "",
-  "async": false
+  "branch": ""
 }</textarea>
           </div>
           <div class="try-actions">
@@ -342,29 +319,67 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       </div>
       <div class="endpoint-body">
         <div class="endpoint-detail">
-          <p>Polls for the result of an async query started via <code>/api/query</code>. Returns the result when complete, or a processing status with progress info.</p>
+          <p>Polls for the result of an async query started via <code>/api/query</code>. Returns the result when complete, or a processing status while running. Use optional query parameters to return only specific parts of the response.</p>
           <div class="param-section">
             <h4>Path Parameters</h4>
             <table class="param-table">
               <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
               <tbody>
-                <tr><td class="param-name">job_id</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Job ID returned by the async query</td></tr>
+                <tr><td class="param-name">job_id</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Job ID returned by <code>POST /api/query</code></td></tr>
               </tbody>
             </table>
           </div>
           <div class="param-section">
-            <h4>Response (completed)</h4>
+            <h4>Query Parameters</h4>
+            <table class="param-table">
+              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td class="param-name">fields</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Comma-separated list of top-level fields to include. Valid values: <code>answer</code>, <code>sections</code>, <code>metadata</code>. Default: all fields.</td></tr>
+                <tr><td class="param-name">section</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Return a single section only. Valid values: <code>overview</code>, <code>user_guide</code>, <code>technical_reference</code>.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <h4>Response (completed — default)</h4>
             <div class="code-block"><span class="label">200 OK</span><pre>{
   <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
-  <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n..."</span>,
-  <span class="json-key">"metadata"</span>: {...}
+  <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
+  <span class="json-key">"status"</span>: <span class="json-str">"completed"</span>,
+  <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n...## User Guide\n...## Technical Reference\n..."</span>,
+  <span class="json-key">"sections"</span>: {
+    <span class="json-key">"overview"</span>: <span class="json-str">"..."</span>,
+    <span class="json-key">"user_guide"</span>: <span class="json-str">"..."</span>,
+    <span class="json-key">"technical_reference"</span>: <span class="json-str">"..."</span>
+  },
+  <span class="json-key">"metadata"</span>: { <span class="json-str">...</span> }
+}</pre></div>
+          </div>
+          <div class="param-section">
+            <h4>Response (with <code>?section=overview</code>)</h4>
+            <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
+  <span class="json-key">"status"</span>: <span class="json-str">"completed"</span>,
+  <span class="json-key">"section_name"</span>: <span class="json-str">"overview"</span>,
+  <span class="json-key">"section"</span>: <span class="json-str">"Plain-English explanation of the feature..."</span>
+}</pre></div>
+          </div>
+          <div class="param-section">
+            <h4>Response (with <code>?fields=sections,metadata</code>)</h4>
+            <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
+  <span class="json-key">"status"</span>: <span class="json-str">"completed"</span>,
+  <span class="json-key">"sections"</span>: { <span class="json-str">...</span> },
+  <span class="json-key">"metadata"</span>: { <span class="json-str">...</span> }
 }</pre></div>
           </div>
           <div class="param-section">
             <h4>Response (still processing)</h4>
             <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
   <span class="json-key">"status"</span>: <span class="json-str">"processing"</span>,
-  <span class="json-key">"message"</span>: <span class="json-str">"Query is still being processed..."</span>
+  <span class="json-key">"message"</span>: <span class="json-str">"Search is still running. Poll again shortly."</span>
 }</pre></div>
           </div>
         </div>
@@ -377,8 +392,16 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
             <label>Job ID</label>
             <input type="text" data-param="job_id" placeholder="a1b2c3d4-e5f6-..."/>
           </div>
+          <div class="try-field">
+            <label>fields (optional)</label>
+            <input type="text" data-param="fields" placeholder="answer,sections,metadata"/>
+          </div>
+          <div class="try-field">
+            <label>section (optional)</label>
+            <input type="text" data-param="section" placeholder="overview, user_guide, or technical_reference"/>
+          </div>
           <div class="try-actions">
-            <button class="try-btn" onclick="tryEndpointBearerDynamic(this, 'GET', '/api/query/{job_id}', ['job_id'])">Send Request</button>
+            <button class="try-btn" onclick="tryEndpointBearerDynamic(this, 'GET', '/api/query/{job_id}', ['job_id'], false, ['fields','section'])">Send Request</button>
             <span class="try-status"></span>
           </div>
           <div class="try-result"></div>
@@ -671,7 +694,8 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       <span class="json-key">"query"</span>: <span class="json-str">"How does EAC submit work?"</span>,
       <span class="json-key">"branch"</span>: <span class="json-str">"supported_release-1.25.2"</span>,
       <span class="json-key">"status"</span>: <span class="json-str">"success"</span>,
-      <span class="json-key">"user_email"</span>: <span class="json-str">"user@corasystems.com"</span>
+      <span class="json-key">"user_email"</span>: <span class="json-str">"user@corasystems.com"</span>,
+      <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>
     },
     <span class="json-str">...</span>
   ]
@@ -730,7 +754,8 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
     <span class="json-key">"total_tokens"</span>: <span class="json-num">61200</span>,
     <span class="json-key">"error_message"</span>: <span class="json-null">null</span>,
     <span class="json-key">"user_email"</span>: <span class="json-str">"user@corasystems.com"</span>,
-    <span class="json-key">"response_sections"</span>: <span class="json-str">"Overview, User Guide, Technical Reference"</span>
+    <span class="json-key">"response_sections"</span>: <span class="json-str">"Overview, User Guide, Technical Reference"</span>,
+    <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>
   }
 }</pre></div>
           </div>
@@ -1077,13 +1102,23 @@ async function tryEndpointBearer(btn, method, url) {
   btn.classList.remove('loading');
 }
 
-// ── Try endpoint with Bearer + dynamic path ──
-async function tryEndpointBearerDynamic(btn, method, urlTemplate, params) {
+// ── Try endpoint with Bearer + dynamic path + optional query params ──
+async function tryEndpointBearerDynamic(btn, method, urlTemplate, params, hasBody, queryParams) {
   const tryIt = btn.closest('.try-it');
   let url = urlTemplate;
   for (const p of params) {
     const input = tryIt.querySelector(`[data-param="${p}"]`);
     url = url.replace(`{${p}}`, encodeURIComponent(input ? input.value : ''));
+  }
+  if (queryParams && queryParams.length) {
+    const qsParts = [];
+    for (const qp of queryParams) {
+      const input = tryIt.querySelector(`[data-param="${qp}"]`);
+      if (input && input.value.trim()) {
+        qsParts.push(encodeURIComponent(qp) + '=' + encodeURIComponent(input.value.trim()));
+      }
+    }
+    if (qsParts.length) url += '?' + qsParts.join('&');
   }
   return tryEndpointBearer(btn, method, url);
 }
