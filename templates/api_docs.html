@@ -131,8 +131,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
 
 /* ── Try-It Panel ── */
 .try-it { background: var(--bg); border-top: 1px solid var(--border); padding: 20px }
-.try-it h4 { font-size: .82rem; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px }
-.try-it h4 svg { color: var(--brand-light); width: 16px; height: 16px }
 .try-field { margin-bottom: 12px }
 .try-field label { display: block; font-size: .74rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px }
 .try-field input, .try-field textarea, .try-field select { width: 100%; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 7px; font-size: .84rem; font-family: "SF Mono", Monaco, monospace; background: #fff; color: var(--text); outline: none; transition: border-color .15s }
@@ -312,7 +310,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-field">
             <label>Authorization (Bearer token)</label>
             <input type="password" data-param="bearer" placeholder="Your EXTERNAL_API_KEY"/>
@@ -372,7 +369,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-field">
             <label>Authorization (Bearer token)</label>
             <input type="password" data-param="bearer" placeholder="Your EXTERNAL_API_KEY"/>
@@ -419,7 +415,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-actions">
             <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/health')">Send Request</button>
             <span class="try-status"></span>
@@ -454,7 +449,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-actions">
             <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/branches')">Send Request</button>
             <span class="try-status"></span>
@@ -495,7 +489,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-actions">
             <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/admin/stats')">Send Request</button>
             <span class="try-status"></span>
@@ -542,7 +535,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-field">
             <label>Status (optional)</label>
             <input type="text" data-param="status" placeholder="pending"/>
@@ -580,7 +572,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-field">
             <label>Start Date (optional)</label>
             <input type="text" data-param="start_date" placeholder="2026-01-01"/>
@@ -635,7 +626,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-field">
             <label>Flag ID</label>
             <input type="text" data-param="flag_id" placeholder="1"/>
@@ -689,7 +679,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-actions">
             <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/admin/search-events')">Send Request</button>
             <span class="try-status"></span>
@@ -747,7 +736,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-field">
             <label>Event ID</label>
             <input type="text" data-param="event_id" placeholder="42"/>
@@ -815,7 +803,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-field">
             <label>Flag ID</label>
             <input type="text" data-param="flag_id" placeholder="a1b2c3d4-e5f6-..."/>
@@ -852,7 +839,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           </div>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-field">
             <label>Table Name</label>
             <input type="text" data-param="table_name" placeholder="search_events"/>
@@ -890,7 +876,6 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           <p style="font-size:.84rem;color:var(--muted)">Response: CSV file download</p>
         </div>
         <div class="try-it">
-          <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try it out</h4>
           <div class="try-field">
             <label>Table Name</label>
             <select data-param="table_name">
