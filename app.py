@@ -1920,6 +1920,32 @@ ADMIN_TABLES = {
         "COALESCE(response_sections, '') AS response_sections "
         "FROM search_events ORDER BY ran_at DESC LIMIT 500"
     ),
+    "flagged_queries": (
+        "SELECT id, query, loop_type, "
+        "COALESCE(answer, '') AS answer, "
+        "COALESCE(explanation, '') AS explanation, "
+        "COALESCE(flagged_by, '') AS flagged_by, "
+        "flagged_at, status, "
+        "COALESCE(reviewed_by, '') AS reviewed_by, "
+        "reviewed_at, "
+        "COALESCE(admin_notes, '') AS admin_notes, "
+        "flag_type, "
+        "COALESCE(container, '') AS container, "
+        "request_article, "
+        "COALESCE(branch, '') AS branch, "
+        "COALESCE(confidence_level, '') AS confidence_level, "
+        "duration_sec, input_tokens, output_tokens, total_tokens, "
+        "files_read, iterations, searches "
+        "FROM flagged_queries ORDER BY flagged_at DESC LIMIT 500"
+    ),
+    "api_jobs": (
+        "SELECT id, status, query, "
+        "COALESCE(branch, '') AS branch, "
+        "COALESCE(user_email, 'external_api') AS user_email, "
+        "COALESCE(error, '') AS error, "
+        "created_at, completed_at "
+        "FROM api_jobs ORDER BY created_at DESC LIMIT 500"
+    ),
 }
 
 
