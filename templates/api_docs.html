@@ -256,7 +256,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       </div>
       <div class="endpoint-body">
         <div class="endpoint-detail">
-          <p>The primary endpoint for external integrations (Jira, n8n, custom tools). Submits a natural language query and returns a <code>job_id</code> immediately. Poll <code>/api/query/{job_id}</code> for results. Requires a Bearer token matching the <code>EXTERNAL_API_KEY</code> environment variable.</p>
+          <p>The primary endpoint for external integrations (Jira, n8n, custom tools). Submits a natural language query and returns a <code>job_id</code> immediately. Poll <code>/api/query/{job_id}</code> for results. Optionally include a screenshot — Claude will extract UI context and append it to the query, just like the web UI. Requires a Bearer token matching the <code>EXTERNAL_API_KEY</code> environment variable.</p>
           <div class="param-section">
             <h4>Headers</h4>
             <table class="param-table">
@@ -274,6 +274,9 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
               <tbody>
                 <tr><td class="param-name">query</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Natural language question</td></tr>
                 <tr><td class="param-name">branch</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">ADO branch to search. Use <code>/api/branches</code> to list available branches</td></tr>
+                <tr><td class="param-name">screenshot</td><td class="param-type">object</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Cora PPM UI screenshot. Claude extracts page context (fields, errors, buttons) and appends it to the query</td></tr>
+                <tr><td class="param-name">screenshot.image_b64</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Base64-encoded image data (PNG, JPEG, WEBP, or GIF)</td></tr>
+                <tr><td class="param-name">screenshot.mime_type</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Image MIME type. Default: <span class="param-default">image/png</span></td></tr>
               </tbody>
             </table>
           </div>
@@ -283,8 +286,10 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
   <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
   <span class="json-key">"status"</span>: <span class="json-str">"processing"</span>,
   <span class="json-key">"poll_url"</span>: <span class="json-str">"/api/query/a1b2c3d4-..."</span>,
-  <span class="json-key">"message"</span>: <span class="json-str">"Query submitted. Poll poll_url for results."</span>
+  <span class="json-key">"message"</span>: <span class="json-str">"Query submitted. Poll poll_url for results."</span>,
+  <span class="json-key">"screenshot_context"</span>: <span class="json-str">"Project Forecasting page — EAC Submit button visible..."</span>
 }</pre></div>
+            <p style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-muted)"><code>screenshot_context</code> is only included when a screenshot was provided. It shows the extracted UI context that was appended to your query.</p>
           </div>
         </div>
         <div class="try-it">
@@ -296,7 +301,11 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
             <label>Request Body (JSON)</label>
             <textarea data-param="body">{
   "query": "How does the EAC Submit button work?",
-  "branch": ""
+  "branch": "",
+  "screenshot": {
+    "image_b64": "",
+    "mime_type": "image/png"
+  }
 }</textarea>
           </div>
           <div class="try-actions">

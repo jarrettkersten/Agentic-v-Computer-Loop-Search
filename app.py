@@ -212,12 +212,13 @@ def init_db():
         """)
         # Migrate existing tables: add columns if they don't already exist
         _safe_add_columns(cur, "search_events", [
-            ("input_tokens",      "INTEGER DEFAULT 0"),
-            ("output_tokens",     "INTEGER DEFAULT 0"),
-            ("total_tokens",      "INTEGER DEFAULT 0"),
-            ("user_email",        "TEXT DEFAULT ''"),
-            ("response_sections", "TEXT DEFAULT ''"),
-            ("job_id",            "TEXT DEFAULT ''"),
+            ("input_tokens",          "INTEGER DEFAULT 0"),
+            ("output_tokens",         "INTEGER DEFAULT 0"),
+            ("total_tokens",          "INTEGER DEFAULT 0"),
+            ("user_email",            "TEXT DEFAULT ''"),
+            ("response_sections",     "TEXT DEFAULT ''"),
+            ("job_id",                "TEXT DEFAULT ''"),
+            ("screenshot_context",    "TEXT DEFAULT ''"),
         ])
         _safe_add_columns(cur, "flagged_queries", [
             ("flag_type",         "TEXT NOT NULL DEFAULT 'inaccurate'"),
@@ -347,7 +348,7 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                        confidence_level: str = "", error_message: str = "",
                        input_tokens: int = 0, output_tokens: int = 0,
                        user_email: str = "", answer: str = "",
-                       job_id: str = ""):
+                       job_id: str = "", screenshot_context: str = ""):
     """Record a single loop search run."""
     if not DATABASE_URL:
         return
@@ -361,14 +362,14 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                (loop_type, query, branch, status, duration_sec, files_read,
                 iterations, searches, confidence_level,
                 input_tokens, output_tokens, total_tokens, error_message,
-                user_email, response_sections, job_id)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                user_email, response_sections, job_id, screenshot_context)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (loop_type, (query or "")[:300], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
              confidence_level or "",
              input_tokens, output_tokens, input_tokens + output_tokens,
              error_message or "", user_email or "", response_sections,
-             job_id or ""),
+             job_id or "", screenshot_context or ""),
         )
         conn.commit()
     except Exception as e:
@@ -1246,6 +1247,47 @@ def api_docs():
                            auth_disabled=AUTH_DISABLED)
 
 
+def _extract_screenshot_context(image_b64: str, mime_type: str = "image/png") -> str:
+    """Ask Claude to extract UI context from a base64-encoded screenshot.
+
+    Returns the extracted plain-text context string, or raises on failure.
+    """
+    client = get_client()
+    resp = client.messages.create(
+        model=MODEL,
+        max_tokens=600,
+        system=(
+            "You are a Cora PPM UI analyst. The user has uploaded a screenshot of the Cora PPM application. "
+            "Extract ALL visible context that would help a developer understand what page/feature is shown. "
+            "Respond ONLY with a concise plain-text summary (no markdown) covering:\n"
+            "• Page name / module visible in the screenshot\n"
+            "• Key field labels, button names, or column headers visible\n"
+            "• Any error messages, warning banners, or validation messages\n"
+            "• Any IDs, statuses, or data values that appear to be relevant\n"
+            "• Any UI elements or controls that look directly related to the user's question\n"
+            "Keep the response under 250 words. Do not include generic observations."
+        ),
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type":       "base64",
+                        "media_type": mime_type,
+                        "data":       image_b64,
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": "Please extract the UI context from this Cora PPM screenshot.",
+                },
+            ],
+        }],
+    )
+    return resp.content[0].text.strip()
+
+
 @app.route("/api/extract-screenshot", methods=["POST"])
 def api_extract_screenshot():
     """
@@ -1259,40 +1301,7 @@ def api_extract_screenshot():
     if not image_b64:
         return jsonify({"error": "No image data provided."}), 400
     try:
-        client = get_client()
-        resp   = client.messages.create(
-            model=MODEL,
-            max_tokens=600,
-            system=(
-                "You are a Cora PPM UI analyst. The user has uploaded a screenshot of the Cora PPM application. "
-                "Extract ALL visible context that would help a developer understand what page/feature is shown. "
-                "Respond ONLY with a concise plain-text summary (no markdown) covering:\n"
-                "• Page name / module visible in the screenshot\n"
-                "• Key field labels, button names, or column headers visible\n"
-                "• Any error messages, warning banners, or validation messages\n"
-                "• Any IDs, statuses, or data values that appear to be relevant\n"
-                "• Any UI elements or controls that look directly related to the user's question\n"
-                "Keep the response under 250 words. Do not include generic observations."
-            ),
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type":       "base64",
-                            "media_type": mime_type,
-                            "data":       image_b64,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": "Please extract the UI context from this Cora PPM screenshot.",
-                    },
-                ],
-            }],
-        )
-        context = resp.content[0].text.strip()
+        context = _extract_screenshot_context(image_b64, mime_type)
         return jsonify({"success": True, "context": context})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1921,7 +1930,8 @@ ADMIN_TABLES = {
         "query, ran_at, searches, status, total_tokens, "
         "COALESCE(user_email, '') AS user_email, "
         "COALESCE(response_sections, '') AS response_sections, "
-        "COALESCE(job_id, '') AS job_id "
+        "COALESCE(job_id, '') AS job_id, "
+        "COALESCE(screenshot_context, '') AS screenshot_context "
         "FROM search_events ORDER BY ran_at DESC LIMIT 500"
     ),
     "flagged_queries": (
@@ -2147,7 +2157,8 @@ def api_admin_search_event_ids():
         cur.execute(
             "SELECT id, ran_at, loop_type, query, branch, status, "
             "COALESCE(user_email, '') AS user_email, "
-            "COALESCE(job_id, '') AS job_id "
+            "COALESCE(job_id, '') AS job_id, "
+            "COALESCE(screenshot_context, '') AS screenshot_context "
             "FROM search_events ORDER BY ran_at DESC"
         )
         rows = [dict(r) for r in cur.fetchall()]
@@ -2286,7 +2297,7 @@ def _check_api_key():
 # Async job runner — processes API queries in background threads
 # ---------------------------------------------------------------------------
 
-def _run_job_in_background(job_id, query, branch, user_email):
+def _run_job_in_background(job_id, query, branch, user_email, screenshot_context=""):
     """Execute the agentic search for a job and write results to the DB."""
     t0 = time.time()
     try:
@@ -2296,7 +2307,7 @@ def _run_job_in_background(job_id, query, branch, user_email):
         raw_answer = result.get("answer", "")
         sections = _split_answer_sections(raw_answer)
 
-        response_payload = json.dumps({
+        payload_data = {
             "success": True,
             "answer":  raw_answer,
             "sections": sections,
@@ -2311,7 +2322,11 @@ def _run_job_in_background(job_id, query, branch, user_email):
                 "output_tokens":     result.get("output_tokens", 0),
                 "response_sections": _detect_response_sections(raw_answer),
             },
-        })
+        }
+        if screenshot_context:
+            payload_data["screenshot_context"] = screenshot_context
+
+        response_payload = json.dumps(payload_data)
 
         # Track in search_events
         track_search_event(
@@ -2326,6 +2341,7 @@ def _run_job_in_background(job_id, query, branch, user_email):
             user_email=user_email,
             answer=result.get("answer", ""),
             job_id=job_id,
+            screenshot_context=screenshot_context,
         )
 
         conn = get_db_conn()
@@ -2367,10 +2383,17 @@ def api_v1_query():
     Submits a query for processing and returns a job_id immediately.
     Poll /api/query/<job_id> for results.
 
+    Optionally include a screenshot (base64) — Claude will extract UI context
+    and append it to the query automatically, just like the web UI.
+
     Request JSON:
         {
             "query":  "How does the EAC Submit button work on the Project Forecasting page?",
-            "branch": "supported_release-1.25.2"   // optional, default: first available
+            "branch": "supported_release-1.25.2",   // optional
+            "screenshot": {                          // optional
+                "image_b64": "<base64-encoded image>",
+                "mime_type": "image/png"             // optional, default: image/png
+            }
         }
 
     Response JSON (202 Accepted):
@@ -2378,7 +2401,8 @@ def api_v1_query():
             "job_id":    "abc-123",
             "status":    "processing",
             "poll_url":  "/api/query/abc-123",
-            "message":   "Query submitted. Poll poll_url for results."
+            "message":   "Query submitted. Poll poll_url for results.",
+            "screenshot_context": "..."              // only present if screenshot was provided
         }
 
     Auth: Bearer token via EXTERNAL_API_KEY env var.
@@ -2407,6 +2431,23 @@ def api_v1_query():
     raw_email = request.headers.get("X-User-Email", "").strip()
     user_email = f"external_api ({raw_email})" if raw_email else "external_api"
 
+    # ── Extract screenshot context (if provided) ──
+    screenshot_context = ""
+    screenshot_data = data.get("screenshot")
+    if screenshot_data and isinstance(screenshot_data, dict):
+        image_b64 = screenshot_data.get("image_b64", "").strip()
+        mime_type = screenshot_data.get("mime_type", "image/png").strip()
+        if image_b64:
+            try:
+                screenshot_context = _extract_screenshot_context(image_b64, mime_type)
+            except Exception as e:
+                return jsonify({"error": f"Screenshot extraction failed: {e}"}), 400
+
+    # ── Build final query with screenshot context (matches UI behavior) ──
+    final_query = query
+    if screenshot_context:
+        final_query += "\n\n[Screenshot context — extracted from attached UI screenshot]\n" + screenshot_context
+
     # ── Create job and return immediately ──
     job_id = str(uuid.uuid4())
     conn = None
@@ -2425,15 +2466,18 @@ def api_v1_query():
         if conn:
             put_db_conn(conn)
 
-    t = threading.Thread(target=_run_job_in_background, args=(job_id, query, branch, user_email), daemon=True)
+    t = threading.Thread(target=_run_job_in_background, args=(job_id, final_query, branch, user_email, screenshot_context), daemon=True)
     t.start()
 
-    return jsonify({
+    response = {
         "job_id":   job_id,
         "status":   "processing",
         "poll_url": f"/api/query/{job_id}",
         "message":  "Query submitted. Poll poll_url for results.",
-    }), 202
+    }
+    if screenshot_context:
+        response["screenshot_context"] = screenshot_context
+    return jsonify(response), 202
 
 
 @app.route("/api/query/<job_id>", methods=["GET"])
