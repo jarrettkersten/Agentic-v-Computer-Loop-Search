@@ -200,7 +200,6 @@ def _backfill_job_ids(rows):
             # Build a synthetic result from the stored answer
             sections = {}
             if answer:
-                sections_str = _detect_response_sections(answer)
                 parts = _split_answer_sections(answer)
                 sections = {
                     "overview": parts.get("overview", ""),
@@ -234,6 +233,52 @@ def _backfill_job_ids(rows):
             print(f"[DB] Backfill job_id failed for event {row['id']}: {e}")
             failed += 1
     print(f"[DB] Job-ID backfill complete: {success} minted, {failed} failed")
+
+
+def _backfill_rerun_missing_answers(rows):
+    """Background: re-run queries that have a job_id but no answer_text.
+    These are events where a prior backfill minted the job but the re-run failed or was skipped.
+    This DOES call the agentic loop (costs API tokens)."""
+    import time as _time
+    import uuid as _uuid
+    success, failed = 0, 0
+    for row in rows:
+        try:
+            query  = row["query"]
+            branch = row["branch"] or "main"
+            old_job_id = row.get("job_id", "")
+            print(f"[DB] Re-running event {row['id']}: {query[:60]}…")
+
+            result = run_agentic_loop(query, branch)
+            answer = result.get("answer", "")
+            if not answer:
+                print(f"[DB] Re-run for event {row['id']} returned empty answer")
+                failed += 1
+                continue
+
+            # Update the existing api_jobs row if it exists, or create a new one
+            job_id = old_job_id or str(_uuid.uuid4())
+            if not old_job_id:
+                _persist_api_job(job_id, query, branch, row.get("user_email", ""))
+            result["branch"] = branch
+            _complete_api_job(job_id, result)
+
+            # Write answer_text (and job_id if new) back to search_event
+            conn = get_db_conn()
+            try:
+                conn.cursor().execute(
+                    "UPDATE search_events SET answer_text = %s, job_id = %s WHERE id = %s",
+                    (answer, job_id, row["id"]),
+                )
+                conn.commit()
+                success += 1
+            finally:
+                put_db_conn(conn)
+        except Exception as e:
+            print(f"[DB] Re-run failed for event {row['id']}: {e}")
+            failed += 1
+        _time.sleep(2)  # small delay between re-runs
+    print(f"[DB] Answer re-run backfill complete: {success} success, {failed} failed")
 
 
 def init_db():
@@ -385,10 +430,11 @@ def init_db():
             # Reset old migrations so they don't clutter
             cur.execute("DELETE FROM _migrations WHERE name IN ('backfill_answer_text_v1', 'backfill_answer_text_v2')")
             conn.commit()
-            cur.execute("SELECT 1 FROM _migrations WHERE name = 'backfill_job_ids_v3'")
+            cur.execute("SELECT 1 FROM _migrations WHERE name = 'backfill_complete_v3'")
             if not cur.fetchone():
-                # v3: mint job_ids for events missing them (no API re-runs — uses existing answer_text)
                 dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+                # Part A: Mint job_ids for events that don't have one (cheap, no API calls)
                 dict_cur.execute("""
                     SELECT id, query, branch,
                            COALESCE(user_email, '') AS user_email,
@@ -398,16 +444,35 @@ def init_db():
                       AND  (job_id IS NULL OR job_id = '')
                     ORDER BY ran_at DESC
                 """)
-                empty_rows = [dict(r) for r in dict_cur.fetchall()]
-                if empty_rows:
-                    print(f"[DB] Phase 2 (v3): {len(empty_rows)} events need job_id, minting in background…")
-                    threading.Thread(target=_backfill_job_ids, args=(empty_rows,), daemon=True).start()
+                no_job_rows = [dict(r) for r in dict_cur.fetchall()]
+                if no_job_rows:
+                    print(f"[DB] v3 Part A: {len(no_job_rows)} events need job_id, minting in background…")
+                    threading.Thread(target=_backfill_job_ids, args=(no_job_rows,), daemon=True).start()
                 else:
-                    print("[DB] Phase 2 (v3): All events already have job_ids")
-                cur.execute("INSERT INTO _migrations (name) VALUES ('backfill_job_ids_v3')")
+                    print("[DB] v3 Part A: All events already have job_ids")
+
+                # Part B: Re-run events that have a job_id but no answer_text (costs API tokens)
+                dict_cur.execute("""
+                    SELECT id, query, branch, job_id,
+                           COALESCE(user_email, '') AS user_email,
+                           COALESCE(answer_text, '') AS answer_text
+                    FROM search_events
+                    WHERE  status = 'success'
+                      AND  job_id IS NOT NULL AND job_id != ''
+                      AND  (answer_text IS NULL OR answer_text = '')
+                    ORDER BY ran_at DESC
+                """)
+                no_answer_rows = [dict(r) for r in dict_cur.fetchall()]
+                if no_answer_rows:
+                    print(f"[DB] v3 Part B: {len(no_answer_rows)} events have job_id but no answer_text, re-running in background…")
+                    threading.Thread(target=_backfill_rerun_missing_answers, args=(no_answer_rows,), daemon=True).start()
+                else:
+                    print("[DB] v3 Part B: All events with job_ids already have answer_text")
+
+                cur.execute("INSERT INTO _migrations (name) VALUES ('backfill_complete_v3')")
                 conn.commit()
             else:
-                print("[DB] Phase 2: backfill_job_ids_v3 already ran, skipping")
+                print("[DB] v3: backfill_complete_v3 already ran, skipping")
         except Exception as be:
             print(f"[DB] answer_text phase-2 check skipped: {be}")
             try:
