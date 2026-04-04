@@ -1779,15 +1779,21 @@ def api_browse_queries():
     a 'Past Queries' table the user can click through.
 
     Query params:
-      page   (int, default 1)
-      limit  (int, default 25, max 100)
-      search (str, optional — filters query text)
+      page       (int, default 1)
+      limit      (int, default 25, max 100)
+      search     (str, optional — filters query text)
+      branch         (str, optional — exact branch filter)
+      confidence     (str, optional — exact confidence_level filter)
+      has_screenshot (str, optional — "yes" or "no")
     """
     if not DATABASE_URL:
         return jsonify({"rows": [], "total": 0})
     page  = max(1, int(request.args.get("page", 1)))
     limit = min(int(request.args.get("limit", 25)), 100)
-    search = (request.args.get("search") or "").strip()
+    search         = (request.args.get("search") or "").strip()
+    branch         = (request.args.get("branch") or "").strip()
+    confidence     = (request.args.get("confidence") or "").strip()
+    has_screenshot = (request.args.get("has_screenshot") or "").strip().lower()
     offset = (page - 1) * limit
 
     conn = None
@@ -1800,6 +1806,16 @@ def api_browse_queries():
         if search:
             where += " AND query ILIKE %s"
             params.append(f"%{search}%")
+        if branch:
+            where += " AND branch = %s"
+            params.append(branch)
+        if confidence:
+            where += " AND LOWER(confidence_level) = LOWER(%s)"
+            params.append(confidence)
+        if has_screenshot == 'yes':
+            where += " AND COALESCE(screenshot_b64, '') != ''"
+        elif has_screenshot == 'no':
+            where += " AND (screenshot_b64 IS NULL OR screenshot_b64 = '')"
 
         # Total count
         cur.execute(f"SELECT COUNT(*) AS cnt FROM search_events {where}", params)
@@ -1820,7 +1836,25 @@ def api_browse_queries():
             if r.get("ran_at"):
                 r["ran_at"] = r["ran_at"].isoformat()
 
-        return jsonify({"rows": rows, "total": total, "page": page, "limit": limit})
+        # Distinct filter options (unfiltered) for populating dropdowns
+        cur.execute("""
+            SELECT DISTINCT branch FROM search_events
+            WHERE status='success' AND answer_text IS NOT NULL AND answer_text != ''
+            AND branch IS NOT NULL AND branch != ''
+            ORDER BY branch
+        """)
+        branches = [r["branch"] for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT DISTINCT confidence_level FROM search_events
+            WHERE status='success' AND answer_text IS NOT NULL AND answer_text != ''
+            AND confidence_level IS NOT NULL AND confidence_level != ''
+            ORDER BY confidence_level
+        """)
+        confidences = [r["confidence_level"] for r in cur.fetchall()]
+
+        return jsonify({"rows": rows, "total": total, "page": page, "limit": limit,
+                        "branches": branches, "confidences": confidences})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:

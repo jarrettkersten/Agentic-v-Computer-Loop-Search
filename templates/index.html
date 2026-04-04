@@ -268,6 +268,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .browse-controls{display:flex;align-items:center;gap:8px}
 .browse-search{background:#fff;border:1.5px solid var(--border);border-radius:7px;padding:5px 10px;font-size:.82rem;color:var(--text);width:200px;font-family:inherit}
 .browse-search:focus{outline:none;border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
+.browse-filter-select{background:#fff;border:1.5px solid var(--border);border-radius:7px;padding:5px 10px;font-size:.82rem;color:var(--text);font-family:inherit;cursor:pointer}
+.browse-filter-select:focus{outline:none;border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
 .browse-close{background:none;border:none;color:var(--muted);font-size:1rem;cursor:pointer;padding:4px 8px;border-radius:4px}
 .browse-close:hover{background:var(--bg);color:var(--text)}
 .browse-table-wrap{overflow-x:auto;max-height:400px;overflow-y:auto}
@@ -290,6 +292,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .browse-conf-med{color:var(--warn);font-weight:600}
 .browse-conf-low{color:var(--error);font-weight:600}
 .browse-empty{padding:30px 20px;text-align:center;color:var(--muted);font-size:.85rem}
+.browse-sort-badge{font-size:.6rem;color:var(--brand-light);margin-left:2px;vertical-align:super}
 .browse-new-search-btn{background:var(--brand-light);color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s}
 .browse-new-search-btn:hover{background:#1557a0}
 .browse-match-row td{background:rgba(30,111,212,.06)!important}
@@ -526,6 +529,17 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <div class="browse-title" id="browseTitle">📋 Past Queries</div>
         <div class="browse-controls">
           <input type="text" id="browseSearch" class="browse-search" placeholder="Filter queries…" oninput="browseDebounceSearch()"/>
+          <select id="browseBranchFilter" class="browse-filter-select" onchange="browseOnFilterChange()">
+            <option value="">All branches</option>
+          </select>
+          <select id="browseConfFilter" class="browse-filter-select" onchange="browseOnFilterChange()">
+            <option value="">All confidence</option>
+          </select>
+          <select id="browseScreenshotFilter" class="browse-filter-select" onchange="browseOnFilterChange()">
+            <option value="">📸 All</option>
+            <option value="yes">📸 Yes</option>
+            <option value="no">📸 No</option>
+          </select>
           <button id="browseNewSearchBtn" class="browse-new-search-btn" style="display:none" onclick="browseForceNewSearch()">🔍 Run new search instead</button>
           <button class="browse-close" onclick="closeBrowsePanel()">✕</button>
         </div>
@@ -557,45 +571,46 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     <style>
       /* Reused-result action bar */
       .sq-action-bar {
-        background: linear-gradient(135deg, rgba(108,92,231,.12), rgba(108,92,231,.06));
-        border: 1px solid var(--brand,#6c5ce7);
+        background: linear-gradient(135deg, rgba(30,111,212,.08), rgba(30,111,212,.03));
+        border: 1.5px solid var(--border);
         border-radius: 10px; padding: 12px 16px;
         display: flex; align-items: center; justify-content: space-between;
-        flex-wrap: wrap; gap: 8px; margin-bottom: 14px;
+        flex-wrap: wrap; gap: 8px;
       }
-      .sq-action-bar .sq-label { font-size: .84rem; color: var(--text,#e0e0e0); font-weight: 600; }
-      .sq-action-bar .sq-sublabel { font-size: .75rem; color: var(--text-muted,#999); margin-top: 2px; }
+      .sq-action-bar .sq-label { font-size: .84rem; color: var(--text); font-weight: 600; }
+      .sq-action-bar .sq-sublabel { font-size: .75rem; color: var(--muted); margin-top: 2px; }
       .sq-action-bar button {
-        padding: 7px 16px; border-radius: 8px; font-size: .82rem; font-weight: 600; cursor: pointer; transition: background .15s;
+        padding: 7px 16px; border-radius: 8px; font-size: .82rem; font-weight: 600; cursor: pointer; transition: all .15s;
       }
-      .sq-btn-alt  { border: 1px solid var(--border,#444); background: transparent; color: var(--text,#ccc); }
-      .sq-btn-alt:hover { background: rgba(255,255,255,.06); }
-      .sq-btn-new  { border: none; background: var(--brand,#6c5ce7); color: #fff; }
-      .sq-btn-new:hover { background: #7c6cf7; }
+      .sq-btn-alt  { border: 1.5px solid var(--border); background: #fff; color: var(--text); }
+      .sq-btn-alt:hover { background: var(--bg); border-color: #b0bfd0; }
+      .sq-btn-new  { border: none; background: var(--brand-light); color: #fff; }
+      .sq-btn-new:hover { background: #1557a0; }
 
-      /* ── Reuse: original submission info (read-only) ── */
-      .reuse-original-info {
-        background: rgba(0,0,0,.18);
-        border: 1px solid var(--border,#333);
-        border-radius: 10px;
-        padding: 14px 16px;
-        margin-bottom: 14px;
+      /* ── Original submission container (above result panels) ── */
+      .reuse-original-container {
+        background: var(--card);
+        border: 1.5px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 18px;
+        box-shadow: var(--shadow);
       }
       .reuse-section-label {
-        font-size: .78rem;
+        font-size: .72rem;
         font-weight: 700;
-        color: var(--text-muted,#999);
+        color: var(--muted);
         margin-bottom: 6px;
         text-transform: uppercase;
-        letter-spacing: .4px;
+        letter-spacing: .05em;
       }
       .reuse-readonly-block {
-        background: rgba(255,255,255,.04);
-        border: 1px solid var(--border,#333);
+        background: #f8fafc;
+        border: 1.5px solid var(--border);
         border-radius: 8px;
         padding: 10px 14px;
         font-size: .85rem;
-        color: var(--text,#e0e0e0);
+        color: var(--text);
         line-height: 1.5;
         white-space: pre-wrap;
         word-break: break-word;
@@ -603,7 +618,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       .reuse-context-block {
         max-height: 200px;
         overflow-y: auto;
-        color: var(--text-muted,#bbb);
+        color: var(--muted);
         font-size: .82rem;
       }
       .reuse-meta-row {
@@ -614,17 +629,18 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       }
       .reuse-meta-tag {
         font-size: .75rem;
-        color: var(--text-muted,#888);
-        background: rgba(255,255,255,.06);
-        border: 1px solid var(--border,#333);
+        color: var(--muted);
+        background: var(--bg);
+        border: 1.5px solid var(--border);
         border-radius: 6px;
         padding: 3px 8px;
+        font-weight: 600;
       }
       .reuse-screenshot-box {
         text-align: center;
         padding: 8px;
-        background: rgba(255,255,255,.03);
-        border: 1px solid var(--border,#333);
+        background: #f8fafc;
+        border: 1.5px solid var(--border);
         border-radius: 8px;
       }
       .reuse-screenshot-box img {
@@ -638,6 +654,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     <div class="status-bar" id="statusBar"></div>
     </div><!-- end card-body -->
   </div>
+
+  <!-- ── Original submission info (shown when loading historical data) ── -->
+  <div id="originalSubmissionContainer" style="display:none;"></div>
 
   <!-- ── Three-column result panels ── -->
   <div class="results-grid">
@@ -1257,6 +1276,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     _browseMatchMode = true;
     _browsePage = 1;
     document.getElementById('browseSearch').value = '';
+    document.getElementById('browseBranchFilter').value = '';
+    document.getElementById('browseConfFilter').value = '';
+    document.getElementById('browseScreenshotFilter').value = '';
     // Update panel header
     document.getElementById('browseTitle').textContent = '🔎 Similar queries found — select one or run a new search';
     document.getElementById('browseNewSearchBtn').style.display = 'inline-block';
@@ -1283,6 +1305,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     document.getElementById('btnBrowse').classList.remove('active');
     document.getElementById('browseTitle').textContent = '📋 Past Queries';
     document.getElementById('browseNewSearchBtn').style.display = 'none';
+    document.getElementById('browseBranchFilter').value = '';
+    document.getElementById('browseConfFilter').value = '';
+    document.getElementById('browseScreenshotFilter').value = '';
   }
 
   function admViewResult(eventId) {
@@ -1298,8 +1323,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   // ── Browse Past Queries (standard user table) ──────────────────────────
   let _browseOpen = false;
   let _browsePage = 1;
-  let _browseSort = 'ran_at';
-  let _browseSortAsc = false;
+  // Multi-sort: array of { key, asc } — first entry is primary sort
+  let _browseSorts = [{ key: 'ran_at', asc: false }];
   let _browseSearchTimer = null;
 
   function toggleBrowseQueries() {
@@ -1310,6 +1335,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       _sqMatches = [];
       _browsePage = 1;
       document.getElementById('browseSearch').value = '';
+      document.getElementById('browseBranchFilter').value = '';
+      document.getElementById('browseConfFilter').value = '';
+      document.getElementById('browseScreenshotFilter').value = '';
       document.getElementById('browseTitle').textContent = '📋 Past Queries';
       document.getElementById('browseNewSearchBtn').style.display = 'none';
       document.getElementById('browsePanel').style.display = 'block';
@@ -1324,13 +1352,27 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     _browseSearchTimer = setTimeout(() => { _browsePage = 1; browseLoad(); }, 300);
   }
 
+  function browseOnFilterChange() {
+    _browsePage = 1;
+    browseLoad();
+  }
+
   async function browseLoad() {
-    const search = (document.getElementById('browseSearch').value || '').trim();
+    const search        = (document.getElementById('browseSearch').value || '').trim();
+    const branch        = document.getElementById('browseBranchFilter').value;
+    const confidence    = document.getElementById('browseConfFilter').value;
+    const hasScreenshot = document.getElementById('browseScreenshotFilter').value;
     const params = new URLSearchParams({ page: _browsePage, limit: 10 });
-    if (search) params.set('search', search);
+    if (search)        params.set('search', search);
+    if (branch)        params.set('branch', branch);
+    if (confidence)    params.set('confidence', confidence);
+    if (hasScreenshot) params.set('has_screenshot', hasScreenshot);
     try {
       const res  = await fetch('/api/browse-queries?' + params.toString());
       const data = await res.json();
+      // Populate filter dropdowns (preserve current selection)
+      _browsePopulateFilter('browseBranchFilter', data.branches || [], 'All branches');
+      _browsePopulateFilter('browseConfFilter', data.confidences || [], 'All confidence');
       browseRender(data.rows || [], data.total || 0, data.page || 1, data.limit || 25);
     } catch (e) {
       document.getElementById('browseTbody').innerHTML =
@@ -1353,23 +1395,39 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       { key: '_actions',         label: '' },
     ];
 
-    thead.innerHTML = '<tr>' + cols.map(c =>
-      c.key === '_actions'
-        ? '<th style="text-align:center;width:70px">Actions</th>'
-        : `<th onclick="browseSortBy('${c.key}')">${c.label}${_browseSort===c.key?(_browseSortAsc?' ▲':' ▼'):''}</th>`
-    ).join('') + '</tr>';
+    // Build sort index for header indicators
+    const sortMap = {};
+    _browseSorts.forEach((s, i) => { sortMap[s.key] = { idx: i, asc: s.asc }; });
+
+    thead.innerHTML = '<tr>' + cols.map(c => {
+      if (c.key === '_actions') return '<th style="text-align:center;width:70px">Actions</th>';
+      const s = sortMap[c.key];
+      let indicator = '';
+      if (s !== undefined) {
+        indicator = s.asc ? ' ▲' : ' ▼';
+        if (_browseSorts.length > 1) indicator += `<span class="browse-sort-badge">${s.idx + 1}</span>`;
+      }
+      return `<th onclick="browseSortBy('${c.key}', event)" title="Click to sort, Shift+click to add secondary sort">${c.label}${indicator}</th>`;
+    }).join('') + '</tr>';
 
     if (!rows.length && !(_browseMatchMode && _sqMatches.length)) {
       tbody.innerHTML = '<tr><td colspan="99" class="browse-empty">No past queries found</td></tr>';
     } else {
-      // Client-side sort (within page)
-      if (_browseSort && _browseSort !== 'ran_at') {
-        rows.sort((a,b) => {
-          const va = a[_browseSort], vb = b[_browseSort];
-          if (va == null && vb == null) return 0;
-          if (va == null) return 1; if (vb == null) return -1;
-          if (typeof va === 'number' && typeof vb === 'number') return _browseSortAsc ? va-vb : vb-va;
-          return _browseSortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+      // Client-side multi-sort (within page)
+      const activeSorts = _browseSorts.filter(s => s.key !== 'ran_at' || _browseSorts[0].key === 'ran_at');
+      if (_browseSorts.length && !(_browseSorts.length === 1 && _browseSorts[0].key === 'ran_at')) {
+        rows.sort((a, b) => {
+          for (const s of _browseSorts) {
+            const va = a[s.key], vb = b[s.key];
+            if (va == null && vb == null) continue;
+            if (va == null) return 1;
+            if (vb == null) return -1;
+            let cmp = 0;
+            if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb;
+            else cmp = String(va).localeCompare(String(vb));
+            if (cmp !== 0) return s.asc ? cmp : -cmp;
+          }
+          return 0;
         });
       }
 
@@ -1453,10 +1511,30 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   function browseGoPage(p) { _browsePage = p; browseLoad(); }
 
-  function browseSortBy(col) {
-    if (_browseSort === col) _browseSortAsc = !_browseSortAsc;
-    else { _browseSort = col; _browseSortAsc = col === 'query'; }
+  // Multi-sort: click adds/toggles a sort key; Shift not needed — just click columns in priority order
+  function browseSortBy(col, evt) {
+    const existing = _browseSorts.findIndex(s => s.key === col);
+    if (existing === 0) {
+      // Already primary — toggle direction
+      _browseSorts[0].asc = !_browseSorts[0].asc;
+    } else if (existing > 0 && evt && evt.shiftKey) {
+      // Shift+click on secondary — toggle its direction
+      _browseSorts[existing].asc = !_browseSorts[existing].asc;
+    } else if (evt && evt.shiftKey) {
+      // Shift+click on new column — add as secondary sort
+      _browseSorts.push({ key: col, asc: col === 'query' });
+    } else {
+      // Regular click — make this the sole sort
+      _browseSorts = [{ key: col, asc: col === 'query' }];
+    }
     browseLoad();
+  }
+
+  function _browsePopulateFilter(elId, options, placeholder) {
+    const sel = document.getElementById(elId);
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">${placeholder}</option>` +
+      options.map(o => `<option value="${esc(o)}" ${o===cur?'selected':''}>${esc(o)}</option>`).join('');
   }
 
   function browseViewResult(eventId) {
@@ -1623,8 +1701,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     // Store for flag submissions and exports
     _storeResultForFlags(result, document.getElementById('queryInput')?.value || '', branch, sections);
 
-    // ── Reused-result: original submission info + action bar ──
-    let reuseBanner = '';
+    // ── Reused-result: original submission container (above result panels) ──
+    const origContainer = document.getElementById('originalSubmissionContainer');
     if (result._reused) {
       // Strip appended screenshot context and clarification suffixes from the stored query
       let rawQ = (result._original_query || '');
@@ -1637,9 +1715,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       const scCtx = (result._screenshot_context || '').replace(/</g,'&lt;');
       const origBranch = esc(result.branch || '');
 
+      let html = '';
+
       // ── Action bar ──
-      reuseBanner = `
-        <div class="sq-action-bar" style="margin-bottom:10px;">
+      html += `
+        <div class="sq-action-bar" style="margin-bottom:14px;">
           <div>
             <div class="sq-label">📋 Loaded from past search</div>
             <div class="sq-sublabel">${origDate || ''}</div>
@@ -1652,31 +1732,33 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       `;
 
       // ── Original submission details (read-only) ──
-      reuseBanner += `<div class="reuse-original-info">`;
-      reuseBanner += `<div class="reuse-section-label">Original Query</div>`;
-      reuseBanner += `<div class="reuse-readonly-block">${origQ || '<em>No query recorded</em>'}</div>`;
+      html += `<div class="reuse-section-label">Original Query</div>`;
+      html += `<div class="reuse-readonly-block">${origQ || '<em>No query recorded</em>'}</div>`;
       if (origBranch) {
-        reuseBanner += `<div class="reuse-meta-row"><span class="reuse-meta-tag">🌿 ${origBranch}</span>${origDate ? `<span class="reuse-meta-tag">📅 ${origDate}</span>` : ''}</div>`;
+        html += `<div class="reuse-meta-row"><span class="reuse-meta-tag">🌿 ${origBranch}</span>${origDate ? `<span class="reuse-meta-tag">📅 ${origDate}</span>` : ''}</div>`;
       }
 
       // Screenshot image
       if (result._has_screenshot) {
-        reuseBanner += `<div class="reuse-section-label" style="margin-top:10px;">📸 Original Screenshot</div>`;
-        reuseBanner += `<div id="reuse-screenshot-container" class="reuse-screenshot-box"><div style="font-size:.75rem; color:var(--text-muted,#888);">Loading screenshot…</div></div>`;
+        html += `<div class="reuse-section-label" style="margin-top:12px;">📸 Original Screenshot</div>`;
+        html += `<div id="reuse-screenshot-container" class="reuse-screenshot-box"><div style="font-size:.75rem; color:var(--muted);">Loading screenshot…</div></div>`;
       }
 
       // Screenshot context
       if (scCtx) {
-        reuseBanner += `<div class="reuse-section-label" style="margin-top:10px;">${result._has_screenshot ? '📝 Extracted Screenshot Context' : '📸 Screenshot Context'}</div>`;
-        reuseBanner += `<div class="reuse-readonly-block reuse-context-block">${scCtx}</div>`;
+        html += `<div class="reuse-section-label" style="margin-top:12px;">${result._has_screenshot ? '📝 Extracted Screenshot Context' : '📸 Screenshot Context'}</div>`;
+        html += `<div class="reuse-readonly-block reuse-context-block">${scCtx}</div>`;
       }
 
-      reuseBanner += `</div>`;
+      origContainer.innerHTML = `<div class="reuse-original-container">${html}</div>`;
+      origContainer.style.display = 'block';
+    } else {
+      origContainer.innerHTML = '';
+      origContainer.style.display = 'none';
     }
 
     // ── Overview panel ──
     document.getElementById('overviewBody').innerHTML = `
-      ${reuseBanner}
       <div class="stats-row">
         <div class="stat">⚡ Iterations: <strong>${result.total_iterations}</strong></div>
         <div class="stat">🔎 Searches: <strong>${result.total_searches}</strong></div>
@@ -1717,7 +1799,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           if (!container || !data || !data.screenshot_b64) return;
           const img = document.createElement('img');
           img.src = 'data:' + (data.screenshot_mime || 'image/png') + ';base64,' + data.screenshot_b64;
-          img.style.cssText = 'max-width:100%; max-height:300px; border-radius:6px; border:1px solid var(--border,#333); cursor:pointer;';
+          img.style.cssText = 'max-width:100%; max-height:300px; border-radius:6px; border:1.5px solid var(--border); cursor:pointer;';
           img.title = 'Click to view full size';
           img.onclick = () => {
             const w = window.open('', '_blank');
@@ -1757,6 +1839,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     const branch = getBranch();
     if (!query)  { setStatus('Please enter a question first.'); return; }
     if (!branch) { setStatus('Please select a branch first.'); return; }
+
+    // Hide original submission container from any previous historical view
+    const _osc = document.getElementById('originalSubmissionContainer');
+    _osc.innerHTML = ''; _osc.style.display = 'none';
 
     // Set all 3 panels to loading
     setLoading('overviewBody', 'Searching');
