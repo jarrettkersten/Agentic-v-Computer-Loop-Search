@@ -336,6 +336,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 #adm-table-body-el th.sorted .sort-arrow{opacity:1}
 #adm-table-body-el td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--text);max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #adm-table-body-el tr:hover td{background:#f8fafc}
+.adm-table{width:100%;border-collapse:collapse;font-size:.82rem}
+.adm-table th{background:#f8fafc;padding:10px 14px;text-align:left;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1.5px solid var(--border);white-space:nowrap;position:sticky;top:0}
+.adm-table td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--text)}
+.adm-table tbody tr:hover td{background:#f8fafc}
 .adm-status-success{color:var(--success);font-weight:600}
 .adm-status-error{color:var(--error);font-weight:600}
 .adm-status-pending{color:var(--warn);font-weight:600}
@@ -481,6 +485,26 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <button class="cq-skip" onclick="skipClarify()">Skip</button>
       </div>
     </div>
+
+    <!-- ── Similar queries modal (cost-saver intercept) ── -->
+    <div id="similarQueriesOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9000; align-items:center; justify-content:center;">
+      <div style="background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); border-radius:14px; max-width:680px; width:92%; max-height:80vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.4);">
+        <div style="padding:18px 22px 12px; border-bottom:1px solid var(--border,#333); display:flex; align-items:center; gap:10px;">
+          <span style="font-size:1.3rem;">🔎</span>
+          <div>
+            <div style="font-weight:700; font-size:1rem; color:var(--text,#e0e0e0);">Similar queries found</div>
+            <div style="font-size:.78rem; color:var(--text-muted,#888); margin-top:2px;">These past searches may already answer your question — saving time and API costs.</div>
+          </div>
+        </div>
+        <div id="similarQueriesList" style="padding:14px 22px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:10px;">
+          <!-- filled by JS -->
+        </div>
+        <div style="padding:14px 22px; border-top:1px solid var(--border,#333); display:flex; justify-content:flex-end; gap:10px;">
+          <button onclick="dismissSimilarQueries()" style="padding:8px 18px; border-radius:8px; border:1px solid var(--border,#444); background:transparent; color:var(--text,#ccc); cursor:pointer; font-size:.85rem;">✨ Search anyway</button>
+        </div>
+      </div>
+    </div>
+
     <div class="status-bar" id="statusBar"></div>
     </div><!-- end card-body -->
   </div>
@@ -673,6 +697,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   <div class="adm-tabs">
     <button class="adm-tab active" onclick="admSwitchTab(event,'search_events')">Search Events</button>
     <button class="adm-tab" onclick="admSwitchTab(event,'flagged_queries')">🚩 Flagged Queries</button>
+    <button class="adm-tab" onclick="admSwitchTab(event,'api_keys')">🔑 API Keys</button>
   </div>
 
   <!-- Table -->
@@ -705,6 +730,56 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     </div>
   </div>
 
+  <!-- API Keys Management Panel -->
+  <div id="adm-api-keys-panel" style="display:none">
+    <div class="adm-table-card">
+      <div class="adm-table-header">
+        <h2>API Keys</h2>
+        <div class="adm-table-actions">
+          <button class="adm-refresh-all" onclick="admCreateKeyPrompt()" style="font-size:.85rem">+ Create New Key</button>
+        </div>
+      </div>
+
+      <!-- Create key form (hidden by default) -->
+      <div id="adm-create-key-form" style="display:none;padding:16px 20px;border-bottom:1px solid var(--border);background:rgba(37,99,235,.05)">
+        <div style="display:flex;gap:10px;align-items:center">
+          <input type="text" id="adm-new-key-label" placeholder="Key label (e.g. Jira Integration)" style="flex:1;padding:8px 12px;border-radius:7px;border:1.5px solid var(--border);font-size:.85rem;font-family:inherit;background:var(--bg-card);color:var(--text)"/>
+          <button onclick="admCreateKey()" style="padding:8px 18px;border-radius:7px;border:none;background:#2563eb;color:#fff;font-size:.85rem;cursor:pointer;font-family:inherit">Create</button>
+          <button onclick="document.getElementById('adm-create-key-form').style.display='none'" style="padding:8px 14px;border-radius:7px;border:1.5px solid var(--border);background:transparent;color:var(--text-muted);font-size:.85rem;cursor:pointer;font-family:inherit">Cancel</button>
+        </div>
+      </div>
+
+      <!-- New key alert (shown once after creation) -->
+      <div id="adm-new-key-alert" style="display:none;padding:16px 20px;border-bottom:1px solid var(--border);background:rgba(234,179,8,.08)">
+        <div style="font-weight:600;color:#eab308;margin-bottom:6px">⚠️ Save this API key now — it cannot be retrieved again</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <code id="adm-new-key-value" style="flex:1;padding:10px 14px;border-radius:7px;background:var(--bg);font-size:.9rem;word-break:break-all;border:1.5px solid var(--border)"></code>
+          <button onclick="admCopyKey()" style="padding:8px 14px;border-radius:7px;border:none;background:#2563eb;color:#fff;font-size:.85rem;cursor:pointer;white-space:nowrap">📋 Copy</button>
+        </div>
+        <button onclick="document.getElementById('adm-new-key-alert').style.display='none'" style="margin-top:8px;padding:4px 12px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:.8rem;cursor:pointer">Dismiss</button>
+      </div>
+
+      <!-- Keys table -->
+      <div style="overflow-x:auto">
+        <table class="adm-table" id="adm-api-keys-table">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Label</th>
+              <th>Created By</th>
+              <th>Created</th>
+              <th>Last Used</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="adm-api-keys-body">
+            <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
 </main>
 </div><!-- /view-admin -->
@@ -996,8 +1071,107 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     _executePendingAction();
   }
 
-  function _executePendingAction() {
+  let _similarCheckDone = false;
+  let _lastSimilarQuery = '';
+
+  async function _executePendingAction() {
+    // Check for similar past queries (re-check if query changed)
+    const currentQuery = document.getElementById('queryInput').value.trim();
+    if (currentQuery !== _lastSimilarQuery) {
+      _similarCheckDone = false;
+    }
+    if (!_similarCheckDone) {
+      _similarCheckDone = true;
+      _lastSimilarQuery = currentQuery;
+      const query = document.getElementById('queryInput').value.trim();
+      const branch = getBranch();
+      try {
+        setStatus('Checking for similar past queries…');
+        const resp = await fetch('/api/similar-queries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, branch }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.matches && data.matches.length > 0) {
+            setStatus('');
+            showSimilarQueries(data.matches);
+            return; // wait for user to choose
+          }
+        }
+      } catch (e) {
+        // Similar-query check failed — proceed silently
+      }
+      setStatus('');
+    }
     runSearch();
+  }
+
+  function showSimilarQueries(matches) {
+    const list = document.getElementById('similarQueriesList');
+    list.innerHTML = '';
+    matches.forEach(m => {
+      const pct = Math.round(m.similarity * 100);
+      const date = new Date(m.ran_at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
+      const preview = (m.answer_preview || '').substring(0, 300).replace(/</g,'&lt;');
+      const card = document.createElement('div');
+      card.style.cssText = 'border:1px solid var(--border,#333); border-radius:10px; padding:14px; cursor:pointer; transition:border-color .15s;';
+      card.onmouseenter = () => card.style.borderColor = 'var(--brand,#6c5ce7)';
+      card.onmouseleave = () => card.style.borderColor = 'var(--border,#333)';
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-weight:600; font-size:.9rem; color:var(--text,#e0e0e0);">${m.query.replace(/</g,'&lt;')}</span>
+          <span style="font-size:.7rem; padding:3px 8px; border-radius:20px; font-weight:600; background:${pct>=70?'#16a34a22;color:#4ade80':pct>=50?'#ca8a0422;color:#fbbf24':'#64748b22;color:#94a3b8'};">${pct}% match</span>
+        </div>
+        <div style="font-size:.78rem; color:var(--text-muted,#888); margin-bottom:8px;">${date} · ${m.branch || 'unknown branch'} · ${m.confidence_level || 'no confidence'}</div>
+        <div style="font-size:.82rem; color:var(--text-muted,#aaa); line-height:1.45; max-height:4.5em; overflow:hidden; text-overflow:ellipsis;">${preview}${preview.length >= 300 ? '…' : ''}</div>
+      `;
+      card.onclick = () => loadPastResult(m.id);
+      list.appendChild(card);
+    });
+    const overlay = document.getElementById('similarQueriesOverlay');
+    overlay.style.display = 'flex';
+  }
+
+  function dismissSimilarQueries() {
+    document.getElementById('similarQueriesOverlay').style.display = 'none';
+    runSearch();
+  }
+
+  async function loadPastResult(eventId) {
+    document.getElementById('similarQueriesOverlay').style.display = 'none';
+    setStatus('Loading past result…');
+    try {
+      const resp = await fetch('/api/search-events/' + eventId + '/answer');
+      if (!resp.ok) throw new Error('Could not load past result');
+      const data = await resp.json();
+      // Parse the answer as markdown/sections like the normal result flow
+      const answer = data.answer_text || '';
+      // Build a synthetic agentic result so renderAgentic() can display it
+      const result = {
+        answer: answer,
+        branch: data.branch || getBranch() || '',
+        confidence: { level: data.confidence_level || 'unknown' },
+        total_files_read: data.files_read || 0,
+        total_iterations: data.iterations || 0,
+        total_searches: data.searches || 0,
+        input_tokens: data.input_tokens || 0,
+        output_tokens: data.output_tokens || 0,
+        duration: data.duration_sec || 0,
+        iterations: [],  // no iteration log for reused results
+        _reused: true,
+        _original_event_id: eventId,
+        _original_ran_at: data.ran_at,
+      };
+      state.agentic = result;
+      renderAgentic(result);
+      document.getElementById('btnSearch').disabled = false;
+      setStatus('✅ Loaded from past search (no API cost incurred)');
+    } catch (e) {
+      setStatus('Could not load past result — running new search…');
+      runSearch();
+    }
   }
 
   // getBranch() is defined in the branch loader section above
@@ -1444,7 +1618,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   const ADM_TABLE_LABELS = {
     search_events:    'Search Events',
-    flagged_queries:  'Flagged Queries'
+    flagged_queries:  'Flagged Queries',
+    api_keys:         'API Keys'
   };
 
   const ADM_COL_LABELS = {
@@ -1518,6 +1693,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     const icon = document.getElementById('adm-refresh-all-icon');
     icon.classList.add('adm-refreshing');
     await admLoadAll();
+    if (admCurrentTab === 'api_keys') {
+      await admLoadApiKeys();
+    }
     icon.classList.remove('adm-refreshing');
   }
 
@@ -1644,9 +1822,21 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     admPage = 1;
     document.querySelectorAll('.adm-tab').forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
-    document.getElementById('adm-table-title').textContent = ADM_TABLE_LABELS[table];
-    document.getElementById('adm-table-filter').value = '';
-    admRenderTable();
+
+    const tableCard = document.querySelector('.adm-table-card');
+    const apiKeysPanel = document.getElementById('adm-api-keys-panel');
+
+    if (table === 'api_keys') {
+      tableCard.style.display = 'none';
+      apiKeysPanel.style.display = 'block';
+      admLoadApiKeys();
+    } else {
+      apiKeysPanel.style.display = 'none';
+      tableCard.style.display = 'block';
+      document.getElementById('adm-table-title').textContent = ADM_TABLE_LABELS[table];
+      document.getElementById('adm-table-filter').value = '';
+      admRenderTable();
+    }
   }
 
   function admOnPageSizeChange() {
@@ -1798,6 +1988,107 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   function admEsc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── API Keys Management ────────────────────────────────────────────────────
+  function admCreateKeyPrompt() {
+    document.getElementById('adm-create-key-form').style.display = 'block';
+    document.getElementById('adm-new-key-label').focus();
+  }
+
+  async function admCreateKey() {
+    const label = document.getElementById('adm-new-key-label').value.trim();
+    if (!label) { alert('Please enter a label for the key'); return; }
+    try {
+      const resp = await fetch('/api/admin/api-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error || 'Failed to create key');
+
+      // Show the key once
+      document.getElementById('adm-new-key-value').textContent = data.api_key;
+      document.getElementById('adm-new-key-alert').style.display = 'block';
+      document.getElementById('adm-create-key-form').style.display = 'none';
+      document.getElementById('adm-new-key-label').value = '';
+      admLoadApiKeys();
+    } catch (err) {
+      alert('Error creating key: ' + err.message);
+    }
+  }
+
+  function admCopyKey() {
+    const key = document.getElementById('adm-new-key-value').textContent;
+    navigator.clipboard.writeText(key).then(() => {
+      const btn = event.target;
+      btn.textContent = '✓ Copied!';
+      setTimeout(() => btn.textContent = '📋 Copy', 2000);
+    });
+  }
+
+  async function admLoadApiKeys() {
+    try {
+      const resp = await fetch('/api/admin/api-keys');
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error);
+      const tbody = document.getElementById('adm-api-keys-body');
+      if (!data.keys.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">No API keys created yet</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.keys.map(k => {
+        const created = k.created_at ? new Date(k.created_at).toLocaleDateString() : '—';
+        const lastUsed = k.last_used ? new Date(k.last_used).toLocaleString() : 'Never';
+        const statusBadge = k.is_active
+          ? '<span style="color:#22c55e;font-weight:600">● Active</span>'
+          : '<span style="color:#ef4444;font-weight:600">● Revoked</span>';
+        const toggleBtn = k.is_active
+          ? `<button onclick="admToggleKey('${k.id}', false)" style="padding:4px 10px;border-radius:5px;border:1px solid #ef4444;background:transparent;color:#ef4444;font-size:.78rem;cursor:pointer">Revoke</button>`
+          : `<button onclick="admToggleKey('${k.id}', true)" style="padding:4px 10px;border-radius:5px;border:1px solid #22c55e;background:transparent;color:#22c55e;font-size:.78rem;cursor:pointer">Activate</button>`;
+        const deleteBtn = `<button onclick="admDeleteKey('${k.id}')" style="padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:.78rem;cursor:pointer;margin-left:4px">🗑</button>`;
+        return `<tr>
+          <td><code style="font-size:.82rem">${k.key_prefix}</code></td>
+          <td>${k.label || '—'}</td>
+          <td>${k.created_by || '—'}</td>
+          <td>${created}</td>
+          <td>${lastUsed}</td>
+          <td>${statusBadge}</td>
+          <td>${toggleBtn}${deleteBtn}</td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      document.getElementById('adm-api-keys-body').innerHTML =
+        `<tr><td colspan="7" style="text-align:center;padding:24px;color:#ef4444">Error loading keys: ${err.message}</td></tr>`;
+    }
+  }
+
+  async function admToggleKey(keyId, activate) {
+    try {
+      const resp = await fetch(`/api/admin/api-keys/${keyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: activate }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error);
+      admLoadApiKeys();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  async function admDeleteKey(keyId) {
+    if (!confirm('Permanently delete this API key? This cannot be undone.')) return;
+    try {
+      const resp = await fetch(`/api/admin/api-keys/${keyId}`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (!resp.ok || data.error) throw new Error(data.error);
+      admLoadApiKeys();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
   }
 
   // ── Info modals ────────────────────────────────────────────────────────────

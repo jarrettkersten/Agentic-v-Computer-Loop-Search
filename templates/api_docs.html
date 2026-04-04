@@ -219,6 +219,9 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
 
       <a class="sidebar-link" data-target="ep-admin-data"><span class="method-tag get">GET</span> /admin/data/{table}</a>
       <a class="sidebar-link" data-target="ep-admin-export"><span class="method-tag get">GET</span> /admin/export/{table}</a>
+      <a class="sidebar-link" data-target="ep-admin-keys-list"><span class="method-tag get">GET</span> /api/admin/api-keys</a>
+      <a class="sidebar-link" data-target="ep-admin-keys-create"><span class="method-tag post">POST</span> /api/admin/api-keys</a>
+      <a class="sidebar-link" data-target="ep-admin-keys-update"><span class="method-tag patch">PATCH</span> /api/admin/api-keys/{id}</a>
     </div>
   </nav>
 
@@ -234,7 +237,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
         </button>
       </div>
       <div class="auth-badges">
-        <span class="auth-badge bearer">Bearer Token — Required for query endpoints</span>
+        <span class="auth-badge bearer">Bearer Token — API key from Admin Dashboard or EXTERNAL_API_KEY env var</span>
         <span class="auth-badge cookie">Admin Login — Required for dashboard endpoints</span>
         <span class="auth-badge public">Public — Health &amp; branch listing</span>
       </div>
@@ -264,6 +267,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
               <tbody>
                 <tr><td class="param-name">Authorization</td><td class="param-type">Bearer &lt;EXTERNAL_API_KEY&gt;</td><td><span class="param-required">Required</span></td></tr>
                 <tr><td class="param-name">Content-Type</td><td class="param-type">application/json <em>or</em> multipart/form-data</td><td><span class="param-required">Required</span></td></tr>
+                <tr><td class="param-name">X-User-Email</td><td class="param-type">user@example.com</td><td><span class="param-optional">Optional</span></td></tr>
               </tbody>
             </table>
           </div>
@@ -292,6 +296,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
             </table>
             <div class="code-block" style="margin-top:0.75rem"><span class="label">curl example</span><pre>curl -X POST /api/query \
   -H "Authorization: Bearer YOUR_KEY" \
+  -H "X-User-Email: jane@company.com" \
   -F "query=Why is the EAC Submit button greyed out?" \
   -F "branch=supported_release-1.25.2" \
   -F "screenshot=@screenshot.png"</pre></div>
@@ -312,6 +317,10 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
           <div class="try-field">
             <label>Authorization (Bearer token)</label>
             <input type="password" data-param="bearer" placeholder="Your EXTERNAL_API_KEY"/>
+          </div>
+          <div class="try-field">
+            <label>X-User-Email (optional — identifies the caller)</label>
+            <input type="text" data-param="xuseremail" placeholder="jane@company.com"/>
           </div>
           <div class="try-field">
             <label>Request Body (JSON)</label>
@@ -341,6 +350,15 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       <div class="endpoint-body">
         <div class="endpoint-detail">
           <p>Polls for the result of an async query started via <code>/api/query</code>. Returns the result when complete, or a processing status while running. Use optional query parameters to return only specific parts of the response.</p>
+          <div class="param-section">
+            <h4>Headers</h4>
+            <table class="param-table">
+              <thead><tr><th>Name</th><th>Value</th><th>Required</th></tr></thead>
+              <tbody>
+                <tr><td class="param-name">Authorization</td><td class="param-type">Bearer &lt;EXTERNAL_API_KEY&gt;</td><td><span class="param-required">Required</span></td></tr>
+              </tbody>
+            </table>
+          </div>
           <div class="param-section">
             <h4>Path Parameters</h4>
             <table class="param-table">
@@ -939,6 +957,138 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
       </div>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- API KEY MANAGEMENT                                  -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <div class="section-sep" id="section-api-keys">API Key Management</div>
+
+    <!-- GET /api/admin/api-keys -->
+    <div class="endpoint-card" id="ep-admin-keys-list">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="endpoint-method get">GET</span>
+        <span class="endpoint-path">/api/admin/api-keys</span>
+        <span class="endpoint-desc">List all API keys</span>
+        <span class="endpoint-auth auth-admin">Admin</span>
+        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-detail">
+          <p>Returns all API keys with their metadata. Raw keys and hashes are never exposed — only the prefix (first 12 characters) is shown.</p>
+          <div class="param-section">
+            <h4>Response</h4>
+            <div class="code-block"><span class="label">200 OK</span><pre>{
+  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"keys"</span>: [
+    {
+      <span class="json-key">"id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
+      <span class="json-key">"key_prefix"</span>: <span class="json-str">"cora_a1b2c3d4..."</span>,
+      <span class="json-key">"label"</span>: <span class="json-str">"Jira Integration"</span>,
+      <span class="json-key">"created_by"</span>: <span class="json-str">"admin@corasystems.com"</span>,
+      <span class="json-key">"created_at"</span>: <span class="json-str">"2026-04-04T12:00:00Z"</span>,
+      <span class="json-key">"last_used"</span>: <span class="json-str">"2026-04-04T14:30:00Z"</span>,
+      <span class="json-key">"is_active"</span>: <span class="json-bool">true</span>
+    }
+  ]
+}</pre></div>
+          </div>
+        </div>
+        <div class="try-it">
+          <div class="try-actions">
+            <button class="try-btn" onclick="tryEndpoint(this, 'GET', '/api/admin/api-keys')">Send Request</button>
+            <span class="try-status"></span>
+          </div>
+          <div class="try-result"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /api/admin/api-keys -->
+    <div class="endpoint-card" id="ep-admin-keys-create">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="endpoint-method post">POST</span>
+        <span class="endpoint-path">/api/admin/api-keys</span>
+        <span class="endpoint-desc">Create a new API key</span>
+        <span class="endpoint-auth auth-admin">Admin</span>
+        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-detail">
+          <p>Generates a new API key. The raw key is returned <strong>once</strong> in the response and can never be retrieved again — only a prefix is stored for display. Keys use <code>cora_</code> prefix + 48 random hex characters.</p>
+          <div class="param-section">
+            <h4>Request Body</h4>
+            <table class="param-table">
+              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td class="param-name">label</td><td class="param-type">string</td><td><span class="param-required">Required</span></td><td class="param-desc">Human-readable label (e.g. "Jira Integration", "n8n Workflow")</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <h4>Response</h4>
+            <div class="code-block"><span class="label">201 Created</span><pre>{
+  <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"key_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
+  <span class="json-key">"api_key"</span>: <span class="json-str">"cora_8f3a1b2c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e"</span>,
+  <span class="json-key">"key_prefix"</span>: <span class="json-str">"cora_8f3a1b2c..."</span>,
+  <span class="json-key">"label"</span>: <span class="json-str">"Jira Integration"</span>,
+  <span class="json-key">"message"</span>: <span class="json-str">"Save this key now — it cannot be retrieved again."</span>
+}</pre></div>
+          </div>
+        </div>
+        <div class="try-it">
+          <div class="try-field">
+            <label>Request Body (JSON)</label>
+            <textarea data-param="body">{"label": "My Integration"}</textarea>
+          </div>
+          <div class="try-actions">
+            <button class="try-btn" onclick="tryEndpoint(this, 'POST', '/api/admin/api-keys')">Send Request</button>
+            <span class="try-status"></span>
+          </div>
+          <div class="try-result"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PATCH /api/admin/api-keys/{id} -->
+    <div class="endpoint-card" id="ep-admin-keys-update">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="endpoint-method patch">PATCH</span>
+        <span class="endpoint-path">/api/admin/api-keys/<span style="color:var(--brand-light)">{key_id}</span></span>
+        <span class="endpoint-desc">Revoke, reactivate, or rename a key</span>
+        <span class="endpoint-auth auth-admin">Admin</span>
+        <svg class="endpoint-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-detail">
+          <p>Update an API key's status or label. Set <code>is_active</code> to <code>false</code> to revoke a key (it will immediately stop working). Set back to <code>true</code> to reactivate.</p>
+          <div class="param-section">
+            <h4>Request Body</h4>
+            <table class="param-table">
+              <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td class="param-name">is_active</td><td class="param-type">boolean</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Set <code>false</code> to revoke, <code>true</code> to reactivate</td></tr>
+                <tr><td class="param-name">label</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Update the key's label</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="try-it">
+          <div class="try-field">
+            <label>Key ID</label>
+            <input type="text" data-param="key_id" placeholder="a1b2c3d4-..."/>
+          </div>
+          <div class="try-field">
+            <label>Request Body (JSON)</label>
+            <textarea data-param="body">{"is_active": false}</textarea>
+          </div>
+          <div class="try-actions">
+            <button class="try-btn" onclick="tryEndpointDynamic(this, 'PATCH', '/api/admin/api-keys/{key_id}', ['key_id'], true)">Send Request</button>
+            <span class="try-status"></span>
+          </div>
+          <div class="try-result"></div>
+        </div>
+      </div>
+    </div>
 
   </main>
 </div>
@@ -1107,6 +1257,8 @@ async function tryEndpointBearer(btn, method, url) {
 
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (bearerInput && bearerInput.value) opts.headers['Authorization'] = 'Bearer ' + bearerInput.value;
+  const emailInput = tryIt.querySelector('[data-param="xuseremail"]');
+  if (emailInput && emailInput.value) opts.headers['X-User-Email'] = emailInput.value;
   if (bodyArea) opts.body = bodyArea.value;
 
   const t0 = performance.now();

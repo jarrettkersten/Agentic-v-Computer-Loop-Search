@@ -24,9 +24,10 @@ import queue
 import secrets
 import functools
 import urllib.parse
+import hashlib
 import requests
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, jsonify, Response, stream_with_context, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, Response, stream_with_context, redirect, url_for, session, g
 import anthropic
 from dotenv import load_dotenv
 
@@ -190,6 +191,11 @@ def init_db():
     try:
         conn = get_db_conn()
         cur  = conn.cursor()
+        # Enable trigram similarity for similar-query matching
+        try:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        except Exception:
+            pass  # extension may already exist or require superuser
         cur.execute("""
             CREATE TABLE IF NOT EXISTS search_events (
                 id               SERIAL PRIMARY KEY,
@@ -219,6 +225,7 @@ def init_db():
             ("response_sections",     "TEXT DEFAULT ''"),
             ("job_id",                "TEXT DEFAULT ''"),
             ("screenshot_context",    "TEXT DEFAULT ''"),
+            ("answer_text",           "TEXT DEFAULT ''"),
         ])
         _safe_add_columns(cur, "flagged_queries", [
             ("flag_type",         "TEXT NOT NULL DEFAULT 'inaccurate'"),
@@ -246,6 +253,19 @@ def init_db():
                 error        TEXT,
                 created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 completed_at TIMESTAMPTZ
+            )
+        """)
+        # API keys table — multi-user API key management
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id         TEXT PRIMARY KEY,
+                key_hash   TEXT NOT NULL,
+                key_prefix TEXT NOT NULL,
+                label      TEXT NOT NULL DEFAULT '',
+                created_by TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_used  TIMESTAMPTZ,
+                is_active  BOOLEAN NOT NULL DEFAULT TRUE
             )
         """)
         # Flagged queries table — stores responses users flag as unhelpful/missing
@@ -362,14 +382,15 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                (loop_type, query, branch, status, duration_sec, files_read,
                 iterations, searches, confidence_level,
                 input_tokens, output_tokens, total_tokens, error_message,
-                user_email, response_sections, job_id, screenshot_context)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                user_email, response_sections, job_id, screenshot_context,
+                answer_text)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (loop_type, (query or "")[:300], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
              confidence_level or "",
              input_tokens, output_tokens, input_tokens + output_tokens,
              error_message or "", user_email or "", response_sections,
-             job_id or "", screenshot_context or ""),
+             job_id or "", screenshot_context or "", answer or ""),
         )
         conn.commit()
     except Exception as e:
@@ -1609,6 +1630,102 @@ def api_clarify():
 
 
 # ---------------------------------------------------------------------------
+# Similar-query lookup  (cost-saver — intercepts duplicate searches)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/similar-queries", methods=["POST"])
+def api_similar_queries():
+    """
+    Check for past search events whose query is similar to the incoming one.
+    Uses PostgreSQL pg_trgm trigram similarity.  Returns up to 5 matches with
+    a short answer preview so the user can decide whether to reuse a past result.
+
+    Request JSON:  {"query": "...", "branch": "..." (optional)}
+    Response JSON: {"matches": [{ id, query, branch, ran_at, confidence_level,
+                                   answer_preview, similarity }]}
+    """
+    data  = request.get_json() or {}
+    query = data.get("query", "").strip()
+    branch = data.get("branch", "").strip()
+    if not query or not DATABASE_URL:
+        return jsonify({"matches": []})
+
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Similarity threshold — only return reasonably close matches
+        threshold = 0.25
+
+        sql = """
+            SELECT id, query, branch, ran_at, confidence_level,
+                   LEFT(answer_text, 500) AS answer_preview,
+                   similarity(query, %s) AS sim
+            FROM   search_events
+            WHERE  status = 'success'
+              AND  answer_text IS NOT NULL AND answer_text != ''
+              AND  similarity(query, %s) > %s
+        """
+        params = [query, query, threshold]
+
+        # Optionally filter to same branch
+        if branch:
+            sql += " AND branch = %s"
+            params.append(branch)
+
+        sql += " ORDER BY sim DESC, ran_at DESC LIMIT 5"
+
+        cur.execute(sql, params)
+        rows = [dict(r) for r in cur.fetchall()]
+
+        # Serialise datetimes
+        for row in rows:
+            if row.get("ran_at"):
+                row["ran_at"] = row["ran_at"].isoformat()
+            row["similarity"] = round(float(row.get("sim", 0)), 3)
+            row.pop("sim", None)
+
+        return jsonify({"matches": rows})
+    except Exception as e:
+        print(f"[similar-queries] Error: {e}")
+        return jsonify({"matches": []})
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+@app.route("/api/search-events/<int:event_id>/answer", methods=["GET"])
+def api_search_event_answer(event_id):
+    """Return the full answer_text for a specific search event (for loading past results)."""
+    if not DATABASE_URL:
+        return jsonify({"error": "No database configured"}), 500
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """SELECT id, query, branch, ran_at, confidence_level, answer_text,
+                      response_sections, duration_sec, files_read, iterations,
+                      searches, input_tokens, output_tokens, total_tokens
+               FROM search_events WHERE id = %s AND status = 'success'""",
+            (event_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"error": "Event not found"}), 404
+        row = dict(row)
+        if row.get("ran_at"):
+            row["ran_at"] = row["ran_at"].isoformat()
+        return jsonify(row)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -1931,7 +2048,8 @@ ADMIN_TABLES = {
         "COALESCE(user_email, '') AS user_email, "
         "COALESCE(response_sections, '') AS response_sections, "
         "COALESCE(job_id, '') AS job_id, "
-        "COALESCE(screenshot_context, '') AS screenshot_context "
+        "COALESCE(screenshot_context, '') AS screenshot_context, "
+        "COALESCE(answer_text, '') AS answer_text "
         "FROM search_events ORDER BY ran_at DESC LIMIT 500"
     ),
     "flagged_queries": (
@@ -2216,6 +2334,136 @@ def api_admin_flag_detail(flag_id):
 
 
 # ---------------------------------------------------------------------------
+# API Keys Management
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/api-keys", methods=["POST"])
+@admin_required
+def admin_create_api_key():
+    """Create a new API key. Returns the raw key once."""
+    data = request.get_json() or {}
+    label = data.get("label", "").strip()
+    if not label:
+        return jsonify({"error": "Label is required"}), 400
+
+    # Generate key: "cora_" prefix + 48 random hex chars
+    raw_key = "cora_" + secrets.token_hex(24)
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    key_prefix = raw_key[:12] + "..."
+    key_id = str(uuid.uuid4())
+    created_by = session.get("user", {}).get("email", "unknown")
+
+    # Insert into DB
+    conn = None
+    try:
+        conn = get_db_conn()
+        conn.cursor().execute(
+            "INSERT INTO api_keys (id, key_hash, key_prefix, label, created_by) VALUES (%s, %s, %s, %s, %s)",
+            (key_id, key_hash, key_prefix, label, created_by),
+        )
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+    # Return the raw key ONCE — it can never be retrieved again
+    return jsonify({
+        "success": True,
+        "key_id": key_id,
+        "api_key": raw_key,
+        "key_prefix": key_prefix,
+        "label": label,
+        "message": "Save this key now — it cannot be retrieved again.",
+    }), 201
+
+
+@app.route("/api/admin/api-keys", methods=["GET"])
+@admin_required
+def admin_list_api_keys():
+    """List all API keys (never exposes raw key or hash)."""
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, key_prefix, label, created_by, created_at, last_used, is_active "
+            "FROM api_keys ORDER BY created_at DESC"
+        )
+        keys = [dict(r) for r in cur.fetchall()]
+        return jsonify({"success": True, "keys": keys})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+@app.route("/api/admin/api-keys/<key_id>", methods=["PATCH"])
+@admin_required
+def admin_update_api_key(key_id):
+    """Revoke or reactivate a key, or update its label."""
+    data = request.get_json() or {}
+    is_active = data.get("is_active")
+    label = data.get("label")
+
+    updates = []
+    params = []
+    if is_active is not None:
+        updates.append("is_active = %s")
+        params.append(bool(is_active))
+    if label is not None:
+        updates.append("label = %s")
+        params.append(label.strip())
+
+    if not updates:
+        return jsonify({"error": "No fields to update"}), 400
+
+    params.append(key_id)
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute(f"UPDATE api_keys SET {', '.join(updates)} WHERE id = %s", params)
+        if cur.rowcount == 0:
+            return jsonify({"error": "Key not found"}), 404
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+@app.route("/api/admin/api-keys/<key_id>", methods=["DELETE"])
+@admin_required
+def admin_delete_api_key(key_id):
+    """Permanently delete an API key."""
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM api_keys WHERE id = %s", (key_id,))
+        if cur.rowcount == 0:
+            return jsonify({"error": "Key not found"}), 404
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+# ---------------------------------------------------------------------------
 # Auth routes — Entra ID OAuth
 # ---------------------------------------------------------------------------
 
@@ -2281,16 +2529,52 @@ EXTERNAL_API_KEY = os.environ.get("EXTERNAL_API_KEY", "")
 
 
 def _check_api_key():
-    """Validate bearer token for external API calls. Returns error response or None."""
-    if not EXTERNAL_API_KEY:
-        return jsonify({"error": "External API not configured — set EXTERNAL_API_KEY env var."}), 503
+    """Validate bearer token for external API calls. Returns error response or None.
+    Checks database keys first, then falls back to EXTERNAL_API_KEY env var."""
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         return jsonify({"error": "Missing or invalid Authorization header. Use: Bearer <api_key>"}), 401
+
     token = auth_header[7:].strip()
-    if not secrets.compare_digest(token, EXTERNAL_API_KEY):
-        return jsonify({"error": "Invalid API key."}), 403
-    return None
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+    # Try to find the key in the database
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, label FROM api_keys WHERE key_hash = %s AND is_active = TRUE",
+            (token_hash,)
+        )
+        row = cur.fetchone()
+        if row:
+            # Found a valid DB key — update last_used and store info in g
+            cur.execute(
+                "UPDATE api_keys SET last_used = NOW() WHERE id = %s",
+                (row['id'],)
+            )
+            conn.commit()
+            g.api_key_id = row['id']
+            g.api_key_label = row['label']
+            return None
+    except Exception as e:
+        print(f"[API Key] Database check failed: {e}")
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+    # Fall back to EXTERNAL_API_KEY env var
+    if EXTERNAL_API_KEY and secrets.compare_digest(token, EXTERNAL_API_KEY):
+        g.api_key_id = "env_default"
+        g.api_key_label = "Environment Default"
+        return None
+
+    # No valid key found
+    if not EXTERNAL_API_KEY and not token:
+        return jsonify({"error": "External API not configured — set EXTERNAL_API_KEY env var or create an API key."}), 503
+
+    return jsonify({"error": "Invalid API key."}), 403
 
 
 # ---------------------------------------------------------------------------
