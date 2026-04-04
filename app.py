@@ -483,7 +483,7 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                 user_email, response_sections, job_id, screenshot_context,
                 answer_text, screenshot_b64, screenshot_mime)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (loop_type, (query or "")[:300], branch or "", status,
+            (loop_type, (query or "")[:2000], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
              confidence_level or "",
              input_tokens, output_tokens, input_tokens + output_tokens,
@@ -1494,6 +1494,7 @@ def api_agentic_stream():
     # Capture screenshot data so it can be persisted with the search event
     _ss_b64  = data.get("screenshot_b64", "").strip()
     _ss_mime = data.get("screenshot_mime", "").strip()
+    _ss_ctx  = data.get("screenshot_context", "").strip()
 
     job_id = str(uuid.uuid4())
     _job_create(job_id)
@@ -1519,6 +1520,7 @@ def api_agentic_stream():
                 user_email=_user_email,
                 answer=result.get("answer", ""),
                 job_id=job_id,
+                screenshot_context=_ss_ctx,
                 screenshot_b64=_ss_b64,
                 screenshot_mime=_ss_mime,
             )
@@ -1576,6 +1578,7 @@ def api_agentic_start():
     # Capture screenshot data so it can be persisted with the search event
     _ss_b64  = data.get("screenshot_b64", "").strip()
     _ss_mime = data.get("screenshot_mime", "").strip()
+    _ss_ctx  = data.get("screenshot_context", "").strip()
 
     job_id = str(uuid.uuid4())
     _job_create(job_id)
@@ -1601,6 +1604,7 @@ def api_agentic_start():
                 user_email=_user_email,
                 answer=result.get("answer", ""),
                 job_id=job_id,
+                screenshot_context=_ss_ctx,
                 screenshot_b64=_ss_b64,
                 screenshot_mime=_ss_mime,
             )
@@ -1675,6 +1679,7 @@ def api_agentic():
         return jsonify({"error": "Please select a branch first."}), 400
     _ss_b64  = data.get("screenshot_b64", "").strip()
     _ss_mime = data.get("screenshot_mime", "").strip()
+    _ss_ctx  = data.get("screenshot_context", "").strip()
     t0 = time.time()
     _user_email = _current_user_email()
     job_id = str(uuid.uuid4())
@@ -1693,6 +1698,7 @@ def api_agentic():
             user_email=_user_email,
             answer=result.get("answer", ""),
             job_id=job_id,
+            screenshot_context=_ss_ctx,
             screenshot_b64=_ss_b64,
             screenshot_mime=_ss_mime,
         )
@@ -1759,6 +1765,67 @@ def api_clarify():
         return jsonify(result)
     except Exception:
         return jsonify({"needs_clarification": False})
+
+
+# ---------------------------------------------------------------------------
+# Browse past queries (available to all authenticated users)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/browse-queries", methods=["GET"])
+def api_browse_queries():
+    """
+    Return recent successful search events for any user to browse.
+    Lightweight — no answer text, no screenshots.  Just enough to power
+    a 'Past Queries' table the user can click through.
+
+    Query params:
+      page   (int, default 1)
+      limit  (int, default 25, max 100)
+      search (str, optional — filters query text)
+    """
+    if not DATABASE_URL:
+        return jsonify({"rows": [], "total": 0})
+    page  = max(1, int(request.args.get("page", 1)))
+    limit = min(int(request.args.get("limit", 25)), 100)
+    search = (request.args.get("search") or "").strip()
+    offset = (page - 1) * limit
+
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        where = "WHERE status = 'success' AND answer_text IS NOT NULL AND answer_text != ''"
+        params = []
+        if search:
+            where += " AND query ILIKE %s"
+            params.append(f"%{search}%")
+
+        # Total count
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM search_events {where}", params)
+        total = cur.fetchone()["cnt"]
+
+        # Page of rows
+        cur.execute(f"""
+            SELECT id, query, branch, ran_at, confidence_level,
+                   duration_sec, files_read, iterations, searches,
+                   COALESCE(user_email, '') AS user_email,
+                   (COALESCE(screenshot_b64, '') != '') AS has_screenshot
+            FROM   search_events {where}
+            ORDER BY ran_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            if r.get("ran_at"):
+                r["ran_at"] = r["ran_at"].isoformat()
+
+        return jsonify({"rows": rows, "total": total, "page": page, "limit": limit})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 # ---------------------------------------------------------------------------

@@ -50,7 +50,7 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .query-textarea::placeholder{color:#94a3b8}
 
 /* ── Action row (top card) ── */
-.action-row{margin-top:12px}
+.action-row{margin-top:12px;display:flex;gap:8px;align-items:center}
 .status-bar{font-size:.79rem;color:var(--muted);min-height:17px;margin-top:6px}
 
 /* ── Buttons ── */
@@ -59,6 +59,9 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
 .btn-run-all{background:var(--brand);color:#fff;padding:10px 26px;font-size:.93rem;width:100%;height:42px;justify-content:center;border-radius:8px}
 .btn-run-all:hover:not(:disabled){background:var(--brand-dark)}
+.btn-browse{background:transparent;color:var(--text-muted,#aaa);border:1px solid var(--border,#444);padding:10px 18px;font-size:.85rem;border-radius:8px;height:42px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn-browse:hover{background:rgba(108,92,231,.1);border-color:var(--brand,#6c5ce7);color:var(--text,#e0e0e0)}
+.btn-browse.active{background:rgba(108,92,231,.15);border-color:var(--brand,#6c5ce7);color:var(--brand,#6c5ce7)}
 .btn-compare{background:#92400e;color:#fff}
 .btn-compare:hover:not(:disabled){background:#78350f}
 .btn-sm{padding:7px 15px;font-size:.82rem;border-radius:7px}
@@ -258,6 +261,36 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .screenshot-context-chip.collapsed .scc-body{display:none}
 .screenshot-context-chip .scc-toggle{color:var(--brand-light);font-size:.7rem;margin-left:6px;cursor:pointer}
 
+/* ── Browse Past Queries panel ── */
+.browse-panel{background:var(--card-bg,#1e1e2e);border:1px solid var(--border,#333);border-radius:12px;margin-top:14px;overflow:hidden}
+.browse-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border,#333);background:rgba(0,0,0,.1)}
+.browse-title{font-weight:700;font-size:.9rem;color:var(--text,#e0e0e0)}
+.browse-controls{display:flex;align-items:center;gap:8px}
+.browse-search{background:rgba(255,255,255,.06);border:1px solid var(--border,#333);border-radius:6px;padding:5px 10px;font-size:.8rem;color:var(--text,#e0e0e0);width:200px;font-family:inherit}
+.browse-search:focus{outline:none;border-color:var(--brand,#6c5ce7)}
+.browse-close{background:none;border:none;color:var(--text-muted,#888);font-size:1rem;cursor:pointer;padding:4px 8px;border-radius:4px}
+.browse-close:hover{background:rgba(255,255,255,.08);color:var(--text,#e0e0e0)}
+.browse-table-wrap{overflow-x:auto;max-height:400px;overflow-y:auto}
+.browse-table{width:100%;border-collapse:collapse;font-size:.8rem}
+.browse-table th{position:sticky;top:0;background:var(--card-bg,#1e1e2e);padding:8px 12px;text-align:left;font-weight:600;color:var(--text-muted,#999);border-bottom:1px solid var(--border,#333);font-size:.73rem;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;cursor:pointer;user-select:none}
+.browse-table th:hover{color:var(--text,#e0e0e0)}
+.browse-table td{padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.04);color:var(--text,#ccc);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.browse-table tr:hover td{background:rgba(108,92,231,.06)}
+.browse-table .browse-query-cell{max-width:400px;font-weight:500;color:var(--text,#e0e0e0)}
+.browse-view-btn{background:rgba(108,92,231,.15);color:var(--brand,#6c5ce7);border:1px solid rgba(108,92,231,.3);border-radius:6px;padding:3px 10px;font-size:.73rem;cursor:pointer;font-weight:600;transition:all .15s;white-space:nowrap}
+.browse-view-btn:hover{background:rgba(108,92,231,.3);border-color:var(--brand,#6c5ce7)}
+.browse-footer{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-top:1px solid var(--border,#333);background:rgba(0,0,0,.05)}
+.browse-row-count{font-size:.75rem;color:var(--text-muted,#888)}
+.browse-pagination{display:flex;gap:4px;align-items:center}
+.browse-page-btn{background:rgba(255,255,255,.06);border:1px solid var(--border,#333);color:var(--text-muted,#999);border-radius:4px;padding:3px 8px;font-size:.75rem;cursor:pointer;font-family:inherit}
+.browse-page-btn:hover:not(:disabled){background:rgba(108,92,231,.15);color:var(--brand,#6c5ce7)}
+.browse-page-btn.active{background:var(--brand,#6c5ce7);color:#fff;border-color:var(--brand,#6c5ce7)}
+.browse-page-btn:disabled{opacity:.4;cursor:default}
+.browse-conf-high{color:var(--success,#4ade80);font-weight:600}
+.browse-conf-med{color:var(--warn,#fbbf24);font-weight:600}
+.browse-conf-low{color:var(--error,#f87171);font-weight:600}
+.browse-empty{padding:30px 20px;text-align:center;color:var(--text-muted,#888);font-size:.85rem}
+
 /* ── Admin toggle button in header ── */
 .admin-toggle-btn{color:rgba(255,255,255,.8);text-decoration:none;font-size:.82rem;padding:5px 13px;border-radius:6px;border:1px solid rgba(255,255,255,.22);background:rgba(30,111,212,.35);border-color:rgba(30,111,212,.5);cursor:pointer;font-family:inherit;font-weight:600;transition:all .15s}
 .admin-toggle-btn:hover{background:rgba(255,255,255,.12)!important;border-color:rgba(255,255,255,.3)!important}
@@ -444,6 +477,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <div class="branch-loading" id="branchLoading"></div>
         <div class="action-row">
           <button class="btn btn-run-all" id="btnSearch" onclick="runWithClarify('agentic')">🔍 Search</button>
+          <button class="btn btn-browse" id="btnBrowse" onclick="toggleBrowseQueries()">📋 Browse Past Queries</button>
         </div>
       </div>
       <div>
@@ -474,6 +508,27 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           <div class="scc-label">📋 Extracted screenshot context <span class="scc-toggle" onclick="szToggleChip()">▸ Show</span></div>
           <div class="scc-body" id="szContextBody"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Browse Past Queries panel ── -->
+    <div id="browsePanel" class="browse-panel" style="display:none;">
+      <div class="browse-header">
+        <div class="browse-title">📋 Past Queries</div>
+        <div class="browse-controls">
+          <input type="text" id="browseSearch" class="browse-search" placeholder="Filter queries…" oninput="browseDebounceSearch()"/>
+          <button class="browse-close" onclick="toggleBrowseQueries()">✕</button>
+        </div>
+      </div>
+      <div class="browse-table-wrap">
+        <table class="browse-table">
+          <thead id="browseThead"></thead>
+          <tbody id="browseTbody"></tbody>
+        </table>
+      </div>
+      <div class="browse-footer">
+        <span id="browseRowCount" class="browse-row-count"></span>
+        <div id="browsePagination" class="browse-pagination"></div>
       </div>
     </div>
 
@@ -533,6 +588,67 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       .sq-btn-alt:hover { background: rgba(255,255,255,.06); }
       .sq-btn-new  { border: none; background: var(--brand,#6c5ce7); color: #fff; }
       .sq-btn-new:hover { background: #7c6cf7; }
+
+      /* ── Reuse: original submission info (read-only) ── */
+      .reuse-original-info {
+        background: rgba(0,0,0,.18);
+        border: 1px solid var(--border,#333);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+      }
+      .reuse-section-label {
+        font-size: .78rem;
+        font-weight: 700;
+        color: var(--text-muted,#999);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+      }
+      .reuse-readonly-block {
+        background: rgba(255,255,255,.04);
+        border: 1px solid var(--border,#333);
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: .85rem;
+        color: var(--text,#e0e0e0);
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .reuse-context-block {
+        max-height: 200px;
+        overflow-y: auto;
+        color: var(--text-muted,#bbb);
+        font-size: .82rem;
+      }
+      .reuse-meta-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 8px;
+        flex-wrap: wrap;
+      }
+      .reuse-meta-tag {
+        font-size: .75rem;
+        color: var(--text-muted,#888);
+        background: rgba(255,255,255,.06);
+        border: 1px solid var(--border,#333);
+        border-radius: 6px;
+        padding: 3px 8px;
+      }
+      .reuse-screenshot-box {
+        text-align: center;
+        padding: 8px;
+        background: rgba(255,255,255,.03);
+        border: 1px solid var(--border,#333);
+        border-radius: 8px;
+      }
+      .reuse-screenshot-box img {
+        max-width: 100%;
+        max-height: 300px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
     </style>
     <div id="similarQueriesOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9000; align-items:center; justify-content:center;">
       <div style="background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); border-radius:14px; max-width:600px; width:92%; max-height:70vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.4);">
@@ -1232,6 +1348,142 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     loadPastResult(eventId);
   }
 
+  // ── Browse Past Queries (standard user table) ──────────────────────────
+  let _browseOpen = false;
+  let _browsePage = 1;
+  let _browseSort = 'ran_at';
+  let _browseSortAsc = false;
+  let _browseSearchTimer = null;
+
+  function toggleBrowseQueries() {
+    const panel = document.getElementById('browsePanel');
+    const btn   = document.getElementById('btnBrowse');
+    _browseOpen = !_browseOpen;
+    panel.style.display = _browseOpen ? 'block' : 'none';
+    btn.classList.toggle('active', _browseOpen);
+    if (_browseOpen) { _browsePage = 1; browseLoad(); }
+  }
+
+  function browseDebounceSearch() {
+    clearTimeout(_browseSearchTimer);
+    _browseSearchTimer = setTimeout(() => { _browsePage = 1; browseLoad(); }, 300);
+  }
+
+  async function browseLoad() {
+    const search = (document.getElementById('browseSearch').value || '').trim();
+    const params = new URLSearchParams({ page: _browsePage, limit: 25 });
+    if (search) params.set('search', search);
+    try {
+      const res  = await fetch('/api/browse-queries?' + params.toString());
+      const data = await res.json();
+      browseRender(data.rows || [], data.total || 0, data.page || 1, data.limit || 25);
+    } catch (e) {
+      document.getElementById('browseTbody').innerHTML =
+        '<tr><td colspan="99" class="browse-empty">Failed to load past queries</td></tr>';
+    }
+  }
+
+  function browseRender(rows, total, page, limit) {
+    const thead = document.getElementById('browseThead');
+    const tbody = document.getElementById('browseTbody');
+
+    const cols = [
+      { key: 'query',            label: 'Query',      cls: 'browse-query-cell' },
+      { key: 'branch',           label: 'Branch' },
+      { key: 'ran_at',           label: 'Date' },
+      { key: 'confidence_level', label: 'Confidence' },
+      { key: 'duration_sec',     label: 'Time' },
+      { key: 'user_email',       label: 'User' },
+      { key: 'has_screenshot',   label: '📸' },
+      { key: '_actions',         label: '' },
+    ];
+
+    thead.innerHTML = '<tr>' + cols.map(c =>
+      c.key === '_actions'
+        ? '<th style="text-align:center;width:70px">Actions</th>'
+        : `<th onclick="browseSortBy('${c.key}')">${c.label}${_browseSort===c.key?(_browseSortAsc?' ▲':' ▼'):''}</th>`
+    ).join('') + '</tr>';
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="99" class="browse-empty">No past queries found</td></tr>';
+    } else {
+      // Client-side sort (within page)
+      if (_browseSort && _browseSort !== 'ran_at') {
+        rows.sort((a,b) => {
+          const va = a[_browseSort], vb = b[_browseSort];
+          if (va == null && vb == null) return 0;
+          if (va == null) return 1; if (vb == null) return -1;
+          if (typeof va === 'number' && typeof vb === 'number') return _browseSortAsc ? va-vb : vb-va;
+          return _browseSortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+        });
+      }
+
+      tbody.innerHTML = rows.map(r => {
+        const q    = esc((r.query || '').substring(0, 120)) + ((r.query||'').length > 120 ? '…' : '');
+        const date = r.ran_at ? new Date(r.ran_at).toLocaleString('en-US', {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+        const conf = r.confidence_level || '';
+        const confCls = {high:'browse-conf-high',medium:'browse-conf-med',low:'browse-conf-low'}[conf.toLowerCase()] || '';
+        const dur  = r.duration_sec ? r.duration_sec.toFixed(1) + 's' : '—';
+        const user = esc((r.user_email || '').replace('external_api','API').split('@')[0]);
+        const ss   = r.has_screenshot ? '📸' : '';
+        return `<tr>
+          <td class="browse-query-cell" title="${esc(r.query || '')}">${q}</td>
+          <td>${esc(r.branch || '')}</td>
+          <td style="white-space:nowrap">${date}</td>
+          <td class="${confCls}">${esc(conf)}</td>
+          <td>${dur}</td>
+          <td>${user}</td>
+          <td style="text-align:center">${ss}</td>
+          <td style="text-align:center"><button class="browse-view-btn" onclick="browseViewResult(${r.id})">👁 View</button></td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Row count
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const start = (page - 1) * limit + 1;
+    const end   = Math.min(page * limit, total);
+    document.getElementById('browseRowCount').textContent =
+      total ? `${start}–${end} of ${total}` : '0 results';
+
+    // Pagination
+    const pag = document.getElementById('browsePagination');
+    if (totalPages <= 1) { pag.innerHTML = ''; return; }
+    let pg = '';
+    pg += `<button class="browse-page-btn" onclick="browseGoPage(${page-1})" ${page<=1?'disabled':''}>‹</button>`;
+    const pages = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (page > 3) pages.push('…');
+      for (let i = Math.max(2, page-1); i <= Math.min(totalPages-1, page+1); i++) pages.push(i);
+      if (page < totalPages-2) pages.push('…');
+      pages.push(totalPages);
+    }
+    for (const p of pages) {
+      if (p === '…') pg += '<span style="color:var(--text-muted);font-size:.75rem">…</span>';
+      else pg += `<button class="browse-page-btn ${p===page?'active':''}" onclick="browseGoPage(${p})">${p}</button>`;
+    }
+    pg += `<button class="browse-page-btn" onclick="browseGoPage(${page+1})" ${page>=totalPages?'disabled':''}>›</button>`;
+    pag.innerHTML = pg;
+  }
+
+  function browseGoPage(p) { _browsePage = p; browseLoad(); }
+
+  function browseSortBy(col) {
+    if (_browseSort === col) _browseSortAsc = !_browseSortAsc;
+    else { _browseSort = col; _browseSortAsc = col === 'query'; }
+    browseLoad();
+  }
+
+  function browseViewResult(eventId) {
+    // Close browse panel and load the result into main UI
+    if (_browseOpen) toggleBrowseQueries();
+    _sqMatches = [];
+    loadPastResult(eventId);
+  }
+
   async function loadPastResult(eventId) {
     // Close modal immediately and show loading in the main UI
     document.getElementById('similarQueriesOverlay').style.display = 'none';
@@ -1391,17 +1643,26 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     // Store for flag submissions and exports
     _storeResultForFlags(result, document.getElementById('queryInput')?.value || '', branch, sections);
 
-    // ── Reused-result action bar + info ──
+    // ── Reused-result: original submission info + action bar ──
     let reuseBanner = '';
     if (result._reused) {
-      const origQ = esc(result._original_query || '');
+      // Strip appended screenshot context and clarification suffixes from the stored query
+      let rawQ = (result._original_query || '');
+      const scCutoff = rawQ.indexOf('\n\n[Screenshot context');
+      if (scCutoff > 0) rawQ = rawQ.substring(0, scCutoff);
+      const clCutoff = rawQ.indexOf('\n\n[User clarification:');
+      if (clCutoff > 0) rawQ = rawQ.substring(0, clCutoff);
+      const origQ = esc(rawQ.trim());
       const origDate = result._original_ran_at ? new Date(result._original_ran_at).toLocaleString() : '';
       const scCtx = (result._screenshot_context || '').replace(/</g,'&lt;');
+      const origBranch = esc(result.branch || '');
+
+      // ── Action bar ──
       reuseBanner = `
-        <div class="sq-action-bar">
+        <div class="sq-action-bar" style="margin-bottom:10px;">
           <div>
             <div class="sq-label">📋 Loaded from past search</div>
-            <div class="sq-sublabel">${origQ ? origQ.substring(0,80) + (origQ.length>80?'…':'') : ''}${origDate ? ' · ' + origDate : ''}</div>
+            <div class="sq-sublabel">${origDate || ''}</div>
           </div>
           <div style="display:flex; gap:8px; flex-shrink:0;">
             ${_sqMatches.length ? '<button class="sq-btn-alt" onclick="sqReopenModal()">← Try another match</button>' : ''}
@@ -1409,23 +1670,28 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           </div>
         </div>
       `;
-      // Screenshot image + context block
-      if (result._has_screenshot || scCtx) {
-        reuseBanner += `<div style="background:rgba(0,0,0,.15); border:1px solid var(--border,#333); border-radius:8px; padding:10px 14px; margin-bottom:12px;">`;
-        if (result._has_screenshot) {
-          reuseBanner += `
-            <div style="font-size:.78rem; font-weight:600; color:var(--text-muted,#888); margin-bottom:6px;">📸 Original Screenshot</div>
-            <div id="reuse-screenshot-container" style="margin-bottom:8px; text-align:center;">
-              <div style="font-size:.75rem; color:var(--text-muted,#888);">Loading screenshot…</div>
-            </div>`;
-        }
-        if (scCtx) {
-          reuseBanner += `
-            <div style="font-size:.78rem; font-weight:600; color:var(--text-muted,#888); margin-bottom:4px;">${result._has_screenshot ? '📝 Extracted Context' : '📸 Screenshot Context'}</div>
-            <div style="font-size:.8rem; color:var(--text-muted,#bbb); max-height:80px; overflow-y:auto; line-height:1.4; white-space:pre-wrap;">${scCtx.substring(0,600)}${scCtx.length>600?'…':''}</div>`;
-        }
-        reuseBanner += `</div>`;
+
+      // ── Original submission details (read-only) ──
+      reuseBanner += `<div class="reuse-original-info">`;
+      reuseBanner += `<div class="reuse-section-label">Original Query</div>`;
+      reuseBanner += `<div class="reuse-readonly-block">${origQ || '<em>No query recorded</em>'}</div>`;
+      if (origBranch) {
+        reuseBanner += `<div class="reuse-meta-row"><span class="reuse-meta-tag">🌿 ${origBranch}</span>${origDate ? `<span class="reuse-meta-tag">📅 ${origDate}</span>` : ''}</div>`;
       }
+
+      // Screenshot image
+      if (result._has_screenshot) {
+        reuseBanner += `<div class="reuse-section-label" style="margin-top:10px;">📸 Original Screenshot</div>`;
+        reuseBanner += `<div id="reuse-screenshot-container" class="reuse-screenshot-box"><div style="font-size:.75rem; color:var(--text-muted,#888);">Loading screenshot…</div></div>`;
+      }
+
+      // Screenshot context
+      if (scCtx) {
+        reuseBanner += `<div class="reuse-section-label" style="margin-top:10px;">${result._has_screenshot ? '📝 Extracted Screenshot Context' : '📸 Screenshot Context'}</div>`;
+        reuseBanner += `<div class="reuse-readonly-block reuse-context-block">${scCtx}</div>`;
+      }
+
+      reuseBanner += `</div>`;
     }
 
     // ── Overview panel ──
@@ -1528,6 +1794,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         try {
           const startBody = { query, branch };
           if (szB64) { startBody.screenshot_b64 = szB64; startBody.screenshot_mime = szMime; }
+          if (szContext) { startBody.screenshot_context = szContext; }
           const startResp = await fetch('/api/agentic/start', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
