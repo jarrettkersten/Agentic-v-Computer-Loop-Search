@@ -182,105 +182,6 @@ def put_db_conn(conn):
         p.putconn(conn)
 
 
-def _backfill_job_ids(rows):
-    """Background: mint job_ids for historical search_events so they are retrievable via GET /api/query/<job_id>.
-    Uses existing answer_text — no expensive API re-runs needed."""
-    import uuid as _uuid
-    success, failed = 0, 0
-    for row in rows:
-        try:
-            query  = row["query"]
-            branch = row["branch"] or "main"
-            answer = row.get("answer_text", "") or ""
-            job_id = str(_uuid.uuid4())
-
-            # Create the api_jobs row
-            _persist_api_job(job_id, query, branch, row.get("user_email", ""))
-
-            # Build a synthetic result from the stored answer
-            sections = {}
-            if answer:
-                parts = _split_answer_sections(answer)
-                sections = {
-                    "overview": parts.get("overview", ""),
-                    "user_guide": parts.get("user_guide", ""),
-                    "technical_reference": parts.get("technical_reference", ""),
-                }
-            result = {
-                "success": True,
-                "answer": answer,
-                "sections": sections,
-                "branch": branch,
-                "metadata": {
-                    "backfilled": True,
-                    "original_event_id": row["id"],
-                },
-            }
-            _complete_api_job(job_id, result)
-
-            # Write job_id back to the search_event
-            conn = get_db_conn()
-            try:
-                conn.cursor().execute(
-                    "UPDATE search_events SET job_id = %s WHERE id = %s",
-                    (job_id, row["id"]),
-                )
-                conn.commit()
-                success += 1
-            finally:
-                put_db_conn(conn)
-        except Exception as e:
-            print(f"[DB] Backfill job_id failed for event {row['id']}: {e}")
-            failed += 1
-    print(f"[DB] Job-ID backfill complete: {success} minted, {failed} failed")
-
-
-def _backfill_rerun_missing_answers(rows):
-    """Background: re-run queries that have a job_id but no answer_text.
-    These are events where a prior backfill minted the job but the re-run failed or was skipped.
-    This DOES call the agentic loop (costs API tokens)."""
-    import time as _time
-    import uuid as _uuid
-    success, failed = 0, 0
-    for row in rows:
-        try:
-            query  = row["query"]
-            branch = row["branch"] or "main"
-            old_job_id = row.get("job_id", "")
-            print(f"[DB] Re-running event {row['id']}: {query[:60]}…")
-
-            result = run_agentic_loop(query, branch)
-            answer = result.get("answer", "")
-            if not answer:
-                print(f"[DB] Re-run for event {row['id']} returned empty answer")
-                failed += 1
-                continue
-
-            # Update the existing api_jobs row if it exists, or create a new one
-            job_id = old_job_id or str(_uuid.uuid4())
-            if not old_job_id:
-                _persist_api_job(job_id, query, branch, row.get("user_email", ""))
-            result["branch"] = branch
-            _complete_api_job(job_id, result)
-
-            # Write answer_text (and job_id if new) back to search_event
-            conn = get_db_conn()
-            try:
-                conn.cursor().execute(
-                    "UPDATE search_events SET answer_text = %s, job_id = %s WHERE id = %s",
-                    (answer, job_id, row["id"]),
-                )
-                conn.commit()
-                success += 1
-            finally:
-                put_db_conn(conn)
-        except Exception as e:
-            print(f"[DB] Re-run failed for event {row['id']}: {e}")
-            failed += 1
-        _time.sleep(2)  # small delay between re-runs
-    print(f"[DB] Answer re-run backfill complete: {success} success, {failed} failed")
-
-
 def init_db():
     """Create usage tracking tables if they don't exist, and migrate columns."""
     if not DATABASE_URL:
@@ -325,6 +226,8 @@ def init_db():
             ("job_id",                "TEXT DEFAULT ''"),
             ("screenshot_context",    "TEXT DEFAULT ''"),
             ("answer_text",           "TEXT DEFAULT ''"),
+            ("screenshot_b64",        "TEXT DEFAULT ''"),
+            ("screenshot_mime",       "TEXT DEFAULT ''"),
         ])
         _safe_add_columns(cur, "flagged_queries", [
             ("flag_type",         "TEXT NOT NULL DEFAULT 'inaccurate'"),
@@ -396,89 +299,6 @@ def init_db():
             )
         """)
         conn.commit()
-
-        # ── Phase 1: Backfill answer_text from api_jobs (fast, no cost) ──
-        try:
-            cur.execute("""
-                UPDATE search_events se
-                SET    answer_text = COALESCE(aj.result_json::json->>'answer', aj.result_json)
-                FROM   api_jobs aj
-                WHERE  se.job_id = aj.id
-                  AND  se.job_id != ''
-                  AND  (se.answer_text IS NULL OR se.answer_text = '')
-                  AND  aj.result_json IS NOT NULL
-                  AND  aj.status = 'completed'
-            """)
-            backfilled = cur.rowcount
-            if backfilled:
-                conn.commit()
-                print(f"[DB] Phase 1: Backfilled answer_text for {backfilled} search events from api_jobs")
-        except Exception as be:
-            print(f"[DB] answer_text phase-1 backfill skipped: {be}")
-            conn.rollback()
-
-        # ── Phase 2: One-time re-run for queries that have no stored answer ──
-        # Uses a migrations table to ensure this only runs once.
-        try:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS _migrations (
-                    name TEXT PRIMARY KEY,
-                    ran_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-            """)
-            conn.commit()
-            # Reset old migrations so they don't clutter
-            cur.execute("DELETE FROM _migrations WHERE name IN ('backfill_answer_text_v1', 'backfill_answer_text_v2')")
-            conn.commit()
-            cur.execute("SELECT 1 FROM _migrations WHERE name = 'backfill_complete_v3'")
-            if not cur.fetchone():
-                dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-                # Part A: Mint job_ids for events that don't have one (cheap, no API calls)
-                dict_cur.execute("""
-                    SELECT id, query, branch,
-                           COALESCE(user_email, '') AS user_email,
-                           COALESCE(answer_text, '') AS answer_text
-                    FROM search_events
-                    WHERE  status = 'success'
-                      AND  (job_id IS NULL OR job_id = '')
-                    ORDER BY ran_at DESC
-                """)
-                no_job_rows = [dict(r) for r in dict_cur.fetchall()]
-                if no_job_rows:
-                    print(f"[DB] v3 Part A: {len(no_job_rows)} events need job_id, minting in background…")
-                    threading.Thread(target=_backfill_job_ids, args=(no_job_rows,), daemon=True).start()
-                else:
-                    print("[DB] v3 Part A: All events already have job_ids")
-
-                # Part B: Re-run events that have a job_id but no answer_text (costs API tokens)
-                dict_cur.execute("""
-                    SELECT id, query, branch, job_id,
-                           COALESCE(user_email, '') AS user_email,
-                           COALESCE(answer_text, '') AS answer_text
-                    FROM search_events
-                    WHERE  status = 'success'
-                      AND  job_id IS NOT NULL AND job_id != ''
-                      AND  (answer_text IS NULL OR answer_text = '')
-                    ORDER BY ran_at DESC
-                """)
-                no_answer_rows = [dict(r) for r in dict_cur.fetchall()]
-                if no_answer_rows:
-                    print(f"[DB] v3 Part B: {len(no_answer_rows)} events have job_id but no answer_text, re-running in background…")
-                    threading.Thread(target=_backfill_rerun_missing_answers, args=(no_answer_rows,), daemon=True).start()
-                else:
-                    print("[DB] v3 Part B: All events with job_ids already have answer_text")
-
-                cur.execute("INSERT INTO _migrations (name) VALUES ('backfill_complete_v3')")
-                conn.commit()
-            else:
-                print("[DB] v3: backfill_complete_v3 already ran, skipping")
-        except Exception as be:
-            print(f"[DB] answer_text phase-2 check skipped: {be}")
-            try:
-                conn.rollback()
-            except Exception:
-                pass
 
     except Exception as e:
         print(f"[DB] Warning: could not init tracking tables: {e}")
@@ -645,7 +465,8 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                        confidence_level: str = "", error_message: str = "",
                        input_tokens: int = 0, output_tokens: int = 0,
                        user_email: str = "", answer: str = "",
-                       job_id: str = "", screenshot_context: str = ""):
+                       job_id: str = "", screenshot_context: str = "",
+                       screenshot_b64: str = "", screenshot_mime: str = ""):
     """Record a single loop search run."""
     if not DATABASE_URL:
         return
@@ -660,14 +481,15 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                 iterations, searches, confidence_level,
                 input_tokens, output_tokens, total_tokens, error_message,
                 user_email, response_sections, job_id, screenshot_context,
-                answer_text)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                answer_text, screenshot_b64, screenshot_mime)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (loop_type, (query or "")[:300], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
              confidence_level or "",
              input_tokens, output_tokens, input_tokens + output_tokens,
              error_message or "", user_email or "", response_sections,
-             job_id or "", screenshot_context or "", answer or ""),
+             job_id or "", screenshot_context or "", answer or "",
+             screenshot_b64 or "", screenshot_mime or ""),
         )
         conn.commit()
     except Exception as e:
@@ -1669,6 +1491,10 @@ def api_agentic_stream():
     if not branch:
         return jsonify({"error": "Please select a branch first."}), 400
 
+    # Capture screenshot data so it can be persisted with the search event
+    _ss_b64  = data.get("screenshot_b64", "").strip()
+    _ss_mime = data.get("screenshot_mime", "").strip()
+
     job_id = str(uuid.uuid4())
     _job_create(job_id)
     job    = _job_get(job_id)
@@ -1693,6 +1519,8 @@ def api_agentic_stream():
                 user_email=_user_email,
                 answer=result.get("answer", ""),
                 job_id=job_id,
+                screenshot_b64=_ss_b64,
+                screenshot_mime=_ss_mime,
             )
             _complete_api_job(job_id, result)
         except Exception as e:
@@ -1745,6 +1573,10 @@ def api_agentic_start():
     if not branch:
         return jsonify({"error": "Please select a branch first."}), 400
 
+    # Capture screenshot data so it can be persisted with the search event
+    _ss_b64  = data.get("screenshot_b64", "").strip()
+    _ss_mime = data.get("screenshot_mime", "").strip()
+
     job_id = str(uuid.uuid4())
     _job_create(job_id)
     job = _job_get(job_id)
@@ -1769,6 +1601,8 @@ def api_agentic_start():
                 user_email=_user_email,
                 answer=result.get("answer", ""),
                 job_id=job_id,
+                screenshot_b64=_ss_b64,
+                screenshot_mime=_ss_mime,
             )
             _complete_api_job(job_id, result)
         except Exception as e:
@@ -1839,6 +1673,8 @@ def api_agentic():
         return jsonify({"error": "No query provided."}), 400
     if not branch:
         return jsonify({"error": "Please select a branch first."}), 400
+    _ss_b64  = data.get("screenshot_b64", "").strip()
+    _ss_mime = data.get("screenshot_mime", "").strip()
     t0 = time.time()
     _user_email = _current_user_email()
     job_id = str(uuid.uuid4())
@@ -1857,6 +1693,8 @@ def api_agentic():
             user_email=_user_email,
             answer=result.get("answer", ""),
             job_id=job_id,
+            screenshot_b64=_ss_b64,
+            screenshot_mime=_ss_mime,
         )
         _complete_api_job(job_id, result)
         return jsonify({"success": True, "result": result})
@@ -1955,7 +1793,8 @@ def api_similar_queries():
         sql = """
             SELECT id, query, branch, ran_at, confidence_level,
                    LEFT(answer_text, 500) AS answer_preview,
-                   similarity(query, %s) AS sim
+                   similarity(query, %s) AS sim,
+                   (COALESCE(screenshot_b64, '') != '') AS has_screenshot
             FROM   search_events
             WHERE  status = 'success'
               AND  answer_text IS NOT NULL AND answer_text != ''
@@ -2002,7 +1841,8 @@ def api_search_event_answer(event_id):
             """SELECT id, query, branch, ran_at, confidence_level, answer_text,
                       response_sections, duration_sec, files_read, iterations,
                       searches, input_tokens, output_tokens, total_tokens,
-                      COALESCE(screenshot_context, '') AS screenshot_context
+                      COALESCE(screenshot_context, '') AS screenshot_context,
+                      (COALESCE(screenshot_b64, '') != '') AS has_screenshot
                FROM search_events WHERE id = %s AND status = 'success'""",
             (event_id,),
         )
@@ -2013,6 +1853,35 @@ def api_search_event_answer(event_id):
         if row.get("ran_at"):
             row["ran_at"] = row["ran_at"].isoformat()
         return jsonify(row)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+@app.route("/api/search-events/<int:event_id>/screenshot", methods=["GET"])
+def api_search_event_screenshot(event_id):
+    """Return the stored screenshot image for a search event as a data-URI JSON response."""
+    if not DATABASE_URL:
+        return jsonify({"error": "No database configured"}), 500
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            """SELECT COALESCE(screenshot_b64, '') AS screenshot_b64,
+                      COALESCE(screenshot_mime, 'image/png') AS screenshot_mime
+               FROM search_events WHERE id = %s""",
+            (event_id,),
+        )
+        row = cur.fetchone()
+        if not row or not row["screenshot_b64"]:
+            return jsonify({"error": "No screenshot stored for this event"}), 404
+        return jsonify({
+            "screenshot_b64": row["screenshot_b64"],
+            "screenshot_mime": row["screenshot_mime"],
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
@@ -2344,7 +2213,8 @@ ADMIN_TABLES = {
         "COALESCE(response_sections, '') AS response_sections, "
         "COALESCE(job_id, '') AS job_id, "
         "COALESCE(screenshot_context, '') AS screenshot_context, "
-        "COALESCE(answer_text, '') AS answer_text "
+        "(COALESCE(answer_text, '') != '') AS has_answer, "
+        "(COALESCE(screenshot_b64, '') != '') AS has_screenshot "
         "FROM search_events ORDER BY ran_at DESC LIMIT 500"
     ),
     "flagged_queries": (
@@ -2762,129 +2632,6 @@ def admin_delete_api_key(key_id):
 # Admin: Backfill answer_text for historical search events
 # ---------------------------------------------------------------------------
 
-@app.route("/api/admin/backfill-answers", methods=["POST"])
-@admin_required
-def admin_backfill_answers():
-    """
-    Backfill answer_text for search events that don't have one stored.
-
-    Phase 1: Pull answers from api_jobs.result_json (fast, no API cost).
-    Phase 2: Re-run queries through the agentic loop (slow, costs API tokens).
-
-    Request JSON (all optional):
-      - rerun: bool (default false) — if true, re-runs queries that can't be
-               backfilled from api_jobs.  Each re-run costs Claude API tokens.
-      - limit: int  (default 10)   — max queries to re-run in one request.
-      - dry_run: bool (default false) — if true, just report what would be done.
-
-    Returns summary of what was (or would be) backfilled.
-    """
-    data    = request.get_json() or {}
-    rerun   = data.get("rerun", False)
-    limit   = min(int(data.get("limit", 10)), 50)  # cap at 50 per call
-    dry_run = data.get("dry_run", False)
-
-    conn = None
-    summary = {"phase1_backfilled": 0, "phase2_rerun": 0, "phase2_failed": 0,
-               "remaining_empty": 0, "dry_run": dry_run, "details": []}
-    try:
-        conn = get_db_conn()
-        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-        # ── Phase 1: Backfill from api_jobs ──
-        if not dry_run:
-            cur.execute("""
-                UPDATE search_events se
-                SET    answer_text = COALESCE(aj.result_json::json->>'answer', aj.result_json)
-                FROM   api_jobs aj
-                WHERE  se.job_id = aj.id
-                  AND  se.job_id != ''
-                  AND  (se.answer_text IS NULL OR se.answer_text = '')
-                  AND  aj.result_json IS NOT NULL
-                  AND  aj.status = 'completed'
-            """)
-            summary["phase1_backfilled"] = cur.rowcount
-            conn.commit()
-        else:
-            cur.execute("""
-                SELECT COUNT(*) AS cnt FROM search_events se
-                JOIN   api_jobs aj ON se.job_id = aj.id
-                WHERE  se.job_id != ''
-                  AND  (se.answer_text IS NULL OR se.answer_text = '')
-                  AND  aj.result_json IS NOT NULL
-                  AND  aj.status = 'completed'
-            """)
-            summary["phase1_backfilled"] = cur.fetchone()["cnt"]
-
-        # ── Phase 2: Mint job_ids for events missing them ──
-        cur.execute("""
-            SELECT id, query, branch,
-                   COALESCE(user_email, '') AS user_email,
-                   COALESCE(answer_text, '') AS answer_text
-            FROM search_events
-            WHERE  status = 'success'
-              AND  (job_id IS NULL OR job_id = '')
-            ORDER BY ran_at DESC
-        """)
-        empty_rows = [dict(r) for r in cur.fetchall()]
-        summary["remaining_empty"] = len(empty_rows)
-
-        if rerun and not dry_run:
-            import uuid as _uuid
-            to_rerun = empty_rows[:limit]
-            for row in to_rerun:
-                try:
-                    query  = row["query"]
-                    branch = row["branch"] or "main"
-                    answer = row.get("answer_text", "") or ""
-                    job_id = str(_uuid.uuid4())
-
-                    # Mint api_jobs row from existing answer — no API re-run
-                    _persist_api_job(job_id, query, branch, row.get("user_email", ""))
-                    sections = {}
-                    if answer:
-                        parts = _split_answer_sections(answer)
-                        sections = {
-                            "overview": parts.get("overview", ""),
-                            "user_guide": parts.get("user_guide", ""),
-                            "technical_reference": parts.get("technical_reference", ""),
-                        }
-                    result_obj = {
-                        "success": True, "answer": answer,
-                        "sections": sections, "branch": branch,
-                        "metadata": {"backfilled": True, "original_event_id": row["id"]},
-                    }
-                    _complete_api_job(job_id, result_obj)
-
-                    cur.execute(
-                        "UPDATE search_events SET job_id = %s WHERE id = %s",
-                        (job_id, row["id"]),
-                    )
-                    conn.commit()
-                    summary["phase2_rerun"] += 1
-                    summary["details"].append({
-                        "id": row["id"], "query": query[:100],
-                        "job_id": job_id, "status": "success"
-                    })
-                except Exception as e:
-                    conn.rollback()
-                    summary["phase2_failed"] += 1
-                    summary["details"].append({
-                        "id": row["id"], "query": row["query"][:100],
-                        "status": "error", "error": str(e)[:200]
-                    })
-            summary["remaining_empty"] -= (summary["phase2_rerun"] + summary["phase2_failed"])
-
-        return jsonify({"success": True, **summary})
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        return jsonify({"error": str(e)}), 500
-    finally:
-        if conn:
-            put_db_conn(conn)
-
-
 # ---------------------------------------------------------------------------
 # Auth routes — Entra ID OAuth
 # ---------------------------------------------------------------------------
@@ -3003,7 +2750,8 @@ def _check_api_key():
 # Async job runner — processes API queries in background threads
 # ---------------------------------------------------------------------------
 
-def _run_job_in_background(job_id, query, branch, user_email, screenshot_context=""):
+def _run_job_in_background(job_id, query, branch, user_email,
+                           screenshot_context="", screenshot_b64="", screenshot_mime=""):
     """Execute the agentic search for a job and write results to the DB."""
     t0 = time.time()
     try:
@@ -3024,6 +2772,8 @@ def _run_job_in_background(job_id, query, branch, user_email, screenshot_context
             answer=result.get("answer", ""),
             job_id=job_id,
             screenshot_context=screenshot_context,
+            screenshot_b64=screenshot_b64,
+            screenshot_mime=screenshot_mime,
         )
 
         # Complete the api_jobs row (adds screenshot_context to payload)
@@ -3146,7 +2896,7 @@ def api_v1_query():
         if conn:
             put_db_conn(conn)
 
-    t = threading.Thread(target=_run_job_in_background, args=(job_id, final_query, branch, user_email, screenshot_context), daemon=True)
+    t = threading.Thread(target=_run_job_in_background, args=(job_id, final_query, branch, user_email, screenshot_context, image_b64, mime_type), daemon=True)
     t.start()
 
     response = {

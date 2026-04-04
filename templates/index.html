@@ -350,6 +350,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-loop-sharepoint{color:#0078d4;font-weight:600}
 .adm-row-count{font-size:.78rem;color:var(--muted);padding:12px 20px;border-top:1px solid var(--border)}
 .adm-empty-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
+.adm-view-btn{background:rgba(108,92,231,.15);color:var(--brand,#6c5ce7);border:1px solid rgba(108,92,231,.3);border-radius:6px;padding:3px 10px;font-size:.75rem;cursor:pointer;font-weight:600;transition:all .15s}
+.adm-view-btn:hover{background:rgba(108,92,231,.3);border-color:var(--brand,#6c5ce7)}
 .adm-loading-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
 
 /* ── Panel info button ── */
@@ -1046,6 +1048,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   // ── Screenshot state ────────────────────────────────────────────────────────
   let szContext = '';       // extracted context string — injected into every search query
   let szExtracting = false; // true while screenshot context extraction is in-flight
+  let szB64  = '';          // raw base64 image data (no data-url prefix) — persisted with search event
+  let szMime = '';          // MIME type of the uploaded screenshot
 
   // ── Clarification state ─────────────────────────────────────────────────────
   let _clarifyDone    = false;   // true once user answered/skipped for this session
@@ -1185,6 +1189,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
             <span>🌿 ${(m.branch || 'unknown').replace(/</g,'&lt;')}</span>
             <span>📅 ${date}</span>
             ${m.confidence_level ? `<span>🎯 ${m.confidence_level}</span>` : ''}
+            ${m.has_screenshot ? '<span>📸 Screenshot</span>' : ''}
           </div>
         </div>
       `;
@@ -1217,6 +1222,16 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     runSearch();
   }
 
+  function admViewResult(eventId) {
+    // Switch from admin view to main view and load the past result
+    if (admViewActive) {
+      document.getElementById('adminToggleBtn').click();
+    }
+    // Clear similar-query match cache so action bar shows "Run new search" only
+    _sqMatches = [];
+    loadPastResult(eventId);
+  }
+
   async function loadPastResult(eventId) {
     // Close modal immediately and show loading in the main UI
     document.getElementById('similarQueriesOverlay').style.display = 'none';
@@ -1245,6 +1260,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         _original_ran_at: data.ran_at,
         _original_query: data.query || '',
         _screenshot_context: data.screenshot_context || '',
+        _has_screenshot: !!data.has_screenshot,
       };
       state.agentic = result;
       renderAgentic(result);
@@ -1393,13 +1409,22 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           </div>
         </div>
       `;
-      if (scCtx) {
-        reuseBanner += `
-          <div style="background:rgba(0,0,0,.15); border:1px solid var(--border,#333); border-radius:8px; padding:10px 14px; margin-bottom:12px;">
-            <div style="font-size:.78rem; font-weight:600; color:var(--text-muted,#888); margin-bottom:4px;">📸 Screenshot Context</div>
-            <div style="font-size:.8rem; color:var(--text-muted,#bbb); max-height:80px; overflow-y:auto; line-height:1.4; white-space:pre-wrap;">${scCtx.substring(0,600)}${scCtx.length>600?'…':''}</div>
-          </div>
-        `;
+      // Screenshot image + context block
+      if (result._has_screenshot || scCtx) {
+        reuseBanner += `<div style="background:rgba(0,0,0,.15); border:1px solid var(--border,#333); border-radius:8px; padding:10px 14px; margin-bottom:12px;">`;
+        if (result._has_screenshot) {
+          reuseBanner += `
+            <div style="font-size:.78rem; font-weight:600; color:var(--text-muted,#888); margin-bottom:6px;">📸 Original Screenshot</div>
+            <div id="reuse-screenshot-container" style="margin-bottom:8px; text-align:center;">
+              <div style="font-size:.75rem; color:var(--text-muted,#888);">Loading screenshot…</div>
+            </div>`;
+        }
+        if (scCtx) {
+          reuseBanner += `
+            <div style="font-size:.78rem; font-weight:600; color:var(--text-muted,#888); margin-bottom:4px;">${result._has_screenshot ? '📝 Extracted Context' : '📸 Screenshot Context'}</div>
+            <div style="font-size:.8rem; color:var(--text-muted,#bbb); max-height:80px; overflow-y:auto; line-height:1.4; white-space:pre-wrap;">${scCtx.substring(0,600)}${scCtx.length>600?'…':''}</div>`;
+        }
+        reuseBanner += `</div>`;
       }
     }
 
@@ -1436,6 +1461,30 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     document.getElementById('techRefBody').innerHTML = sections.techRef
       ? `${buildFlagBar('tech_ref')}<div id="flagArea_tech_ref"></div><div class="answer-body">${linkifyFilePaths(md(sections.techRef), branch)}</div>`
       : `<div class="state-idle"><span class="icon">🔧</span><span>No technical reference in this response.</span></div>`;
+
+    // ── Load screenshot async if available ──
+    if (result._reused && result._has_screenshot && result._original_event_id) {
+      fetch('/api/search-events/' + result._original_event_id + '/screenshot')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          const container = document.getElementById('reuse-screenshot-container');
+          if (!container || !data || !data.screenshot_b64) return;
+          const img = document.createElement('img');
+          img.src = 'data:' + (data.screenshot_mime || 'image/png') + ';base64,' + data.screenshot_b64;
+          img.style.cssText = 'max-width:100%; max-height:300px; border-radius:6px; border:1px solid var(--border,#333); cursor:pointer;';
+          img.title = 'Click to view full size';
+          img.onclick = () => {
+            const w = window.open('', '_blank');
+            w.document.write('<html><head><title>Screenshot</title><style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#111;}</style></head><body><img src="' + img.src + '" style="max-width:100%;max-height:100vh;object-fit:contain;"/></body></html>');
+          };
+          container.innerHTML = '';
+          container.appendChild(img);
+        })
+        .catch(() => {
+          const container = document.getElementById('reuse-screenshot-container');
+          if (container) container.innerHTML = '<div style="font-size:.75rem;color:var(--text-muted,#666);">Could not load screenshot</div>';
+        });
+    }
   }
 
   // ── Pause-prompt dialog (shown when agentic loop hits a time threshold) ────
@@ -1477,10 +1526,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       await new Promise(async (resolve, reject) => {
         let jobId = null;
         try {
+          const startBody = { query, branch };
+          if (szB64) { startBody.screenshot_b64 = szB64; startBody.screenshot_mime = szMime; }
           const startResp = await fetch('/api/agentic/start', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ query, branch }),
+            body:    JSON.stringify(startBody),
           });
           const startData = await startResp.json();
           if (!startResp.ok || startData.error) {
@@ -1600,6 +1651,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       try {
         const b64 = dataUrl.split(',')[1];
         const mime = file.type;
+        szB64  = b64;
+        szMime = mime;
         const resp = await fetch('/api/extract-screenshot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1617,6 +1670,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         document.getElementById('szStatus').textContent = '⚠ Extraction failed: ' + err.message + ' (screenshot will not be used)';
         document.getElementById('szStatus').className   = 'sp-status error';
         szContext = '';
+        szB64  = '';
+        szMime = '';
       } finally {
         szExtracting = false;
         document.getElementById('btnSearch').disabled = false;
@@ -1627,6 +1682,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   function szRemove() {
     szContext = '';
+    szB64  = '';
+    szMime = '';
     document.getElementById('screenshotZone').style.display    = 'block';
     document.getElementById('screenshotPreview').style.display  = 'none';
     document.getElementById('screenshotContextChip').style.display = 'none';
@@ -1747,8 +1804,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     admin_notes: 'Admin Notes', flag_type: 'Flag Type', container: 'Container',
     request_article: 'Article Req', branch: 'Branch', confidence_level: 'Confidence',
     duration_sec: 'Time (s)', files_read: 'Files', iterations: 'Iterations',
-    searches: 'Searches'
+    searches: 'Searches', has_answer: 'Answer', has_screenshot: 'Screenshot',
+    _actions: 'Actions'
   };
+
+  // Columns to hide from the admin table (too long or internal)
+  const ADM_HIDDEN_COLS = new Set(['response_sections', 'screenshot_context', 'job_id']);
 
   function toggleAdminView() {
     admViewActive = !admViewActive;
@@ -1975,9 +2036,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       return;
     }
 
-    const columns = Object.keys(rows[0]);
+    const isSearchEvents = admCurrentTab === 'search_events';
+    const allColumns = Object.keys(rows[0]).filter(c => !ADM_HIDDEN_COLS.has(c));
+    const columns = isSearchEvents ? [...allColumns, '_actions'] : allColumns;
     let sorted = [...rows];
-    if (admSortCol !== null && columns.includes(admSortCol)) {
+    if (admSortCol !== null && allColumns.includes(admSortCol)) {
       sorted.sort((a, b) => {
         const va = a[admSortCol], vb = b[admSortCol];
         if (va == null && vb == null) return 0;
@@ -1989,7 +2052,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     const filter = (document.getElementById('adm-table-filter').value || '').toLowerCase();
     if (filter) {
-      sorted = sorted.filter(row => columns.some(c => String(row[c] || '').toLowerCase().includes(filter)));
+      sorted = sorted.filter(row => allColumns.some(c => String(row[c] || '').toLowerCase().includes(filter)));
     }
     const totalFiltered = sorted.length;
 
@@ -2001,6 +2064,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     const pageRows = sorted.slice(startIdx, startIdx + ps);
 
     thead.innerHTML = '<tr>' + columns.map(c => {
+      if (c === '_actions') return '<th style="text-align:center">Actions</th>';
       const label = ADM_COL_LABELS[c] || c;
       const isSorted = admSortCol === c;
       const arrow = isSorted ? (admSortAsc ? '▲' : '▼') : '▽';
@@ -2009,6 +2073,20 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     tbody.innerHTML = pageRows.map(row =>
       '<tr>' + columns.map(c => {
+        // Actions column — View button for search events with answers
+        if (c === '_actions') {
+          if (row.has_answer && row.status === 'success') {
+            return `<td style="text-align:center"><button class="adm-view-btn" onclick="admViewResult(${row.id})" title="View full answer">👁 View</button></td>`;
+          }
+          return '<td style="text-align:center;color:var(--text-muted,#666)">—</td>';
+        }
+        // Boolean flag columns
+        if (c === 'has_answer') {
+          return `<td style="text-align:center">${row[c] ? '✅' : '—'}</td>`;
+        }
+        if (c === 'has_screenshot') {
+          return `<td style="text-align:center">${row[c] ? '📸' : '—'}</td>`;
+        }
         let val = row[c];
         if (val === null || val === undefined) val = '';
         if (c === 'status') {
