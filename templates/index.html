@@ -491,36 +491,61 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       .sq-card {
         border: 1px solid var(--border,#333);
         border-radius: 10px;
-        padding: 14px;
+        padding: 12px 14px;
         cursor: pointer;
         transition: border-color .15s, background .15s, box-shadow .15s;
+        display: flex;
+        align-items: center;
+        gap: 12px;
       }
       .sq-card:hover {
         border-color: var(--brand,#6c5ce7);
         background: rgba(108,92,231,.08);
         box-shadow: 0 0 0 1px var(--brand,#6c5ce7);
       }
-      .sq-card.sq-active {
-        border-color: var(--brand,#6c5ce7);
-        background: rgba(108,92,231,.12);
-        box-shadow: 0 0 0 2px var(--brand,#6c5ce7);
+      .sq-pct {
+        flex-shrink: 0; width: 52px; height: 52px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: .85rem;
       }
+      .sq-pct-high   { background: #16a34a22; color: #4ade80; }
+      .sq-pct-med    { background: #ca8a0422; color: #fbbf24; }
+      .sq-pct-low    { background: #64748b22; color: #94a3b8; }
+      .sq-info       { flex: 1; min-width: 0; }
+      .sq-query      { font-weight: 600; font-size: .88rem; color: var(--text,#e0e0e0); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .sq-meta       { font-size: .75rem; color: var(--text-muted,#888); margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+      /* Reused-result action bar */
+      .sq-action-bar {
+        background: linear-gradient(135deg, rgba(108,92,231,.12), rgba(108,92,231,.06));
+        border: 1px solid var(--brand,#6c5ce7);
+        border-radius: 10px; padding: 12px 16px;
+        display: flex; align-items: center; justify-content: space-between;
+        flex-wrap: wrap; gap: 8px; margin-bottom: 14px;
+      }
+      .sq-action-bar .sq-label { font-size: .84rem; color: var(--text,#e0e0e0); font-weight: 600; }
+      .sq-action-bar .sq-sublabel { font-size: .75rem; color: var(--text-muted,#999); margin-top: 2px; }
+      .sq-action-bar button {
+        padding: 7px 16px; border-radius: 8px; font-size: .82rem; font-weight: 600; cursor: pointer; transition: background .15s;
+      }
+      .sq-btn-alt  { border: 1px solid var(--border,#444); background: transparent; color: var(--text,#ccc); }
+      .sq-btn-alt:hover { background: rgba(255,255,255,.06); }
+      .sq-btn-new  { border: none; background: var(--brand,#6c5ce7); color: #fff; }
+      .sq-btn-new:hover { background: #7c6cf7; }
     </style>
     <div id="similarQueriesOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9000; align-items:center; justify-content:center;">
-      <div style="background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); border-radius:14px; max-width:680px; width:92%; max-height:80vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.4);">
-        <div style="padding:18px 22px 12px; border-bottom:1px solid var(--border,#333); display:flex; align-items:center; gap:10px;">
-          <span style="font-size:1.3rem;">🔎</span>
+      <div style="background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); border-radius:14px; max-width:600px; width:92%; max-height:70vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.4);">
+        <div style="padding:16px 20px 10px; border-bottom:1px solid var(--border,#333); display:flex; align-items:center; gap:10px;">
+          <span style="font-size:1.2rem;">🔎</span>
           <div>
-            <div style="font-weight:700; font-size:1rem; color:var(--text,#e0e0e0);">Similar queries found</div>
-            <div style="font-size:.78rem; color:var(--text-muted,#888); margin-top:2px;">These past searches may already answer your question — saving time and API costs.</div>
+            <div style="font-weight:700; font-size:.95rem; color:var(--text,#e0e0e0);">Similar queries found</div>
+            <div style="font-size:.75rem; color:var(--text-muted,#888); margin-top:2px;">Select a past result to review, or run a new search.</div>
           </div>
         </div>
-        <div id="similarQueriesList" style="padding:14px 22px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:10px;">
+        <div id="similarQueriesList" style="padding:12px 20px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:8px;">
           <!-- filled by JS -->
         </div>
-        <div style="padding:14px 22px; border-top:1px solid var(--border,#333); display:flex; justify-content:flex-end; gap:10px;">
-          <button id="sqBackToListBtn" onclick="sqBackToList()" style="display:none; padding:8px 18px; border-radius:8px; border:1px solid var(--border,#444); background:transparent; color:var(--text,#ccc); cursor:pointer; font-size:.85rem;">← Back to list</button>
-          <button onclick="dismissSimilarQueries()" style="padding:8px 18px; border-radius:8px; border:1px solid var(--border,#444); background:transparent; color:var(--text,#ccc); cursor:pointer; font-size:.85rem;">✨ Search anyway</button>
+        <div style="padding:12px 20px; border-top:1px solid var(--border,#333); display:flex; justify-content:flex-end;">
+          <button onclick="dismissSimilarQueries()" style="padding:8px 18px; border-radius:8px; border:1px solid var(--border,#444); background:transparent; color:var(--text,#ccc); cursor:pointer; font-size:.82rem;">✨ Run new search</button>
         </div>
       </div>
     </div>
@@ -1095,6 +1120,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   let _lastSimilarQuery = '';
 
   async function _executePendingAction() {
+    // If bypass flag is set (user chose "Run new search" from modal or action bar), skip check
+    if (_sqBypassNext) {
+      _sqBypassNext = false;
+      _similarCheckDone = true;
+      runSearch();
+      return;
+    }
+
     // Check for similar past queries (re-check if query changed)
     const currentQuery = document.getElementById('queryInput').value.trim();
     if (currentQuery !== _lastSimilarQuery) {
@@ -1129,65 +1162,66 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   }
 
   // ── Similar Queries state ──
-  let _sqMatches = [];       // current match list for back-to-list navigation
-  let _sqListHTML = '';       // cached list HTML so we can restore it
+  let _sqMatches = [];        // cached match list for re-opening modal
+  let _sqBypassNext = false;  // when true, skip the similar-query check on next search
 
   function showSimilarQueries(matches) {
     _sqMatches = matches;
     const list = document.getElementById('similarQueriesList');
     list.innerHTML = '';
-    document.getElementById('sqBackToListBtn').style.display = 'none';
 
     matches.forEach(m => {
       const pct = Math.round(m.similarity * 100);
+      const pctClass = pct >= 70 ? 'sq-pct-high' : pct >= 50 ? 'sq-pct-med' : 'sq-pct-low';
       const date = new Date(m.ran_at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
-      const preview = (m.answer_preview || '').substring(0, 300).replace(/</g,'&lt;');
       const queryText = (m.query || '').replace(/</g,'&lt;');
       const card = document.createElement('div');
       card.className = 'sq-card';
       card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; gap:10px;">
-          <span style="font-weight:600; font-size:.88rem; color:var(--text,#e0e0e0); flex:1; line-height:1.35;">${queryText}</span>
-          <span style="flex-shrink:0; font-size:.7rem; padding:3px 8px; border-radius:20px; font-weight:600; white-space:nowrap; background:${pct>=70?'#16a34a22;color:#4ade80':pct>=50?'#ca8a0422;color:#fbbf24':'#64748b22;color:#94a3b8'};">${pct}% match</span>
+        <div class="sq-pct ${pctClass}">${pct}%</div>
+        <div class="sq-info">
+          <div class="sq-query">${queryText}</div>
+          <div class="sq-meta">
+            <span>🌿 ${(m.branch || 'unknown').replace(/</g,'&lt;')}</span>
+            <span>📅 ${date}</span>
+            ${m.confidence_level ? `<span>🎯 ${m.confidence_level}</span>` : ''}
+          </div>
         </div>
-        <div style="font-size:.76rem; color:var(--text-muted,#888); margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">
-          <span>📅 ${date}</span>
-          <span>🌿 ${(m.branch || 'unknown').replace(/</g,'&lt;')}</span>
-          <span>${m.confidence_level ? '🎯 ' + m.confidence_level : ''}</span>
-        </div>
-        <div style="font-size:.82rem; color:var(--text-muted,#aaa); line-height:1.45; max-height:4.5em; overflow:hidden; text-overflow:ellipsis;">${preview}${preview.length >= 300 ? '…' : ''}</div>
       `;
       card.onclick = () => loadPastResult(m.id);
       list.appendChild(card);
     });
-    _sqListHTML = list.innerHTML;
 
-    const overlay = document.getElementById('similarQueriesOverlay');
-    overlay.style.display = 'flex';
+    document.getElementById('similarQueriesOverlay').style.display = 'flex';
   }
 
-  function sqBackToList() {
-    const list = document.getElementById('similarQueriesList');
-    list.innerHTML = _sqListHTML;
-    // Re-bind click handlers
-    const cards = list.querySelectorAll('.sq-card');
-    cards.forEach((card, i) => {
-      card.onclick = () => loadPastResult(_sqMatches[i].id);
-    });
-    document.getElementById('sqBackToListBtn').style.display = 'none';
+  function sqReopenModal() {
+    // Re-open the match list modal from the action bar
+    if (_sqMatches.length) {
+      showSimilarQueries(_sqMatches);
+    }
   }
 
   function dismissSimilarQueries() {
     document.getElementById('similarQueriesOverlay').style.display = 'none';
-    document.getElementById('sqBackToListBtn').style.display = 'none';
+    // Bypass similar-query check for this search so user doesn't loop
+    _sqBypassNext = true;
+    _similarCheckDone = true;
+    runSearch();
+  }
+
+  function sqForceNewSearch() {
+    // Called from the action bar — bypass similar check and run fresh
+    _sqBypassNext = true;
+    _similarCheckDone = true;
     runSearch();
   }
 
   async function loadPastResult(eventId) {
-    // Show loading inside the modal (don't close it)
-    const list = document.getElementById('similarQueriesList');
-    list.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted,#888);">Loading past result…</div>';
-    document.getElementById('sqBackToListBtn').style.display = 'inline-block';
+    // Close modal immediately and show loading in the main UI
+    document.getElementById('similarQueriesOverlay').style.display = 'none';
+    setStatus('Loading past result…');
+    setLoading('overviewBody', 'past result');
 
     try {
       const resp = await fetch('/api/search-events/' + eventId + '/answer');
@@ -1195,88 +1229,33 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       const data = await resp.json();
 
       const answer = data.answer_text || '';
-      const queryText = (data.query || '').replace(/</g,'&lt;');
-      const branch = (data.branch || '').replace(/</g,'&lt;');
-      const screenshotCtx = (data.screenshot_context || '').replace(/</g,'&lt;');
-      const date = data.ran_at ? new Date(data.ran_at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) : '';
-
-      // Build preview inside the modal
-      let previewHTML = `
-        <div style="border:1px solid var(--border,#333); border-radius:10px; padding:16px;">
-          <div style="font-weight:700; font-size:.95rem; color:var(--text,#e0e0e0); margin-bottom:10px;">Past Result Preview</div>
-          <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:.82rem; margin-bottom:12px;">
-            <span style="color:var(--text-muted,#888); font-weight:600;">Query:</span>
-            <span style="color:var(--text,#ccc);">${queryText}</span>
-            <span style="color:var(--text-muted,#888); font-weight:600;">Branch:</span>
-            <span style="color:var(--text,#ccc);">🌿 ${branch}</span>
-            <span style="color:var(--text-muted,#888); font-weight:600;">Date:</span>
-            <span style="color:var(--text,#ccc);">${date}</span>
-            <span style="color:var(--text-muted,#888); font-weight:600;">Confidence:</span>
-            <span style="color:var(--text,#ccc);">${data.confidence_level || 'unknown'}</span>
-          </div>
-      `;
-
-      if (screenshotCtx) {
-        previewHTML += `
-          <div style="margin-bottom:12px;">
-            <div style="font-size:.78rem; font-weight:600; color:var(--text-muted,#888); margin-bottom:4px;">📸 Screenshot Context:</div>
-            <div style="font-size:.8rem; color:var(--text-muted,#aaa); background:rgba(0,0,0,.2); border-radius:6px; padding:10px; max-height:120px; overflow-y:auto; line-height:1.4; white-space:pre-wrap;">${screenshotCtx.substring(0, 800)}${screenshotCtx.length > 800 ? '…' : ''}</div>
-          </div>
-        `;
-      }
-
-      // Show answer preview (first ~1000 chars)
-      const answerPreview = answer.substring(0, 1000).replace(/</g,'&lt;');
-      previewHTML += `
-          <div style="margin-bottom:14px;">
-            <div style="font-size:.78rem; font-weight:600; color:var(--text-muted,#888); margin-bottom:4px;">Answer Preview:</div>
-            <div style="font-size:.82rem; color:var(--text-muted,#bbb); background:rgba(0,0,0,.2); border-radius:6px; padding:10px; max-height:200px; overflow-y:auto; line-height:1.5; white-space:pre-wrap;">${answerPreview}${answer.length > 1000 ? '\n…' : ''}</div>
-          </div>
-          <div style="display:flex; gap:10px; justify-content:flex-end;">
-            <button onclick="sqUseResult(${eventId})" style="padding:8px 18px; border-radius:8px; border:none; background:var(--brand,#6c5ce7); color:#fff; cursor:pointer; font-size:.85rem; font-weight:600;">✅ Use this answer</button>
-          </div>
-        </div>
-      `;
-
-      list.innerHTML = previewHTML;
-
-      // Store the loaded data for sqUseResult
-      window._sqLoadedResult = data;
-
+      const result = {
+        answer: answer,
+        branch: data.branch || getBranch() || '',
+        confidence: { level: data.confidence_level || 'unknown' },
+        total_files_read: data.files_read || 0,
+        total_iterations: data.iterations || 0,
+        total_searches: data.searches || 0,
+        input_tokens: data.input_tokens || 0,
+        output_tokens: data.output_tokens || 0,
+        duration: data.duration_sec || 0,
+        iterations: [],
+        _reused: true,
+        _original_event_id: eventId,
+        _original_ran_at: data.ran_at,
+        _original_query: data.query || '',
+        _screenshot_context: data.screenshot_context || '',
+      };
+      state.agentic = result;
+      renderAgentic(result);
+      document.getElementById('btnSearch').disabled = false;
+      setStatus('');
     } catch (e) {
-      list.innerHTML = '<div style="text-align:center; padding:30px; color:#f87171;">Failed to load result. Try another or search again.</div>';
+      setStatus('Could not load past result — try another or run a new search.');
+      document.getElementById('btnSearch').disabled = false;
+      // Re-open modal so user can pick another
+      if (_sqMatches.length) showSimilarQueries(_sqMatches);
     }
-  }
-
-  function sqUseResult(eventId) {
-    const data = window._sqLoadedResult;
-    if (!data) return;
-
-    document.getElementById('similarQueriesOverlay').style.display = 'none';
-    document.getElementById('sqBackToListBtn').style.display = 'none';
-
-    const answer = data.answer_text || '';
-    const result = {
-      answer: answer,
-      branch: data.branch || getBranch() || '',
-      confidence: { level: data.confidence_level || 'unknown' },
-      total_files_read: data.files_read || 0,
-      total_iterations: data.iterations || 0,
-      total_searches: data.searches || 0,
-      input_tokens: data.input_tokens || 0,
-      output_tokens: data.output_tokens || 0,
-      duration: data.duration_sec || 0,
-      iterations: [],
-      _reused: true,
-      _original_event_id: eventId,
-      _original_ran_at: data.ran_at,
-      _original_query: data.query || '',
-      _screenshot_context: data.screenshot_context || '',
-    };
-    state.agentic = result;
-    renderAgentic(result);
-    document.getElementById('btnSearch').disabled = false;
-    setStatus('✅ Loaded from past search (no API cost incurred)');
   }
 
   // getBranch() is defined in the branch loader section above
@@ -1396,22 +1375,32 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     // Store for flag submissions and exports
     _storeResultForFlags(result, document.getElementById('queryInput')?.value || '', branch, sections);
 
-    // ── Reused-result banner ──
+    // ── Reused-result action bar + info ──
     let reuseBanner = '';
     if (result._reused) {
       const origQ = esc(result._original_query || '');
       const origDate = result._original_ran_at ? new Date(result._original_ran_at).toLocaleString() : '';
       const scCtx = (result._screenshot_context || '').replace(/</g,'&lt;');
       reuseBanner = `
-        <div style="background:rgba(108,92,231,.1); border:1px solid var(--brand,#6c5ce7); border-radius:8px; padding:12px 14px; margin-bottom:12px; font-size:.84rem;">
-          <div style="font-weight:700; color:var(--brand,#6c5ce7); margin-bottom:6px;">📋 Loaded from past search (no API cost)</div>
-          <div style="display:grid; grid-template-columns:auto 1fr; gap:3px 10px; color:var(--text-muted,#aaa);">
-            ${origQ ? `<span style="font-weight:600;">Query:</span><span style="color:var(--text,#ccc);">${origQ}</span>` : ''}
-            ${origDate ? `<span style="font-weight:600;">Ran:</span><span>${origDate}</span>` : ''}
+        <div class="sq-action-bar">
+          <div>
+            <div class="sq-label">📋 Loaded from past search</div>
+            <div class="sq-sublabel">${origQ ? origQ.substring(0,80) + (origQ.length>80?'…':'') : ''}${origDate ? ' · ' + origDate : ''}</div>
           </div>
-          ${scCtx ? `<div style="margin-top:8px;"><span style="font-weight:600; color:var(--text-muted,#aaa);">📸 Screenshot Context:</span><div style="margin-top:4px; background:rgba(0,0,0,.2); border-radius:6px; padding:8px; max-height:100px; overflow-y:auto; font-size:.8rem; line-height:1.4; color:var(--text-muted,#bbb); white-space:pre-wrap;">${scCtx.substring(0,600)}${scCtx.length>600?'…':''}</div></div>` : ''}
+          <div style="display:flex; gap:8px; flex-shrink:0;">
+            ${_sqMatches.length ? '<button class="sq-btn-alt" onclick="sqReopenModal()">← Try another match</button>' : ''}
+            <button class="sq-btn-new" onclick="sqForceNewSearch()">🔍 Run new search</button>
+          </div>
         </div>
       `;
+      if (scCtx) {
+        reuseBanner += `
+          <div style="background:rgba(0,0,0,.15); border:1px solid var(--border,#333); border-radius:8px; padding:10px 14px; margin-bottom:12px;">
+            <div style="font-size:.78rem; font-weight:600; color:var(--text-muted,#888); margin-bottom:4px;">📸 Screenshot Context</div>
+            <div style="font-size:.8rem; color:var(--text-muted,#bbb); max-height:80px; overflow-y:auto; line-height:1.4; white-space:pre-wrap;">${scCtx.substring(0,600)}${scCtx.length>600?'…':''}</div>
+          </div>
+        `;
+      }
     }
 
     // ── Overview panel ──
