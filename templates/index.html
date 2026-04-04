@@ -276,16 +276,16 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .browse-table th:hover{color:var(--text)}
 .browse-table td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--text);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .browse-table tr:hover td{background:#f8fafc}
-.browse-table .browse-query-cell{max-width:400px;font-weight:500;color:var(--text)}
+.browse-table .browse-query-cell{min-width:250px;max-width:480px;font-weight:500;color:var(--text);white-space:normal;word-break:break-word;line-height:1.35}
 .browse-view-btn{background:rgba(30,111,212,.08);color:var(--brand-light);border:1px solid rgba(30,111,212,.25);border-radius:6px;padding:3px 10px;font-size:.73rem;cursor:pointer;font-weight:600;transition:all .15s;white-space:nowrap}
 .browse-view-btn:hover{background:rgba(30,111,212,.15);border-color:var(--brand-light)}
-.browse-footer{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-top:1px solid var(--border);background:var(--bg)}
-.browse-row-count{font-size:.75rem;color:var(--muted)}
-.browse-pagination{display:flex;gap:4px;align-items:center}
-.browse-page-btn{background:#fff;border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:3px 8px;font-size:.75rem;cursor:pointer;font-family:inherit}
-.browse-page-btn:hover:not(:disabled){background:rgba(30,111,212,.08);color:var(--brand-light)}
-.browse-page-btn.active{background:var(--brand-light);color:#fff;border-color:var(--brand-light)}
-.browse-page-btn:disabled{opacity:.4;cursor:default}
+.browse-footer{display:flex;align-items:center;justify-content:space-between;padding:8px 20px;border-top:1px solid var(--border)}
+.browse-row-count{font-size:.78rem;color:var(--muted)}
+.browse-pagination{display:flex;gap:6px;align-items:center}
+.browse-page-btn{padding:5px 11px;border-radius:6px;border:1.5px solid var(--border);background:#fff;font-size:.78rem;font-weight:600;cursor:pointer;color:var(--text);transition:all .15s;font-family:inherit}
+.browse-page-btn:hover:not(:disabled){background:var(--bg);border-color:#b0bfd0}
+.browse-page-btn.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.browse-page-btn:disabled{opacity:.35;cursor:default}
 .browse-conf-high{color:var(--success);font-weight:600}
 .browse-conf-med{color:var(--warn);font-weight:600}
 .browse-conf-low{color:var(--error);font-weight:600}
@@ -1326,7 +1326,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   async function browseLoad() {
     const search = (document.getElementById('browseSearch').value || '').trim();
-    const params = new URLSearchParams({ page: _browsePage, limit: 25 });
+    const params = new URLSearchParams({ page: _browsePage, limit: 10 });
     if (search) params.set('search', search);
     try {
       const res  = await fetch('/api/browse-queries?' + params.toString());
@@ -1375,7 +1375,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
       // Helper to render a single row
       function _browseRow(r, extraCls, badge) {
-        const q    = esc((r.query || '').substring(0, 120)) + ((r.query||'').length > 120 ? '…' : '');
+        const q    = esc(r.query || '');
         const date = r.ran_at ? new Date(r.ran_at).toLocaleString('en-US', {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
         const conf = r.confidence_level || '';
         const confCls = {high:'browse-conf-high',medium:'browse-conf-med',low:'browse-conf-low'}[conf.toLowerCase()] || '';
@@ -1444,7 +1444,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       pages.push(totalPages);
     }
     for (const p of pages) {
-      if (p === '…') pg += '<span style="color:var(--text-muted);font-size:.75rem">…</span>';
+      if (p === '…') pg += '<span style="color:var(--muted);font-size:.78rem">…</span>';
       else pg += `<button class="browse-page-btn ${p===page?'active':''}" onclick="browseGoPage(${p})">${p}</button>`;
     }
     pg += `<button class="browse-page-btn" onclick="browseGoPage(${page+1})" ${page>=totalPages?'disabled':''}>›</button>`;
