@@ -182,6 +182,34 @@ def put_db_conn(conn):
         p.putconn(conn)
 
 
+def _backfill_rerun_answers(rows):
+    """Background: re-run historical queries to populate answer_text (one-time migration)."""
+    import time as _time
+    success, failed = 0, 0
+    for row in rows:
+        try:
+            result = run_agentic_loop(row["query"], row["branch"] or "main")
+            answer = result.get("answer", "")
+            if answer:
+                conn = get_db_conn()
+                try:
+                    conn.cursor().execute(
+                        "UPDATE search_events SET answer_text = %s WHERE id = %s",
+                        (answer, row["id"]),
+                    )
+                    conn.commit()
+                    success += 1
+                finally:
+                    put_db_conn(conn)
+            else:
+                failed += 1
+        except Exception as e:
+            print(f"[DB] Backfill re-run failed for event {row['id']}: {e}")
+            failed += 1
+        _time.sleep(2)  # small delay between re-runs to avoid hammering the API
+    print(f"[DB] Phase 2 backfill complete: {success} re-run, {failed} failed")
+
+
 def init_db():
     """Create usage tracking tables if they don't exist, and migrate columns."""
     if not DATABASE_URL:
@@ -297,6 +325,63 @@ def init_db():
             )
         """)
         conn.commit()
+
+        # ── Phase 1: Backfill answer_text from api_jobs (fast, no cost) ──
+        try:
+            cur.execute("""
+                UPDATE search_events se
+                SET    answer_text = COALESCE(aj.result_json::json->>'answer', aj.result_json)
+                FROM   api_jobs aj
+                WHERE  se.job_id = aj.id
+                  AND  se.job_id != ''
+                  AND  (se.answer_text IS NULL OR se.answer_text = '')
+                  AND  aj.result_json IS NOT NULL
+                  AND  aj.status = 'completed'
+            """)
+            backfilled = cur.rowcount
+            if backfilled:
+                conn.commit()
+                print(f"[DB] Phase 1: Backfilled answer_text for {backfilled} search events from api_jobs")
+        except Exception as be:
+            print(f"[DB] answer_text phase-1 backfill skipped: {be}")
+            conn.rollback()
+
+        # ── Phase 2: One-time re-run for queries that have no stored answer ──
+        # Uses a migrations table to ensure this only runs once.
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS _migrations (
+                    name TEXT PRIMARY KEY,
+                    ran_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+            cur.execute("SELECT 1 FROM _migrations WHERE name = 'backfill_answer_text_v1'")
+            if not cur.fetchone():
+                cur.execute("""
+                    SELECT id, query, branch FROM search_events
+                    WHERE  status = 'success'
+                      AND  (answer_text IS NULL OR answer_text = '')
+                    ORDER BY ran_at DESC
+                """)
+                empty_rows = [dict(r) for r in cur.fetchall()]
+                if empty_rows:
+                    print(f"[DB] Phase 2: {len(empty_rows)} events need answer re-run, starting background backfill…")
+                    threading.Thread(target=_backfill_rerun_answers, args=(empty_rows,), daemon=True).start()
+                else:
+                    print("[DB] Phase 2: No events need re-run")
+                # Mark migration as started so it doesn't re-trigger on next restart
+                cur.execute("INSERT INTO _migrations (name) VALUES ('backfill_answer_text_v1')")
+                conn.commit()
+            else:
+                print("[DB] Phase 2: backfill_answer_text_v1 already ran, skipping")
+        except Exception as be:
+            print(f"[DB] answer_text phase-2 check skipped: {be}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
     except Exception as e:
         print(f"[DB] Warning: could not init tracking tables: {e}")
         if conn:
@@ -2454,6 +2539,116 @@ def admin_delete_api_key(key_id):
             return jsonify({"error": "Key not found"}), 404
         conn.commit()
         return jsonify({"success": True})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+# ---------------------------------------------------------------------------
+# Admin: Backfill answer_text for historical search events
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/backfill-answers", methods=["POST"])
+@admin_required
+def admin_backfill_answers():
+    """
+    Backfill answer_text for search events that don't have one stored.
+
+    Phase 1: Pull answers from api_jobs.result_json (fast, no API cost).
+    Phase 2: Re-run queries through the agentic loop (slow, costs API tokens).
+
+    Request JSON (all optional):
+      - rerun: bool (default false) — if true, re-runs queries that can't be
+               backfilled from api_jobs.  Each re-run costs Claude API tokens.
+      - limit: int  (default 10)   — max queries to re-run in one request.
+      - dry_run: bool (default false) — if true, just report what would be done.
+
+    Returns summary of what was (or would be) backfilled.
+    """
+    data    = request.get_json() or {}
+    rerun   = data.get("rerun", False)
+    limit   = min(int(data.get("limit", 10)), 50)  # cap at 50 per call
+    dry_run = data.get("dry_run", False)
+
+    conn = None
+    summary = {"phase1_backfilled": 0, "phase2_rerun": 0, "phase2_failed": 0,
+               "remaining_empty": 0, "dry_run": dry_run, "details": []}
+    try:
+        conn = get_db_conn()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # ── Phase 1: Backfill from api_jobs ──
+        if not dry_run:
+            cur.execute("""
+                UPDATE search_events se
+                SET    answer_text = COALESCE(aj.result_json::json->>'answer', aj.result_json)
+                FROM   api_jobs aj
+                WHERE  se.job_id = aj.id
+                  AND  se.job_id != ''
+                  AND  (se.answer_text IS NULL OR se.answer_text = '')
+                  AND  aj.result_json IS NOT NULL
+                  AND  aj.status = 'completed'
+            """)
+            summary["phase1_backfilled"] = cur.rowcount
+            conn.commit()
+        else:
+            cur.execute("""
+                SELECT COUNT(*) AS cnt FROM search_events se
+                JOIN   api_jobs aj ON se.job_id = aj.id
+                WHERE  se.job_id != ''
+                  AND  (se.answer_text IS NULL OR se.answer_text = '')
+                  AND  aj.result_json IS NOT NULL
+                  AND  aj.status = 'completed'
+            """)
+            summary["phase1_backfilled"] = cur.fetchone()["cnt"]
+
+        # ── Phase 2: Re-run queries that have no answer stored anywhere ──
+        cur.execute("""
+            SELECT id, query, branch FROM search_events
+            WHERE  status = 'success'
+              AND  (answer_text IS NULL OR answer_text = '')
+            ORDER BY ran_at DESC
+        """)
+        empty_rows = [dict(r) for r in cur.fetchall()]
+        summary["remaining_empty"] = len(empty_rows)
+
+        if rerun and not dry_run:
+            to_rerun = empty_rows[:limit]
+            for row in to_rerun:
+                try:
+                    result = run_agentic_loop(row["query"], row["branch"] or "main")
+                    answer = result.get("answer", "")
+                    if answer:
+                        cur.execute(
+                            "UPDATE search_events SET answer_text = %s WHERE id = %s",
+                            (answer, row["id"]),
+                        )
+                        conn.commit()
+                        summary["phase2_rerun"] += 1
+                        summary["details"].append({
+                            "id": row["id"], "query": row["query"][:100],
+                            "status": "success"
+                        })
+                    else:
+                        summary["phase2_failed"] += 1
+                        summary["details"].append({
+                            "id": row["id"], "query": row["query"][:100],
+                            "status": "empty_answer"
+                        })
+                except Exception as e:
+                    conn.rollback()
+                    summary["phase2_failed"] += 1
+                    summary["details"].append({
+                        "id": row["id"], "query": row["query"][:100],
+                        "status": "error", "error": str(e)[:200]
+                    })
+            summary["remaining_empty"] -= (summary["phase2_rerun"] + summary["phase2_failed"])
+
+        return jsonify({"success": True, **summary})
     except Exception as e:
         if conn:
             conn.rollback()
