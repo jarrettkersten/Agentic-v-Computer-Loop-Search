@@ -182,32 +182,58 @@ def put_db_conn(conn):
         p.putconn(conn)
 
 
-def _backfill_rerun_answers(rows):
-    """Background: re-run historical queries to populate answer_text (one-time migration)."""
-    import time as _time
+def _backfill_job_ids(rows):
+    """Background: mint job_ids for historical search_events so they are retrievable via GET /api/query/<job_id>.
+    Uses existing answer_text — no expensive API re-runs needed."""
+    import uuid as _uuid
     success, failed = 0, 0
     for row in rows:
         try:
-            result = run_agentic_loop(row["query"], row["branch"] or "main")
-            answer = result.get("answer", "")
+            query  = row["query"]
+            branch = row["branch"] or "main"
+            answer = row.get("answer_text", "") or ""
+            job_id = str(_uuid.uuid4())
+
+            # Create the api_jobs row
+            _persist_api_job(job_id, query, branch, row.get("user_email", ""))
+
+            # Build a synthetic result from the stored answer
+            sections = {}
             if answer:
-                conn = get_db_conn()
-                try:
-                    conn.cursor().execute(
-                        "UPDATE search_events SET answer_text = %s WHERE id = %s",
-                        (answer, row["id"]),
-                    )
-                    conn.commit()
-                    success += 1
-                finally:
-                    put_db_conn(conn)
-            else:
-                failed += 1
+                sections_str = _detect_response_sections(answer)
+                parts = _split_answer_sections(answer)
+                sections = {
+                    "overview": parts.get("overview", ""),
+                    "user_guide": parts.get("user_guide", ""),
+                    "technical_reference": parts.get("technical_reference", ""),
+                }
+            result = {
+                "success": True,
+                "answer": answer,
+                "sections": sections,
+                "branch": branch,
+                "metadata": {
+                    "backfilled": True,
+                    "original_event_id": row["id"],
+                },
+            }
+            _complete_api_job(job_id, result)
+
+            # Write job_id back to the search_event
+            conn = get_db_conn()
+            try:
+                conn.cursor().execute(
+                    "UPDATE search_events SET job_id = %s WHERE id = %s",
+                    (job_id, row["id"]),
+                )
+                conn.commit()
+                success += 1
+            finally:
+                put_db_conn(conn)
         except Exception as e:
-            print(f"[DB] Backfill re-run failed for event {row['id']}: {e}")
+            print(f"[DB] Backfill job_id failed for event {row['id']}: {e}")
             failed += 1
-        _time.sleep(2)  # small delay between re-runs to avoid hammering the API
-    print(f"[DB] Phase 2 backfill complete: {success} re-run, {failed} failed")
+    print(f"[DB] Job-ID backfill complete: {success} minted, {failed} failed")
 
 
 def init_db():
@@ -356,30 +382,32 @@ def init_db():
                 )
             """)
             conn.commit()
-            # Reset failed migration so it retries (v1 had a cursor bug)
-            cur.execute("DELETE FROM _migrations WHERE name = 'backfill_answer_text_v1'")
+            # Reset old migrations so they don't clutter
+            cur.execute("DELETE FROM _migrations WHERE name IN ('backfill_answer_text_v1', 'backfill_answer_text_v2')")
             conn.commit()
-            cur.execute("SELECT 1 FROM _migrations WHERE name = 'backfill_answer_text_v2'")
+            cur.execute("SELECT 1 FROM _migrations WHERE name = 'backfill_job_ids_v3'")
             if not cur.fetchone():
-                # Use RealDictCursor for dict-style row access
+                # v3: mint job_ids for events missing them (no API re-runs — uses existing answer_text)
                 dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 dict_cur.execute("""
-                    SELECT id, query, branch FROM search_events
+                    SELECT id, query, branch,
+                           COALESCE(user_email, '') AS user_email,
+                           COALESCE(answer_text, '') AS answer_text
+                    FROM search_events
                     WHERE  status = 'success'
-                      AND  (answer_text IS NULL OR answer_text = '')
+                      AND  (job_id IS NULL OR job_id = '')
                     ORDER BY ran_at DESC
                 """)
                 empty_rows = [dict(r) for r in dict_cur.fetchall()]
                 if empty_rows:
-                    print(f"[DB] Phase 2: {len(empty_rows)} events need answer re-run, starting background backfill…")
-                    threading.Thread(target=_backfill_rerun_answers, args=(empty_rows,), daemon=True).start()
+                    print(f"[DB] Phase 2 (v3): {len(empty_rows)} events need job_id, minting in background…")
+                    threading.Thread(target=_backfill_job_ids, args=(empty_rows,), daemon=True).start()
                 else:
-                    print("[DB] Phase 2: No events need re-run")
-                # Mark migration as started so it doesn't re-trigger on next restart
-                cur.execute("INSERT INTO _migrations (name) VALUES ('backfill_answer_text_v2')")
+                    print("[DB] Phase 2 (v3): All events already have job_ids")
+                cur.execute("INSERT INTO _migrations (name) VALUES ('backfill_job_ids_v3')")
                 conn.commit()
             else:
-                print("[DB] Phase 2: backfill_answer_text_v2 already ran, skipping")
+                print("[DB] Phase 2: backfill_job_ids_v3 already ran, skipping")
         except Exception as be:
             print(f"[DB] answer_text phase-2 check skipped: {be}")
             try:
@@ -1908,7 +1936,8 @@ def api_search_event_answer(event_id):
         cur.execute(
             """SELECT id, query, branch, ran_at, confidence_level, answer_text,
                       response_sections, duration_sec, files_read, iterations,
-                      searches, input_tokens, output_tokens, total_tokens
+                      searches, input_tokens, output_tokens, total_tokens,
+                      COALESCE(screenshot_context, '') AS screenshot_context
                FROM search_events WHERE id = %s AND status = 'success'""",
             (event_id,),
         )
@@ -2722,39 +2751,56 @@ def admin_backfill_answers():
             """)
             summary["phase1_backfilled"] = cur.fetchone()["cnt"]
 
-        # ── Phase 2: Re-run queries that have no answer stored anywhere ──
+        # ── Phase 2: Mint job_ids for events missing them ──
         cur.execute("""
-            SELECT id, query, branch FROM search_events
+            SELECT id, query, branch,
+                   COALESCE(user_email, '') AS user_email,
+                   COALESCE(answer_text, '') AS answer_text
+            FROM search_events
             WHERE  status = 'success'
-              AND  (answer_text IS NULL OR answer_text = '')
+              AND  (job_id IS NULL OR job_id = '')
             ORDER BY ran_at DESC
         """)
         empty_rows = [dict(r) for r in cur.fetchall()]
         summary["remaining_empty"] = len(empty_rows)
 
         if rerun and not dry_run:
+            import uuid as _uuid
             to_rerun = empty_rows[:limit]
             for row in to_rerun:
                 try:
-                    result = run_agentic_loop(row["query"], row["branch"] or "main")
-                    answer = result.get("answer", "")
+                    query  = row["query"]
+                    branch = row["branch"] or "main"
+                    answer = row.get("answer_text", "") or ""
+                    job_id = str(_uuid.uuid4())
+
+                    # Mint api_jobs row from existing answer — no API re-run
+                    _persist_api_job(job_id, query, branch, row.get("user_email", ""))
+                    sections = {}
                     if answer:
-                        cur.execute(
-                            "UPDATE search_events SET answer_text = %s WHERE id = %s",
-                            (answer, row["id"]),
-                        )
-                        conn.commit()
-                        summary["phase2_rerun"] += 1
-                        summary["details"].append({
-                            "id": row["id"], "query": row["query"][:100],
-                            "status": "success"
-                        })
-                    else:
-                        summary["phase2_failed"] += 1
-                        summary["details"].append({
-                            "id": row["id"], "query": row["query"][:100],
-                            "status": "empty_answer"
-                        })
+                        parts = _split_answer_sections(answer)
+                        sections = {
+                            "overview": parts.get("overview", ""),
+                            "user_guide": parts.get("user_guide", ""),
+                            "technical_reference": parts.get("technical_reference", ""),
+                        }
+                    result_obj = {
+                        "success": True, "answer": answer,
+                        "sections": sections, "branch": branch,
+                        "metadata": {"backfilled": True, "original_event_id": row["id"]},
+                    }
+                    _complete_api_job(job_id, result_obj)
+
+                    cur.execute(
+                        "UPDATE search_events SET job_id = %s WHERE id = %s",
+                        (job_id, row["id"]),
+                    )
+                    conn.commit()
+                    summary["phase2_rerun"] += 1
+                    summary["details"].append({
+                        "id": row["id"], "query": query[:100],
+                        "job_id": job_id, "status": "success"
+                    })
                 except Exception as e:
                     conn.rollback()
                     summary["phase2_failed"] += 1
@@ -3091,11 +3137,21 @@ def api_v1_query_status(job_id):
     status = row["status"]
 
     if status == "processing":
-        return jsonify({
+        resp = {
             "job_id":  job_id,
             "status":  "processing",
             "message": "Search is still running. Poll again shortly.",
-        })
+            "query":   row.get("query", ""),
+        }
+        # If result_json already has screenshot_context (shouldn't for processing, but just in case)
+        if row.get("result_json"):
+            try:
+                partial = json.loads(row["result_json"])
+                if partial.get("screenshot_context"):
+                    resp["screenshot_context"] = partial["screenshot_context"]
+            except Exception:
+                pass
+        return jsonify(resp)
 
     # completed or failed — parse stored result
     result_json = row["result_json"]
@@ -3103,6 +3159,13 @@ def api_v1_query_status(job_id):
         result = json.loads(result_json)
     else:
         result = {"success": False, "error": row["error"] or "Unknown error"}
+
+    # Always surface query and screenshot_context so callers know what was submitted
+    _query = row.get("query", "")
+    _sc    = result.get("screenshot_context", "")
+    result.setdefault("query", _query)
+    if _sc:
+        result.setdefault("screenshot_context", _sc)
 
     # ── Apply response filters (only for successful completions) ──
     fields_param  = request.args.get("fields", "").strip()
@@ -3118,13 +3181,17 @@ def api_v1_query_status(job_id):
                          f"Valid values: {', '.join(sorted(VALID_SECTIONS))}",
             }), 400
         sections = result.get("sections", {})
-        return jsonify({
+        resp = {
             "job_id":       job_id,
             "status":       status,
             "success":      True,
+            "query":        _query,
             "section_name": section_param,
             "section":      sections.get(section_param, ""),
-        })
+        }
+        if _sc:
+            resp["screenshot_context"] = _sc
+        return jsonify(resp)
 
     # If specific fields are requested, filter the response
     if fields_param and result.get("success"):
@@ -3140,7 +3207,10 @@ def api_v1_query_status(job_id):
             "job_id":  job_id,
             "status":  status,
             "success": True,
+            "query":   _query,
         }
+        if _sc:
+            filtered["screenshot_context"] = _sc
         for field in requested:
             if field in result:
                 filtered[field] = result[field]
