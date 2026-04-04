@@ -356,25 +356,30 @@ def init_db():
                 )
             """)
             conn.commit()
-            cur.execute("SELECT 1 FROM _migrations WHERE name = 'backfill_answer_text_v1'")
+            # Reset failed migration so it retries (v1 had a cursor bug)
+            cur.execute("DELETE FROM _migrations WHERE name = 'backfill_answer_text_v1'")
+            conn.commit()
+            cur.execute("SELECT 1 FROM _migrations WHERE name = 'backfill_answer_text_v2'")
             if not cur.fetchone():
-                cur.execute("""
+                # Use RealDictCursor for dict-style row access
+                dict_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                dict_cur.execute("""
                     SELECT id, query, branch FROM search_events
                     WHERE  status = 'success'
                       AND  (answer_text IS NULL OR answer_text = '')
                     ORDER BY ran_at DESC
                 """)
-                empty_rows = [dict(r) for r in cur.fetchall()]
+                empty_rows = [dict(r) for r in dict_cur.fetchall()]
                 if empty_rows:
                     print(f"[DB] Phase 2: {len(empty_rows)} events need answer re-run, starting background backfill…")
                     threading.Thread(target=_backfill_rerun_answers, args=(empty_rows,), daemon=True).start()
                 else:
                     print("[DB] Phase 2: No events need re-run")
                 # Mark migration as started so it doesn't re-trigger on next restart
-                cur.execute("INSERT INTO _migrations (name) VALUES ('backfill_answer_text_v1')")
+                cur.execute("INSERT INTO _migrations (name) VALUES ('backfill_answer_text_v2')")
                 conn.commit()
             else:
-                print("[DB] Phase 2: backfill_answer_text_v1 already ran, skipping")
+                print("[DB] Phase 2: backfill_answer_text_v2 already ran, skipping")
         except Exception as be:
             print(f"[DB] answer_text phase-2 check skipped: {be}")
             try:
@@ -445,6 +450,100 @@ def _split_answer_sections(answer: str) -> dict:
         "user_guide": user_guide,
         "technical_reference": technical_reference,
     }
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers: persist search jobs to api_jobs for all search paths
+# ---------------------------------------------------------------------------
+
+def _persist_api_job(job_id, query, branch, user_email):
+    """Create an api_jobs row so the result is retrievable via GET /api/query/<job_id>."""
+    if not DATABASE_URL:
+        return
+    conn = None
+    try:
+        conn = get_db_conn()
+        conn.cursor().execute(
+            "INSERT INTO api_jobs (id, status, query, branch, user_email) "
+            "VALUES (%s, 'processing', %s, %s, %s)",
+            (job_id, query, branch, user_email),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"[DB] Warning: could not persist api_job {job_id}: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+def _complete_api_job(job_id, result, screenshot_context=""):
+    """Write the completed result to api_jobs."""
+    if not DATABASE_URL:
+        return
+    raw_answer = result.get("answer", "")
+    sections = _split_answer_sections(raw_answer)
+    payload_data = {
+        "success": True,
+        "answer": raw_answer,
+        "sections": sections,
+        "metadata": {
+            "branch":            result.get("branch", ""),
+            "files_read":        result.get("total_files_read", 0),
+            "iterations":        result.get("total_iterations", 0),
+            "searches":          result.get("total_searches", 0),
+            "confidence":        result.get("confidence", {}).get("level", ""),
+            "elapsed_seconds":   result.get("elapsed_seconds", 0),
+            "input_tokens":      result.get("input_tokens", 0),
+            "output_tokens":     result.get("output_tokens", 0),
+            "response_sections": _detect_response_sections(raw_answer),
+        },
+    }
+    if screenshot_context:
+        payload_data["screenshot_context"] = screenshot_context
+    payload = json.dumps(payload_data)
+    conn = None
+    try:
+        conn = get_db_conn()
+        conn.cursor().execute(
+            "UPDATE api_jobs SET status='completed', result_json=%s, completed_at=NOW() WHERE id=%s",
+            (payload, job_id),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"[DB] Warning: could not complete api_job {job_id}: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+def _fail_api_job(job_id, error_msg, elapsed_sec=0):
+    """Mark an api_job as failed."""
+    if not DATABASE_URL:
+        return
+    payload = json.dumps({
+        "success": False,
+        "error": error_msg,
+        "metadata": {"total_time_sec": round(elapsed_sec, 1)},
+    })
+    conn = None
+    try:
+        conn = get_db_conn()
+        conn.cursor().execute(
+            "UPDATE api_jobs SET status='failed', error=%s, result_json=%s, completed_at=NOW() WHERE id=%s",
+            (error_msg, payload, job_id),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"[DB] Warning: could not fail api_job {job_id}: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            put_db_conn(conn)
 
 
 def track_search_event(loop_type: str, query: str, branch: str, status: str,
@@ -1483,6 +1582,9 @@ def api_agentic_stream():
     t0     = time.time()
     _user_email = _current_user_email()
 
+    # Persist job to api_jobs so GET /api/query/<job_id> works for all searches
+    _persist_api_job(job_id, query, branch, _user_email)
+
     def _run():
         try:
             result = run_agentic_loop(query, branch, job_id=job_id)
@@ -1497,10 +1599,13 @@ def api_agentic_stream():
                 output_tokens=result.get("output_tokens", 0),
                 user_email=_user_email,
                 answer=result.get("answer", ""),
+                job_id=job_id,
             )
+            _complete_api_job(job_id, result)
         except Exception as e:
             track_search_event("agentic", query, branch, "error", time.time() - t0,
-                               error_message=str(e), user_email=_user_email)
+                               error_message=str(e), user_email=_user_email, job_id=job_id)
+            _fail_api_job(job_id, str(e), time.time() - t0)
             job["event_queue"].put({"type": "error", "message": str(e)})
         finally:
             _job_remove(job_id)
@@ -1553,6 +1658,9 @@ def api_agentic_start():
     t0  = time.time()
     _user_email = _current_user_email()
 
+    # Persist job to api_jobs so GET /api/query/<job_id> works for all searches
+    _persist_api_job(job_id, query, branch, _user_email)
+
     def _run():
         try:
             result = run_agentic_loop(query, branch, job_id=job_id)
@@ -1567,11 +1675,14 @@ def api_agentic_start():
                 output_tokens=result.get("output_tokens", 0),
                 user_email=_user_email,
                 answer=result.get("answer", ""),
+                job_id=job_id,
             )
+            _complete_api_job(job_id, result)
         except Exception as e:
             track_search_event("agentic", query, branch, "error",
                                time.time() - t0, error_message=str(e),
-                               user_email=_user_email)
+                               user_email=_user_email, job_id=job_id)
+            _fail_api_job(job_id, str(e), time.time() - t0)
             job["event_queue"].put({"type": "error", "message": str(e)})
         finally:
             # Keep job alive for 5 minutes after completion so the frontend
@@ -1637,6 +1748,8 @@ def api_agentic():
         return jsonify({"error": "Please select a branch first."}), 400
     t0 = time.time()
     _user_email = _current_user_email()
+    job_id = str(uuid.uuid4())
+    _persist_api_job(job_id, query, branch, _user_email)
     try:
         result = run_agentic_loop(query, branch)
         track_search_event(
@@ -1650,11 +1763,14 @@ def api_agentic():
             output_tokens=result.get("output_tokens", 0),
             user_email=_user_email,
             answer=result.get("answer", ""),
+            job_id=job_id,
         )
+        _complete_api_job(job_id, result)
         return jsonify({"success": True, "result": result})
     except Exception as e:
         track_search_event("agentic", query, branch, "error", time.time() - t0,
-                           error_message=str(e), user_email=_user_email)
+                           error_message=str(e), user_email=_user_email, job_id=job_id)
+        _fail_api_job(job_id, str(e), time.time() - t0)
         return jsonify({"error": str(e)}), 500
 
 
@@ -2783,30 +2899,6 @@ def _run_job_in_background(job_id, query, branch, user_email, screenshot_context
         result = run_agentic_loop(query, branch)
         total_time = round(time.time() - t0, 1)
 
-        raw_answer = result.get("answer", "")
-        sections = _split_answer_sections(raw_answer)
-
-        payload_data = {
-            "success": True,
-            "answer":  raw_answer,
-            "sections": sections,
-            "metadata": {
-                "branch":            branch,
-                "files_read":        result.get("total_files_read", 0),
-                "iterations":        result.get("total_iterations", 0),
-                "searches":          result.get("total_searches", 0),
-                "confidence":        result.get("confidence", {}).get("level", ""),
-                "elapsed_seconds":   result.get("elapsed_seconds", total_time),
-                "input_tokens":      result.get("input_tokens", 0),
-                "output_tokens":     result.get("output_tokens", 0),
-                "response_sections": _detect_response_sections(raw_answer),
-            },
-        }
-        if screenshot_context:
-            payload_data["screenshot_context"] = screenshot_context
-
-        response_payload = json.dumps(payload_data)
-
         # Track in search_events
         track_search_event(
             "external_api", query, branch, "success",
@@ -2823,35 +2915,13 @@ def _run_job_in_background(job_id, query, branch, user_email, screenshot_context
             screenshot_context=screenshot_context,
         )
 
-        conn = get_db_conn()
-        try:
-            conn.cursor().execute(
-                "UPDATE api_jobs SET status='completed', result_json=%s, completed_at=NOW() WHERE id=%s",
-                (response_payload, job_id),
-            )
-            conn.commit()
-        finally:
-            put_db_conn(conn)
+        # Complete the api_jobs row (adds screenshot_context to payload)
+        result["branch"] = branch
+        _complete_api_job(job_id, result, screenshot_context=screenshot_context)
 
     except Exception as e:
         total_time = round(time.time() - t0, 1)
-        error_payload = json.dumps({
-            "success": False,
-            "error":   str(e),
-            "metadata": {"total_time_sec": total_time},
-        })
-        try:
-            conn = get_db_conn()
-            try:
-                conn.cursor().execute(
-                    "UPDATE api_jobs SET status='failed', error=%s, result_json=%s, completed_at=NOW() WHERE id=%s",
-                    (str(e), error_payload, job_id),
-                )
-                conn.commit()
-            finally:
-                put_db_conn(conn)
-        except Exception:
-            pass
+        _fail_api_job(job_id, str(e), total_time)
 
 
 @app.route("/api/query", methods=["POST"])
