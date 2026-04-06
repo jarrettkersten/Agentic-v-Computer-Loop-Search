@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Cora PPM — Cora Code Investigator</title>
+<title>Cora PPM — Cora Product Investigator</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <style>
 :root{
@@ -295,6 +295,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .browse-sort-badge{font-size:.6rem;color:var(--brand-light);margin-left:2px;vertical-align:super}
 .browse-new-search-btn{background:var(--brand-light);color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s}
 .browse-new-search-btn:hover{background:#1557a0}
+.browse-override-btn{background:#d97706;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s}
+.browse-override-btn:hover{background:#b45309}
 .browse-match-row td{background:rgba(30,111,212,.06)!important}
 .browse-match-row:hover td{background:rgba(30,111,212,.12)!important}
 .browse-match-badge{display:inline-flex;align-items:center;gap:4px;font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap}
@@ -459,7 +461,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   <div class="logo">
     <img src="https://corasystems.com/_next/static/media/cora-logo-white.3ac9db11.svg" alt="Cora" height="22" style="display:block"/>
     <div class="sep"></div>
-    🔍 Cora Code Investigator
+    🔍 Cora Product Investigator
   </div>
   <div style="display:flex;align-items:center;gap:12px">
     {% if not auth_disabled %}
@@ -540,7 +542,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
             <option value="yes">📸 Yes</option>
             <option value="no">📸 No</option>
           </select>
-          <button id="browseNewSearchBtn" class="browse-new-search-btn" style="display:none" onclick="browseForceNewSearch()">🔍 Run new search instead</button>
+          <button id="browseStartNewBtn" class="browse-new-search-btn" style="display:none" onclick="browseStartNewSearch()">🔄 Start New Search</button>
+          <button id="browseOverrideBtn" class="browse-override-btn" style="display:none" onclick="browseSearchOverride()">⚡ Search Override</button>
           <button class="browse-close" onclick="closeBrowsePanel()">✕</button>
         </div>
       </div>
@@ -933,7 +936,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 </main>
 </div><!-- /view-admin -->
 
-<footer>Cora Code Investigator · All answers sourced exclusively from CoraSystems/PPM Azure DevOps</footer>
+<footer>Cora Product Investigator · All answers sourced exclusively from CoraSystems/PPM Azure DevOps</footer>
 
 <script>
   marked.setOptions({ breaks: true, gfm: true });
@@ -1280,8 +1283,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     document.getElementById('browseConfFilter').value = '';
     document.getElementById('browseScreenshotFilter').value = '';
     // Update panel header
-    document.getElementById('browseTitle').textContent = '🔎 Similar queries found — select one or run a new search';
-    document.getElementById('browseNewSearchBtn').style.display = 'inline-block';
+    document.getElementById('browseTitle').textContent = '🔎 Similar queries found — select one below or choose an action';
+    document.getElementById('browseStartNewBtn').style.display = 'inline-block';
+    document.getElementById('browseOverrideBtn').style.display = 'inline-block';
+    // Disable the main search button while matches are shown
+    document.getElementById('btnSearch').disabled = true;
     // Open panel
     const panel = document.getElementById('browsePanel');
     panel.style.display = 'block';
@@ -1290,10 +1296,25 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     browseLoad();
   }
 
-  function browseForceNewSearch() {
+  function browseStartNewSearch() {
+    closeBrowsePanel();
+    // Reset similarity state so the check runs again on next search
+    _similarCheckDone = false;
+    _lastSimilarQuery = '';
+    _sqBypassNext = false;
+    // Re-enable the search button so the user can search normally
+    document.getElementById('btnSearch').disabled = false;
+  }
+
+  function browseSearchOverride() {
+    const query = document.getElementById('queryInput').value.trim();
+    if (!confirm('Are you sure you want to search your current question and ignore the similar query results?\n\n"' + query + '"')) {
+      return;
+    }
     closeBrowsePanel();
     _sqBypassNext = true;
     _similarCheckDone = true;
+    document.getElementById('btnSearch').disabled = false;
     runSearch();
   }
 
@@ -1304,7 +1325,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     _sqMatches = [];
     document.getElementById('btnBrowse').classList.remove('active');
     document.getElementById('browseTitle').textContent = '📋 Past Queries';
-    document.getElementById('browseNewSearchBtn').style.display = 'none';
+    document.getElementById('browseStartNewBtn').style.display = 'none';
+    document.getElementById('browseOverrideBtn').style.display = 'none';
+    document.getElementById('btnSearch').disabled = false;
     document.getElementById('browseBranchFilter').value = '';
     document.getElementById('browseConfFilter').value = '';
     document.getElementById('browseScreenshotFilter').value = '';
@@ -1339,7 +1362,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       document.getElementById('browseConfFilter').value = '';
       document.getElementById('browseScreenshotFilter').value = '';
       document.getElementById('browseTitle').textContent = '📋 Past Queries';
-      document.getElementById('browseNewSearchBtn').style.display = 'none';
+      document.getElementById('browseStartNewBtn').style.display = 'none';
+      document.getElementById('browseOverrideBtn').style.display = 'none';
       document.getElementById('browsePanel').style.display = 'block';
       document.getElementById('btnBrowse').classList.add('active');
       _browseOpen = true;
@@ -1726,7 +1750,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           </div>
           <div style="display:flex; gap:8px; flex-shrink:0;">
             ${_sqMatches.length ? '<button class="sq-btn-alt" onclick="openBrowseWithMatches(_sqMatches)">← Browse similar queries</button>' : ''}
-            <button class="sq-btn-new" onclick="browseForceNewSearch()">🔍 Run new search</button>
+            <button class="sq-btn-new" onclick="browseStartNewSearch()">🔄 Start New Search</button>
+            <button class="sq-btn-new" style="background:#d97706;" onclick="browseSearchOverride()">⚡ Search Override</button>
           </div>
         </div>
       `;
@@ -2618,10 +2643,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   // ── Info modals ────────────────────────────────────────────────────────────
   const INFO_CONTENT = {
     agentic: {
-      title: '🔍 Cora Code Investigator — How it works',
+      title: '🔍 Cora Product Investigator — How it works',
       body: `
         <h4>Overview</h4>
-        <p>The Cora Code Investigator gives Claude full autonomy to search the <strong>CoraSystems/PPM</strong> Azure DevOps repository. Rather than following a fixed script, Claude decides what to search for next based on what it finds — just like a developer would.</p>
+        <p>The Cora Product Investigator gives Claude full autonomy to search the <strong>CoraSystems/PPM</strong> Azure DevOps repository. Rather than following a fixed script, Claude decides what to search for next based on what it finds — just like a developer would.</p>
 
         <h4>Step-by-step process</h4>
         <ul>
