@@ -41,6 +41,8 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 @media(max-width:900px){.query-layout{grid-template-columns:1fr}}
 
 .field-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px}
+.model-info-btn{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--brand-light);background:none;color:var(--brand-light);font-size:.65rem;font-weight:700;cursor:pointer;margin-left:5px;padding:0;vertical-align:middle;transition:all .15s;line-height:1}
+.model-info-btn:hover{background:var(--brand-light);color:#fff}
 .branch-select{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;font-family:inherit;color:var(--text);background:#fff;transition:border-color .2s;cursor:pointer;outline:none;height:42px}
 .branch-select:focus{border-color:var(--brand-light);box-shadow:0 0 0 3px rgba(30,111,212,.12)}
 .branch-loading{font-size:.75rem;color:var(--muted);font-style:italic;margin-top:5px;min-height:16px}
@@ -489,6 +491,15 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <input type="text" class="branch-select" id="branchManual" placeholder="Type branch name…"
                style="display:none;margin-top:6px"/>
         <div class="branch-loading" id="branchLoading"></div>
+        <label class="field-label" for="modelSelect" style="margin-top:10px">
+          Model
+          <button class="model-info-btn" onclick="openInfoModal('model', event)" title="Compare models — capability, speed, and cost">?</button>
+        </label>
+        <select class="branch-select" id="modelSelect">
+          <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (Balanced)</option>
+          <option value="claude-opus-4-6">Claude Opus 4.6 (Most Capable)</option>
+          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fastest)</option>
+        </select>
         <div class="action-row">
           <button class="btn btn-run-all" id="btnSearch" onclick="runWithClarify('agentic')">🔍 Search</button>
           <button class="btn btn-browse" id="btnBrowse" onclick="toggleBrowseQueries()">📋 Browse Past Queries</button>
@@ -542,8 +553,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
             <option value="yes">📸 Yes</option>
             <option value="no">📸 No</option>
           </select>
-          <button id="browseStartNewBtn" class="browse-new-search-btn" style="display:none" onclick="browseStartNewSearch()">🔄 Start New Search</button>
-          <button id="browseOverrideBtn" class="browse-override-btn" style="display:none" onclick="browseSearchOverride()">⚡ Search Override</button>
+          <button id="browseStartNewBtn" class="browse-new-search-btn" style="display:none" onclick="browseStartNewSearch()" title="Clear these results and start fresh — you can edit your question and search again">🔄 Start New Search</button>
+          <button id="browseOverrideBtn" class="browse-override-btn" style="display:none" onclick="browseSearchOverride()" title="Ignore similar results and run your current question as a new search">⚡ Search Override</button>
           <button class="browse-close" onclick="closeBrowsePanel()">✕</button>
         </div>
       </div>
@@ -965,6 +976,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     return document.getElementById('branchSelect').value.trim();
   }
 
+  function getModel() {
+    return document.getElementById('modelSelect').value;
+  }
+
   async function loadBranches() {
     const sel    = document.getElementById('branchSelect');
     const manual = document.getElementById('branchManual');
@@ -1024,12 +1039,15 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   }
 
   // ── Cost estimation ─────────────────────────────────────────────────────────
-  // Pricing from env vars (COST_PER_M_INPUT / COST_PER_M_OUTPUT), defaults to Sonnet 4.6 rates
+  // Per-model pricing (USD per million tokens)
+  const MODEL_PRICING = {{ model_pricing | default({}) | tojson }};
+  // Fallback to Sonnet 4.6 rates
   const COST_PER_M_INPUT  = {{ cost_per_m_input | default(3.00) }};
   const COST_PER_M_OUTPUT = {{ cost_per_m_output | default(15.00) }};
-  function calcCost(inputTok, outputTok) {
-    return ((inputTok || 0) / 1e6) * COST_PER_M_INPUT
-         + ((outputTok || 0) / 1e6) * COST_PER_M_OUTPUT;
+  function calcCost(inputTok, outputTok, model) {
+    const p = MODEL_PRICING[model || getModel()] || { input: COST_PER_M_INPUT, output: COST_PER_M_OUTPUT };
+    return ((inputTok || 0) / 1e6) * p.input
+         + ((outputTok || 0) / 1e6) * p.output;
   }
   function formatCost(cost) {
     if (!cost || cost <= 0) return '';
@@ -1189,7 +1207,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       const resp = await fetch('/api/clarify', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ query: raw }),
+        body:    JSON.stringify({ query: raw, model: getModel() }),
       });
       if (!resp.ok) throw new Error('clarify endpoint error');
       const data = await resp.json();
@@ -1750,8 +1768,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           </div>
           <div style="display:flex; gap:8px; flex-shrink:0;">
             ${_sqMatches.length ? '<button class="sq-btn-alt" onclick="openBrowseWithMatches(_sqMatches)">← Browse similar queries</button>' : ''}
-            <button class="sq-btn-new" onclick="browseStartNewSearch()">🔄 Start New Search</button>
-            <button class="sq-btn-new" style="background:#d97706;" onclick="browseSearchOverride()">⚡ Search Override</button>
+            <button class="sq-btn-new" onclick="browseStartNewSearch()" title="Clear these results and start fresh — you can edit your question and search again">🔄 Start New Search</button>
+            <button class="sq-btn-new" style="background:#d97706;" onclick="browseSearchOverride()" title="Ignore similar results and run your current question as a new search">⚡ Search Override</button>
           </div>
         </div>
       `;
@@ -1883,7 +1901,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       await new Promise(async (resolve, reject) => {
         let jobId = null;
         try {
-          const startBody = { query, branch };
+          const startBody = { query, branch, model: getModel() };
           if (szB64) { startBody.screenshot_b64 = szB64; startBody.screenshot_mime = szMime; }
           if (szContext) { startBody.screenshot_context = szContext; }
           const startResp = await fetch('/api/agentic/start', {
@@ -2014,7 +2032,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         const resp = await fetch('/api/extract-screenshot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image_b64: b64, mime_type: mime }),
+          body: JSON.stringify({ image_b64: b64, mime_type: mime, model: getModel() }),
         });
         const data = await resp.json();
         if (!resp.ok || data.error) throw new Error(data.error || 'Extraction failed');
@@ -2642,6 +2660,59 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   // ── Info modals ────────────────────────────────────────────────────────────
   const INFO_CONTENT = {
+    model: {
+      title: 'Choose a Model',
+      body: `
+        <p>Each model offers a different trade-off between search quality, speed, and cost. All three use the same agentic search process — the difference is in how deeply the model reasons about what to search for and how it synthesises the answer.</p>
+
+        <table class="compare-table">
+          <thead>
+            <tr><th></th><th>Sonnet 4.6</th><th>Opus 4.6</th><th>Haiku 4.5</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Best for</strong></td>
+              <td>Day-to-day questions — the best balance of quality, speed, and cost</td>
+              <td>Complex questions that span many files or require deep architectural reasoning</td>
+              <td>Quick lookups where speed matters most and depth matters less</td>
+            </tr>
+            <tr>
+              <td><strong>Search quality</strong></td>
+              <td>High — strong multi-step reasoning and accurate code comprehension</td>
+              <td>Highest — best at connecting subtle patterns across large codebases</td>
+              <td>Good — may miss nuance on complex, multi-file questions</td>
+            </tr>
+            <tr>
+              <td><strong>Speed</strong></td>
+              <td>Fast</td>
+              <td>Slower — deeper reasoning takes more time per iteration</td>
+              <td>Fastest</td>
+            </tr>
+            <tr>
+              <td><strong>Input cost</strong></td>
+              <td>$3 / M tokens</td>
+              <td>$5 / M tokens</td>
+              <td>$1 / M tokens</td>
+            </tr>
+            <tr>
+              <td><strong>Output cost</strong></td>
+              <td>$15 / M tokens</td>
+              <td>$25 / M tokens</td>
+              <td>$5 / M tokens</td>
+            </tr>
+            <tr>
+              <td><strong>Relative cost</strong></td>
+              <td>~$0.04–0.08 / search</td>
+              <td>~2x Sonnet</td>
+              <td>~3x cheaper than Sonnet</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h4>Recommendation</h4>
+        <p><strong>Start with Sonnet 4.6</strong> (the default). It handles the vast majority of questions well at a reasonable cost. Switch to Opus if you need the deepest possible analysis on a particularly complex question, or to Haiku if you're doing a high volume of simple lookups and want to keep costs low.</p>
+      `
+    },
     agentic: {
       title: '🔍 Cora Product Investigator — How it works',
       body: `

@@ -45,6 +45,19 @@ if sys.platform == "win32":
 # ---------------------------------------------------------------------------
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 MODEL             = "claude-sonnet-4-6"
+ALLOWED_MODELS    = {
+    "claude-sonnet-4-6",
+    "claude-opus-4-6",
+    "claude-haiku-4-5-20251001",
+}
+
+def _resolve_model(data: dict | None) -> str:
+    """Return a validated model string from a request payload, falling back to MODEL."""
+    if data:
+        req_model = (data.get("model") or "").strip()
+        if req_model in ALLOWED_MODELS:
+            return req_model
+    return MODEL
 
 ADO_ORG           = "CoraSystems"
 ADO_PROJECT       = "PPM"
@@ -55,9 +68,21 @@ ADO_SEARCH_URL    = (
     f"/_apis/search/codesearchresults?api-version=7.0"
 )
 
-# Cost estimation — USD per million tokens (update via env vars if pricing changes)
-COST_PER_M_INPUT  = float(os.environ.get("COST_PER_M_INPUT",  "3.00"))   # Sonnet 4.6 input
-COST_PER_M_OUTPUT = float(os.environ.get("COST_PER_M_OUTPUT", "15.00"))  # Sonnet 4.6 output
+# Cost estimation — USD per million tokens, per model
+MODEL_PRICING = {
+    "claude-sonnet-4-6":          {"input": 3.00,  "output": 15.00},
+    "claude-opus-4-6":            {"input": 5.00,  "output": 25.00},
+    "claude-haiku-4-5-20251001":  {"input": 1.00,  "output": 5.00},
+}
+# Legacy env-var overrides apply to the default model only
+COST_PER_M_INPUT  = float(os.environ.get("COST_PER_M_INPUT",  "3.00"))
+COST_PER_M_OUTPUT = float(os.environ.get("COST_PER_M_OUTPUT", "15.00"))
+MODEL_PRICING[MODEL] = {"input": COST_PER_M_INPUT, "output": COST_PER_M_OUTPUT}
+
+def _model_costs(model: str | None = None) -> tuple[float, float]:
+    """Return (cost_per_m_input, cost_per_m_output) for the given model."""
+    p = MODEL_PRICING.get(model or MODEL, MODEL_PRICING[MODEL])
+    return p["input"], p["output"]
 
 MAX_AGENTIC_ITERATIONS = 12    # more headroom for complex multi-file questions
 MAX_SEARCH_RESULTS     = 12    # broader initial candidate pool per search term
@@ -228,6 +253,7 @@ def init_db():
             ("answer_text",           "TEXT DEFAULT ''"),
             ("screenshot_b64",        "TEXT DEFAULT ''"),
             ("screenshot_mime",       "TEXT DEFAULT ''"),
+            ("model",                 "TEXT DEFAULT ''"),
         ])
         _safe_add_columns(cur, "flagged_queries", [
             ("flag_type",         "TEXT NOT NULL DEFAULT 'inaccurate'"),
@@ -466,7 +492,8 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                        input_tokens: int = 0, output_tokens: int = 0,
                        user_email: str = "", answer: str = "",
                        job_id: str = "", screenshot_context: str = "",
-                       screenshot_b64: str = "", screenshot_mime: str = ""):
+                       screenshot_b64: str = "", screenshot_mime: str = "",
+                       model: str = ""):
     """Record a single loop search run."""
     if not DATABASE_URL:
         return
@@ -481,15 +508,15 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                 iterations, searches, confidence_level,
                 input_tokens, output_tokens, total_tokens, error_message,
                 user_email, response_sections, job_id, screenshot_context,
-                answer_text, screenshot_b64, screenshot_mime)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                answer_text, screenshot_b64, screenshot_mime, model)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (loop_type, (query or "")[:2000], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
              confidence_level or "",
              input_tokens, output_tokens, input_tokens + output_tokens,
              error_message or "", user_email or "", response_sections,
              job_id or "", screenshot_context or "", answer or "",
-             screenshot_b64 or "", screenshot_mime or ""),
+             screenshot_b64 or "", screenshot_mime or "", model or MODEL),
         )
         conn.commit()
     except Exception as e:
@@ -837,7 +864,7 @@ def _clean_answer(text: str) -> str:
     return cleaned
 
 
-def assess_confidence(query: str, answer: str, files_read: int, loop_name: str) -> dict:
+def assess_confidence(query: str, answer: str, files_read: int, loop_name: str, model: str | None = None) -> dict:
     """Quick confidence assessment for a loop answer.
     Returns {"level": "High"|"Medium"|"Low", "reason": "one sentence"}
     """
@@ -845,7 +872,7 @@ def assess_confidence(query: str, answer: str, files_read: int, loop_name: str) 
     client = get_client()
     try:
         resp = client.messages.create(
-            model=MODEL,
+            model=model or MODEL,
             max_tokens=120,
             system=(
                 "You evaluate the confidence level of Cora PPM search answers. "
@@ -910,7 +937,8 @@ def extract_file_paths_from_text(text: str) -> list:
 #    using two ADO-specific tools, until it has enough context to answer.
 # ---------------------------------------------------------------------------
 
-def run_agentic_loop(query, branch, job_id: str | None = None):
+def run_agentic_loop(query, branch, job_id: str | None = None, model: str | None = None):
+    _model = model or MODEL
     client = get_client()
 
     tools = [
@@ -1145,7 +1173,7 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
                 break
 
         response = client.messages.create(
-            model=MODEL,
+            model=_model,
             max_tokens=5000,
             system=system_prompt,
             tools=tools,
@@ -1272,7 +1300,7 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
                 "The searches ran but returned no accessible content."
             )
         fallback = client.messages.create(
-            model=MODEL,
+            model=_model,
             max_tokens=10000,
             system=(
                 "You are a senior Cora PPM code analyst. Answer ONLY from the ADO repository "
@@ -1319,7 +1347,7 @@ def run_agentic_loop(query, branch, job_id: str | None = None):
     total_searches   = sum(1 for it in iterations_log for tc in it.get("tool_calls", []) if tc.get("type") == "search")
     total_files_read = sum(1 for it in iterations_log for tc in it.get("tool_calls", []) if tc.get("type") == "read_file")
 
-    confidence = assess_confidence(query, final_answer, total_files_read, "Agentic Loop")
+    confidence = assess_confidence(query, final_answer, total_files_read, "Agentic Loop", model=_model)
 
     result = {
         "answer":           final_answer,
@@ -1353,7 +1381,8 @@ def index():
                            is_admin=_is_admin(),
                            auth_disabled=AUTH_DISABLED,
                            cost_per_m_input=COST_PER_M_INPUT,
-                           cost_per_m_output=COST_PER_M_OUTPUT)
+                           cost_per_m_output=COST_PER_M_OUTPUT,
+                           model_pricing=MODEL_PRICING)
 
 
 @app.route("/api-docs")
@@ -1367,14 +1396,14 @@ def api_docs():
                            auth_disabled=AUTH_DISABLED)
 
 
-def _extract_screenshot_context(image_b64: str, mime_type: str = "image/png") -> str:
+def _extract_screenshot_context(image_b64: str, mime_type: str = "image/png", model: str | None = None) -> str:
     """Ask Claude to extract UI context from a base64-encoded screenshot.
 
     Returns the extracted plain-text context string, or raises on failure.
     """
     client = get_client()
     resp = client.messages.create(
-        model=MODEL,
+        model=model or MODEL,
         max_tokens=600,
         system=(
             "You are a Cora PPM UI analyst. The user has uploaded a screenshot of the Cora PPM application. "
@@ -1418,10 +1447,11 @@ def api_extract_screenshot():
     data      = request.get_json() or {}
     image_b64 = data.get("image_b64", "").strip()
     mime_type = data.get("mime_type", "image/png").strip()
+    _model    = _resolve_model(data)
     if not image_b64:
         return jsonify({"error": "No image data provided."}), 400
     try:
-        context = _extract_screenshot_context(image_b64, mime_type)
+        context = _extract_screenshot_context(image_b64, mime_type, model=_model)
         return jsonify({"success": True, "context": context})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1486,6 +1516,7 @@ def api_agentic_stream():
     data   = request.get_json() or {}
     query  = data.get("query",  "").strip()
     branch = data.get("branch", "").strip()
+    _model = _resolve_model(data)
     if not query:
         return jsonify({"error": "No query provided."}), 400
     if not branch:
@@ -1507,7 +1538,7 @@ def api_agentic_stream():
 
     def _run():
         try:
-            result = run_agentic_loop(query, branch, job_id=job_id)
+            result = run_agentic_loop(query, branch, job_id=job_id, model=_model)
             track_search_event(
                 "agentic", query, branch, "success",
                 time.time() - t0,
@@ -1523,11 +1554,13 @@ def api_agentic_stream():
                 screenshot_context=_ss_ctx,
                 screenshot_b64=_ss_b64,
                 screenshot_mime=_ss_mime,
+                model=_model,
             )
             _complete_api_job(job_id, result)
         except Exception as e:
             track_search_event("agentic", query, branch, "error", time.time() - t0,
-                               error_message=str(e), user_email=_user_email, job_id=job_id)
+                               error_message=str(e), user_email=_user_email, job_id=job_id,
+                               model=_model)
             _fail_api_job(job_id, str(e), time.time() - t0)
             job["event_queue"].put({"type": "error", "message": str(e)})
         finally:
@@ -1570,6 +1603,7 @@ def api_agentic_start():
     data   = request.get_json() or {}
     query  = data.get("query",  "").strip()
     branch = data.get("branch", "").strip()
+    _model = _resolve_model(data)
     if not query:
         return jsonify({"error": "No query provided."}), 400
     if not branch:
@@ -1591,7 +1625,7 @@ def api_agentic_start():
 
     def _run():
         try:
-            result = run_agentic_loop(query, branch, job_id=job_id)
+            result = run_agentic_loop(query, branch, job_id=job_id, model=_model)
             track_search_event(
                 "agentic", query, branch, "success",
                 time.time() - t0,
@@ -1607,12 +1641,14 @@ def api_agentic_start():
                 screenshot_context=_ss_ctx,
                 screenshot_b64=_ss_b64,
                 screenshot_mime=_ss_mime,
+                model=_model,
             )
             _complete_api_job(job_id, result)
         except Exception as e:
             track_search_event("agentic", query, branch, "error",
                                time.time() - t0, error_message=str(e),
-                               user_email=_user_email, job_id=job_id)
+                               user_email=_user_email, job_id=job_id,
+                               model=_model)
             _fail_api_job(job_id, str(e), time.time() - t0)
             job["event_queue"].put({"type": "error", "message": str(e)})
         finally:
@@ -1673,6 +1709,7 @@ def api_agentic():
     data   = request.get_json() or {}
     query  = data.get("query",  "").strip()
     branch = data.get("branch", "").strip()
+    _model = _resolve_model(data)
     if not query:
         return jsonify({"error": "No query provided."}), 400
     if not branch:
@@ -1685,7 +1722,7 @@ def api_agentic():
     job_id = str(uuid.uuid4())
     _persist_api_job(job_id, query, branch, _user_email)
     try:
-        result = run_agentic_loop(query, branch)
+        result = run_agentic_loop(query, branch, model=_model)
         track_search_event(
             "agentic", query, branch, "success",
             time.time() - t0,
@@ -1701,12 +1738,14 @@ def api_agentic():
             screenshot_context=_ss_ctx,
             screenshot_b64=_ss_b64,
             screenshot_mime=_ss_mime,
+            model=_model,
         )
         _complete_api_job(job_id, result)
         return jsonify({"success": True, "result": result})
     except Exception as e:
         track_search_event("agentic", query, branch, "error", time.time() - t0,
-                           error_message=str(e), user_email=_user_email, job_id=job_id)
+                           error_message=str(e), user_email=_user_email, job_id=job_id,
+                           model=_model)
         _fail_api_job(job_id, str(e), time.time() - t0)
         return jsonify({"error": str(e)}), 500
 
@@ -1734,12 +1773,13 @@ def api_clarify():
     """
     data  = request.get_json() or {}
     query = data.get("query", "").strip()
+    _model = _resolve_model(data)
     if not query:
         return jsonify({"needs_clarification": False})
     try:
         client = get_client()
         resp   = client.messages.create(
-            model=MODEL,
+            model=_model,
             max_tokens=200,
             system=(
                 "You decide whether a Cora PPM codebase question needs one clarifying question "
@@ -2472,25 +2512,37 @@ def api_admin_user_rankings():
                 COUNT(*)                                    AS query_count,
                 SUM(COALESCE(input_tokens, 0))              AS total_input_tokens,
                 SUM(COALESCE(output_tokens, 0))             AS total_output_tokens,
-                SUM(COALESCE(total_tokens, 0))              AS total_tokens
+                SUM(COALESCE(total_tokens, 0))              AS total_tokens,
+                COALESCE(NULLIF(model, ''), '{MODEL}')      AS model
             FROM search_events
             {where_clause}
-            GROUP BY COALESCE(NULLIF(user_email, ''), 'unknown')
+            GROUP BY COALESCE(NULLIF(user_email, ''), 'unknown'),
+                     COALESCE(NULLIF(model, ''), '{MODEL}')
             ORDER BY query_count DESC
         """, params if params else None)
-        rankings = []
+        # Aggregate per-user across models
+        user_agg: dict = {}
         for row in cur.fetchall():
+            email = row["user_email"]
             inp = row["total_input_tokens"] or 0
             out = row["total_output_tokens"] or 0
-            cost = (inp / 1_000_000) * COST_PER_M_INPUT + (out / 1_000_000) * COST_PER_M_OUTPUT
-            rankings.append({
-                "user_email":          row["user_email"],
-                "query_count":         row["query_count"],
-                "total_input_tokens":  inp,
-                "total_output_tokens": out,
-                "total_tokens":        row["total_tokens"] or 0,
-                "estimated_cost":      round(cost, 4),
-            })
+            ci, co = _model_costs(row["model"])
+            cost = (inp / 1_000_000) * ci + (out / 1_000_000) * co
+            if email not in user_agg:
+                user_agg[email] = {
+                    "user_email": email, "query_count": 0,
+                    "total_input_tokens": 0, "total_output_tokens": 0,
+                    "total_tokens": 0, "estimated_cost": 0.0,
+                }
+            agg = user_agg[email]
+            agg["query_count"]         += row["query_count"]
+            agg["total_input_tokens"]  += inp
+            agg["total_output_tokens"] += out
+            agg["total_tokens"]        += row["total_tokens"] or 0
+            agg["estimated_cost"]      += cost
+        rankings = sorted(user_agg.values(), key=lambda r: r["query_count"], reverse=True)
+        for r in rankings:
+            r["estimated_cost"] = round(r["estimated_cost"], 4)
         return jsonify({"rankings": rankings})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
