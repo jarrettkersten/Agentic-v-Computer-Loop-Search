@@ -804,6 +804,315 @@ def ado_read_file(file_path, branch, char_offset=0):
     return content
 
 
+def ado_get_file_commits(file_path, branch, top=3):
+    """Fetch the most recent commits that touched a specific file on a branch.
+
+    Returns a list of dicts:
+      [{"commit_id": "abc123", "short_id": "abc123",
+        "author": "Jane Doe", "author_email": "jane@co.com",
+        "date": "2026-03-15T14:30:00Z",
+        "comment": "Fix EAC submit validation",
+        "url": "https://dev.azure.com/..."}]
+    """
+    url = (
+        f"{ADO_BASE_URL}/{ADO_PROJECT}/_apis/git/repositories/{ADO_REPO}/commits"
+        f"?searchCriteria.itemPath={requests.utils.quote(file_path)}"
+        f"&searchCriteria.itemVersion.version={branch}"
+        f"&searchCriteria.itemVersion.versionType=branch"
+        f"&$top={top}"
+        f"&api-version=7.0"
+    )
+    try:
+        resp = requests.get(url, headers=_ado_headers(), timeout=15)
+        if not resp.ok:
+            return []
+        data = resp.json()
+        commits = []
+        for c in data.get("value", []):
+            author = c.get("author", {})
+            commit_id = c.get("commitId", "")
+            commits.append({
+                "commit_id":    commit_id,
+                "short_id":     commit_id[:8],
+                "author":       author.get("name", "Unknown"),
+                "author_email": author.get("email", ""),
+                "date":         author.get("date", ""),
+                "comment":      (c.get("comment") or "").strip().split("\n")[0],  # first line only
+                "url":          f"https://dev.azure.com/{ADO_ORG}/{ADO_PROJECT}/_git/{ADO_REPO}/commit/{commit_id}",
+            })
+        return commits
+    except Exception:
+        return []
+
+
+def extract_code_sections(answer_text, accumulated_files):
+    """Parse Claude's answer for code blocks with file references and find their line numbers.
+
+    Looks for patterns like:
+      File: /code/path/to/File.cs, lines 120–145
+      ```csharp
+      ... code ...
+      ```
+    Also handles `File: path/File.cs` without explicit line numbers by matching
+    the snippet content against accumulated_files to determine line ranges.
+
+    Returns a list of dicts:
+      [{"file_path": "/code/Foo.cs", "start_line": 120, "end_line": 145,
+        "snippet_preview": "first 80 chars of snippet"}]
+    """
+    import re
+
+    sections = []
+    seen = set()  # (file_path, start_line) dedup key
+
+    # Pattern 1: Explicit "File: path, lines N–M" followed by a code block
+    explicit_pat = re.compile(
+        r'[Ff]ile:\s*[`]?([^\n`,]+\.\w{1,10})[`]?\s*,?\s*[Ll]ines?\s+(\d+)\s*[–\-—to]+\s*(\d+)',
+        re.MULTILINE
+    )
+    for m in explicit_pat.finditer(answer_text):
+        fp = m.group(1).strip()
+        start = int(m.group(2))
+        end = int(m.group(3))
+        key = (fp, start)
+        if key not in seen:
+            seen.add(key)
+            sections.append({
+                "file_path": fp,
+                "start_line": start,
+                "end_line": end,
+                "snippet_preview": "",
+            })
+
+    # Pattern 2: Inline method references like `MethodName()` in `File.ext` (line N)
+    inline_pat = re.compile(
+        r'`([^`]+)`\s+in\s+`([^`]+\.\w{1,10})`\s*\(line\s+(\d+)\)',
+        re.MULTILINE
+    )
+    for m in inline_pat.finditer(answer_text):
+        fp = m.group(2).strip()
+        line_num = int(m.group(3))
+        # Create a small window around the referenced line
+        start = max(1, line_num - 5)
+        end = line_num + 15
+        key = (fp, start)
+        if key not in seen:
+            seen.add(key)
+            sections.append({
+                "file_path": fp,
+                "start_line": start,
+                "end_line": end,
+                "snippet_preview": m.group(1).strip(),
+            })
+
+    # Pattern 3: Code blocks preceded by any file reference — match snippet against accumulated_files
+    block_pat = re.compile(
+        r'[Ff]ile:\s*[`]?([^\n`,:]+\.\w{1,10})[`]?\s*\n\s*```\w*\n(.*?)```',
+        re.DOTALL
+    )
+    for m in block_pat.finditer(answer_text):
+        fp = m.group(1).strip()
+        snippet = m.group(2).strip()
+        if not snippet or len(snippet) < 10:
+            continue
+
+        # Try to find line numbers by matching snippet against file content
+        start_line, end_line = _match_snippet_to_lines(fp, snippet, accumulated_files)
+        if start_line:
+            key = (fp, start_line)
+            if key not in seen:
+                seen.add(key)
+                sections.append({
+                    "file_path": fp,
+                    "start_line": start_line,
+                    "end_line": end_line,
+                    "snippet_preview": snippet[:80],
+                })
+
+    return sections
+
+
+def _match_snippet_to_lines(file_path, snippet, accumulated_files):
+    """Match a code snippet against a file's full content to find line numbers.
+
+    Returns (start_line, end_line) or (None, None) if not found.
+    """
+    # Normalise the file_path — accumulated_files may use full or partial paths
+    content = None
+    for key, val in accumulated_files.items():
+        if key == file_path or key.endswith(file_path) or file_path.endswith(key.lstrip("/")):
+            content = val
+            break
+
+    if not content:
+        return None, None
+
+    # Normalise whitespace for comparison
+    snippet_lines = [l.strip() for l in snippet.splitlines() if l.strip()]
+    content_lines = content.splitlines()
+
+    if not snippet_lines:
+        return None, None
+
+    # Search for the first line of the snippet in the file
+    first_line = snippet_lines[0]
+    for i, cline in enumerate(content_lines):
+        if first_line in cline.strip():
+            # Verify a few more lines match
+            match_count = 1
+            for j in range(1, min(len(snippet_lines), 5)):
+                if i + j < len(content_lines) and snippet_lines[j] in content_lines[i + j].strip():
+                    match_count += 1
+            if match_count >= min(len(snippet_lines), 3) or match_count == len(snippet_lines):
+                start = i + 1  # 1-based
+                end = start + len(snippet_lines) - 1
+                return start, end
+
+    return None, None
+
+
+def fetch_blame_changes(answer_text, accumulated_files, branch):
+    """Post-processing: fetch blame-level recent commits for code sections Claude highlighted.
+
+    Instead of file-level commits, this extracts the specific code sections
+    (with line ranges) that Claude identified in its answer, then fetches
+    commits that touched those specific lines.
+
+    Returns a list of dicts sorted by commit date (newest first):
+      [{"file_path": "/src/Foo.cs", "file_name": "Foo.cs",
+        "start_line": 120, "end_line": 145,
+        "snippet_preview": "first 80 chars...",
+        "ado_section_url": "https://dev.azure.com/.../commit/...?path=...&line=120...",
+        "commits": [<commit_dict>, ...]}]
+    """
+    sections = extract_code_sections(answer_text, accumulated_files)
+
+    if not sections:
+        return []
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _fetch_section(section):
+        fp = section["file_path"]
+        commits = ado_get_file_commits(fp, branch, top=3)
+        # Enrich each commit URL with line range parameters
+        for c in commits:
+            c["url"] = _build_ado_line_url(
+                c["commit_id"], fp, branch,
+                section["start_line"], section["end_line"]
+            )
+        return section, commits
+
+    results = []
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(_fetch_section, s) for s in sections]
+        for future in as_completed(futures):
+            try:
+                section, commits = future.result()
+                if commits:
+                    file_name = section["file_path"].rsplit("/", 1)[-1] if "/" in section["file_path"] else section["file_path"]
+                    results.append({
+                        "file_path":       section["file_path"],
+                        "file_name":       file_name,
+                        "start_line":      section["start_line"],
+                        "end_line":        section["end_line"],
+                        "snippet_preview": section.get("snippet_preview", ""),
+                        "ado_section_url": _build_ado_browse_line_url(
+                            section["file_path"], branch,
+                            section["start_line"], section["end_line"]
+                        ),
+                        "commits":         commits,
+                    })
+            except Exception:
+                pass
+
+    # Sort by most recent commit date
+    results.sort(
+        key=lambda c: c["commits"][0]["date"] if c["commits"] else "",
+        reverse=True,
+    )
+    return results
+
+
+def _build_ado_line_url(commit_id, file_path, branch, start_line, end_line):
+    """Build an ADO commit URL that highlights specific lines.
+
+    Format: https://dev.azure.com/{org}/{project}/_git/{repo}/commit/{commitId}
+            ?path={path}&version=GB{branch}&line={start}&lineEnd={end}
+            &lineStartColumn=1&lineEndColumn=25&type=2&lineStyle=plain&_a=files
+    """
+    path_enc = requests.utils.quote(file_path)
+    return (
+        f"https://dev.azure.com/{ADO_ORG}/{ADO_PROJECT}/_git/{ADO_REPO}/commit/{commit_id}"
+        f"?path={path_enc}&version=GB{requests.utils.quote(branch)}"
+        f"&line={start_line}&lineEnd={end_line}"
+        f"&lineStartColumn=1&lineEndColumn=25&type=2&lineStyle=plain&_a=files"
+    )
+
+
+def _build_ado_browse_line_url(file_path, branch, start_line, end_line):
+    """Build an ADO file browse URL that highlights specific lines."""
+    path_enc = requests.utils.quote(file_path)
+    return (
+        f"https://dev.azure.com/{ADO_ORG}/{ADO_PROJECT}/_git/{ADO_REPO}"
+        f"?path={path_enc}&version=GB{requests.utils.quote(branch)}"
+        f"&line={start_line}&lineEnd={end_line}"
+        f"&lineStartColumn=1&lineEndColumn=25&lineStyle=plain&_a=contents"
+    )
+
+
+def fetch_recent_changes(iterations_log, branch):
+    """Legacy fallback: fetch file-level commits (used by historical endpoint).
+
+    Returns a list of dicts sorted by commit date (newest first):
+      [{"file_path": "/src/Foo.cs", "file_name": "Foo.cs",
+        "commits": [<commit_dict>, ...]}]
+    """
+    seen = set()
+    file_paths = []
+    for it in iterations_log:
+        for tc in it.get("tool_calls", []):
+            if tc.get("type") == "read_file" and tc.get("file_path") and not tc.get("error"):
+                fp = tc["file_path"]
+                if fp not in seen:
+                    seen.add(fp)
+                    file_paths.append(fp)
+
+    if not file_paths:
+        return []
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    results = {}
+
+    def _fetch(fp):
+        return fp, ado_get_file_commits(fp, branch, top=3)
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {pool.submit(_fetch, fp): fp for fp in file_paths}
+        for future in as_completed(futures):
+            try:
+                fp, commits = future.result()
+                if commits:
+                    results[fp] = commits
+            except Exception:
+                pass
+
+    changes = []
+    for fp, commits in results.items():
+        file_name = fp.rsplit("/", 1)[-1] if "/" in fp else fp
+        changes.append({
+            "file_path": fp,
+            "file_name": file_name,
+            "commits":   commits,
+        })
+
+    changes.sort(
+        key=lambda c: c["commits"][0]["date"] if c["commits"] else "",
+        reverse=True,
+    )
+    return changes
+
+
 def get_client():
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY is not set.")
@@ -1352,6 +1661,11 @@ def run_agentic_loop(query, branch, job_id: str | None = None, model: str | None
 
     confidence = assess_confidence(query, final_answer, total_files_read, "Agentic Loop", model=_model)
 
+    # Post-processing: fetch blame-level recent commits for code sections Claude highlighted
+    if job:
+        job["event_queue"].put({"type": "progress", "text": "Fetching blame-level commit history for identified code sections…"})
+    recent_changes = fetch_blame_changes(final_answer, accumulated_files, branch)
+
     result = {
         "answer":           final_answer,
         "confidence":       confidence,
@@ -1363,6 +1677,7 @@ def run_agentic_loop(query, branch, job_id: str | None = None, model: str | None
         "input_tokens":     total_input_tokens,
         "output_tokens":    total_output_tokens,
         "elapsed_seconds":  round(time.time() - loop_start_time, 1),
+        "recent_changes":   recent_changes,
     }
 
     # Notify SSE stream that the job is done
@@ -2002,6 +2317,50 @@ def api_search_event_answer(event_id):
     finally:
         if conn:
             put_db_conn(conn)
+
+
+@app.route("/api/search-events/<int:event_id>/recent-changes", methods=["GET"])
+def api_search_event_recent_changes(event_id):
+    """Fetch blame-level recent commits for code sections in a past search result.
+
+    Parses code sections with line ranges from the stored answer_text and
+    fetches commits for those specific sections. Falls back to file-level
+    commits if no code sections are found.
+    """
+    if not DATABASE_URL:
+        return jsonify({"error": "No database configured"}), 500
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT answer_text, branch FROM search_events WHERE id = %s AND status = 'success'",
+            (event_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"error": "Event not found"}), 404
+        answer = row.get("answer_text") or ""
+        branch = row.get("branch") or "main"
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+    # Try blame-level extraction first (no accumulated_files for historical results)
+    changes = fetch_blame_changes(answer, {}, branch)
+
+    # Fallback to file-level if no code sections were parsed
+    if not changes:
+        import re
+        path_pattern = re.compile(r'(?:^|[`\s(])(/[A-Za-z0-9_./-]+\.[a-zA-Z]{1,10})(?:[`\s),;:]|$)', re.MULTILINE)
+        paths = list(dict.fromkeys(m for m in path_pattern.findall(answer) if len(m) > 5))
+        if paths:
+            fake_log = [{"tool_calls": [{"type": "read_file", "file_path": p} for p in paths]}]
+            changes = fetch_recent_changes(fake_log, branch)
+
+    return jsonify({"recent_changes": changes})
 
 
 @app.route("/api/search-events/<int:event_id>/screenshot", methods=["GET"])

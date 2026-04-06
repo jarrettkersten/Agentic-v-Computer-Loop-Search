@@ -132,6 +132,33 @@ main{width:95%;max-width:none;margin:28px auto;padding:0;display:flex;flex-direc
 .answer-body tr:nth-child(even) td{background:#fafbfc}
 .answer-body>*:first-child{margin-top:0}
 .answer-body>*:last-child{margin-bottom:0}
+/* ── Recent Changes section ── */
+.recent-changes-section{margin-top:20px;border:1.5px solid var(--border);border-radius:10px;overflow:hidden}
+.recent-changes-section.collapsed .recent-changes-body{display:none}
+.recent-changes-section.collapsed .recent-changes-chevron{transform:rotate(-90deg)}
+.recent-changes-header{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg);cursor:pointer;font-size:.85rem;font-weight:700;color:var(--text);user-select:none}
+.recent-changes-header:hover{background:#edf2f7}
+.recent-changes-badge{background:var(--brand-light);color:#fff;border-radius:10px;padding:1px 9px;font-size:.7rem;font-weight:600}
+.recent-changes-chevron{margin-left:auto;font-size:.7rem;transition:transform .15s;color:var(--muted)}
+.recent-changes-body{padding:14px 16px}
+.recent-changes-intro{font-size:.78rem;color:var(--muted);margin:0 0 12px;line-height:1.5}
+.recent-changes-table{width:100%;border-collapse:collapse;font-size:.8rem}
+.recent-changes-table th{background:var(--bg);color:var(--muted);padding:6px 10px;text-align:left;font-weight:700;border:1.5px solid var(--border);font-size:.68rem;text-transform:uppercase;letter-spacing:.04em}
+.recent-changes-table td{padding:6px 10px;border:1px solid var(--border);color:var(--text);vertical-align:top}
+.recent-changes-table tr:nth-child(even) td{background:#fafbfc}
+.rc-file{font-family:"Fira Code","Cascadia Code","Consolas",monospace;font-size:.78rem;color:var(--brand-light);font-weight:600;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.rc-date{white-space:nowrap;color:var(--muted);font-size:.76rem}
+.rc-author{white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.rc-commit a{font-family:"Fira Code","Cascadia Code","Consolas",monospace;font-size:.75rem;color:var(--brand-light);text-decoration:none;font-weight:600}
+.rc-commit a:hover{text-decoration:underline}
+.rc-sub-row td{border-top:none!important;padding-top:2px}
+.rc-sub-row .rc-file{color:transparent}
+.rc-lines{display:inline-block;background:var(--brand-light);color:#fff;font-size:.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:600;letter-spacing:.02em}
+.rc-file-link{color:var(--brand-light);text-decoration:none;display:inline-flex;align-items:center;gap:2px}
+.rc-file-link:hover{text-decoration:underline}
+.rc-snippet-row td{padding:2px 10px 6px!important;border-top:none!important}
+.rc-snippet-cell{background:var(--bg)!important;border-radius:3px}
+.rc-snippet-cell code{font-size:.72rem;color:var(--muted);white-space:pre-wrap;word-break:break-all}
 
 /* ── Log accordion ── */
 .log-toggle{background:none;border:1.5px solid var(--border);border-radius:7px;color:var(--muted);cursor:pointer;font-size:.76rem;padding:6px 12px;width:100%;text-align:left;margin-top:14px;transition:background .15s;font-family:inherit}
@@ -1057,15 +1084,29 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   // Wrap /code/... and /inetpub/... file paths in clickable ADO links
   const ADO_BROWSE = 'https://dev.azure.com/CoraSystems/PPM/_git/PPM';
   function linkifyFilePaths(html, branch) {
-    // Match paths starting with /code/ or /inetpub/ ending with a known extension
-    return html.replace(
-      /(\/(?:code|inetpub|CODE|INETPUB)[\/\w.\-]+\.(?:cs|vb|aspx|ascx|js|sql|ts|html|config|xml|json)(?:\.(?:vb|cs))?)/gi,
-      (match) => {
-        // Don't double-wrap (check if already inside an href)
-        const url = `${ADO_BROWSE}?path=${encodeURIComponent(match)}&version=GB${encodeURIComponent(branch)}&_a=contents`;
-        return `<a href="${url}" target="_blank" class="code-file-link" title="Open in Azure DevOps">${match}<span class="ado-link-icon">↗</span></a>`;
+    // Pattern 1: File paths with line references like "/code/Foo.cs (line 87)" or ", lines 120–145"
+    html = html.replace(
+      /(\/(?:code|inetpub|CODE|INETPUB)[\/\w.\-]+\.(?:cs|vb|aspx|ascx|js|sql|ts|html|config|xml|json)(?:\.(?:vb|cs))?)(\s*\(line\s+(\d+)\)|\s*,?\s*lines?\s+(\d+)\s*[–\-—to]+\s*(\d+))?/gi,
+      (match, filePath, lineRef, singleLine, rangeStart, rangeEnd) => {
+        let url, label;
+        if (rangeStart && rangeEnd) {
+          // Line range: build URL with line params
+          url = `${ADO_BROWSE}?path=${encodeURIComponent(filePath)}&version=GB${encodeURIComponent(branch)}&line=${rangeStart}&lineEnd=${rangeEnd}&lineStartColumn=1&lineEndColumn=25&lineStyle=plain&_a=contents`;
+          label = `${filePath} <span class="rc-lines">L${rangeStart}–${rangeEnd}</span>`;
+        } else if (singleLine) {
+          // Single line reference
+          const ln = parseInt(singleLine);
+          url = `${ADO_BROWSE}?path=${encodeURIComponent(filePath)}&version=GB${encodeURIComponent(branch)}&line=${ln}&lineEnd=${ln}&lineStartColumn=1&lineEndColumn=25&lineStyle=plain&_a=contents`;
+          label = `${filePath} <span class="rc-lines">L${ln}</span>`;
+        } else {
+          // No line info — plain file link
+          url = `${ADO_BROWSE}?path=${encodeURIComponent(filePath)}&version=GB${encodeURIComponent(branch)}&_a=contents`;
+          label = filePath;
+        }
+        return `<a href="${url}" target="_blank" class="code-file-link" title="Open in Azure DevOps">${label}<span class="ado-link-icon">↗</span></a>`;
       }
     );
+    return html;
   }
 
   // ── Export helpers ─────────────────────────────────────────────────────────
@@ -1642,6 +1683,21 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       renderAgentic(result);
       document.getElementById('btnSearch').disabled = false;
       setStatus('');
+      // Fetch recent changes for historical result in background
+      fetch('/api/search-events/' + eventId + '/recent-changes')
+        .then(r => r.ok ? r.json() : null)
+        .then(rcData => {
+          if (rcData && rcData.recent_changes && rcData.recent_changes.length) {
+            result.recent_changes = rcData.recent_changes;
+            // Append to tech ref panel if it has content
+            const techBody = document.getElementById('techRefBody');
+            const existingRc = techBody.querySelector('.recent-changes-section');
+            if (!existingRc) {
+              techBody.insertAdjacentHTML('beforeend', renderRecentChanges(rcData.recent_changes, result.branch));
+            }
+          }
+        })
+        .catch(() => {}); // silently fail — recent changes are supplementary
       // Update URL so the address bar is a shareable deep link
       const url = new URL(window.location);
       url.searchParams.set('result', eventId);
@@ -1729,6 +1785,78 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     }
     
     return sections;
+  }
+
+  function renderRecentChanges(changes, branch) {
+    if (!changes || !changes.length) return '';
+    const hasLineInfo = changes.some(c => c.start_line);
+    const sectionLabel = hasLineInfo
+      ? '📝 Recent Changes to Identified Code Sections'
+      : '📝 Recent Changes to Investigated Files';
+    const introText = hasLineInfo
+      ? 'Most recent commits to specific code sections Claude identified as relevant. Each row links directly to the blame view for those lines.'
+      : 'Most recent commits to files Claude identified as relevant to this query.';
+    let html = `
+      <div class="recent-changes-section">
+        <div class="recent-changes-header" onclick="this.parentElement.classList.toggle('collapsed')">
+          <span>${sectionLabel}</span>
+          <span class="recent-changes-badge">${changes.length} section${changes.length > 1 ? 's' : ''}</span>
+          <span class="recent-changes-chevron">▾</span>
+        </div>
+        <div class="recent-changes-body">
+          <p class="recent-changes-intro">${introText}</p>
+          <table class="recent-changes-table">
+            <thead>
+              <tr><th>File / Lines</th><th>Last Change</th><th>Author</th><th>Commit</th></tr>
+            </thead>
+            <tbody>`;
+    for (const file of changes) {
+      const c = file.commits[0]; // most recent commit
+      const dateStr = c.date ? new Date(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+      const commitMsg = c.comment.length > 60 ? c.comment.slice(0, 57) + '…' : c.comment;
+      // Build file label with line range if available
+      let fileLabel = esc(file.file_name);
+      if (file.start_line) {
+        fileLabel += ` <span class="rc-lines">L${file.start_line}–${file.end_line}</span>`;
+      }
+      // Link to ADO section if available
+      const fileCellContent = file.ado_section_url
+        ? `<a href="${file.ado_section_url}" target="_blank" rel="noopener" class="rc-file-link" title="${esc(file.file_path)} lines ${file.start_line || '?'}–${file.end_line || '?'}">${fileLabel}<span class="ado-link-icon">↗</span></a>`
+        : `<span title="${esc(file.file_path)}">${fileLabel}</span>`;
+      html += `
+              <tr>
+                <td class="rc-file">${fileCellContent}</td>
+                <td class="rc-date">${dateStr}</td>
+                <td class="rc-author" title="${esc(c.author_email)}">${esc(c.author)}</td>
+                <td class="rc-commit"><a href="${c.url}" target="_blank" rel="noopener" title="${esc(c.comment)}">${c.short_id}</a> ${esc(commitMsg)}</td>
+              </tr>`;
+      // Show snippet preview if present
+      if (file.snippet_preview) {
+        html += `
+              <tr class="rc-sub-row rc-snippet-row">
+                <td colspan="4" class="rc-snippet-cell"><code>${esc(file.snippet_preview)}</code></td>
+              </tr>`;
+      }
+      // Show additional commits (2nd, 3rd) as sub-rows
+      for (let i = 1; i < file.commits.length; i++) {
+        const sc = file.commits[i];
+        const scDate = sc.date ? new Date(sc.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+        const scMsg = sc.comment.length > 60 ? sc.comment.slice(0, 57) + '…' : sc.comment;
+        html += `
+              <tr class="rc-sub-row">
+                <td class="rc-file"></td>
+                <td class="rc-date">${scDate}</td>
+                <td class="rc-author" title="${esc(sc.author_email)}">${esc(sc.author)}</td>
+                <td class="rc-commit"><a href="${sc.url}" target="_blank" rel="noopener" title="${esc(sc.comment)}">${sc.short_id}</a> ${esc(scMsg)}</td>
+              </tr>`;
+      }
+    }
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    return html;
   }
 
   function renderAgentic(result) {
@@ -1858,8 +1986,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       : `<div class="state-idle"><span class="icon">📘</span><span>No user guide section in this response.</span></div>`;
 
     // ── Technical Reference panel ──
+    const recentChangesHtml = renderRecentChanges(result.recent_changes, branch);
     document.getElementById('techRefBody').innerHTML = sections.techRef
-      ? `${buildFlagBar('tech_ref')}<div id="flagArea_tech_ref"></div><div class="answer-body">${linkifyFilePaths(md(sections.techRef), branch)}</div>`
+      ? `${buildFlagBar('tech_ref')}<div id="flagArea_tech_ref"></div><div class="answer-body">${linkifyFilePaths(md(sections.techRef), branch)}</div>${recentChangesHtml}`
       : `<div class="state-idle"><span class="icon">🔧</span><span>No technical reference in this response.</span></div>`;
 
     // ── Load screenshot async if available ──
