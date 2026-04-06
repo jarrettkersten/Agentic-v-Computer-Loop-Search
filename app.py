@@ -283,6 +283,9 @@ def init_db():
                 completed_at TIMESTAMPTZ
             )
         """)
+        _safe_add_columns(cur, "api_jobs", [
+            ("model", "TEXT DEFAULT ''"),
+        ])
         # API keys table — multi-user API key management
         cur.execute("""
             CREATE TABLE IF NOT EXISTS api_keys (
@@ -2904,11 +2907,13 @@ def _check_api_key():
 # ---------------------------------------------------------------------------
 
 def _run_job_in_background(job_id, query, branch, user_email,
-                           screenshot_context="", screenshot_b64="", screenshot_mime=""):
+                           screenshot_context="", screenshot_b64="", screenshot_mime="",
+                           model=""):
     """Execute the agentic search for a job and write results to the DB."""
+    _model = model or MODEL
     t0 = time.time()
     try:
-        result = run_agentic_loop(query, branch)
+        result = run_agentic_loop(query, branch, model=_model)
         total_time = round(time.time() - t0, 1)
 
         # Track in search_events
@@ -2927,6 +2932,7 @@ def _run_job_in_background(job_id, query, branch, user_email,
             screenshot_context=screenshot_context,
             screenshot_b64=screenshot_b64,
             screenshot_mime=screenshot_mime,
+            model=_model,
         )
 
         # Complete the api_jobs row (adds screenshot_context to payload)
@@ -2986,10 +2992,12 @@ def api_v1_query():
     image_b64 = ""
     mime_type = "image/png"
 
+    req_model = ""
     if request.content_type and "multipart/form-data" in request.content_type:
         # ── Multipart: fields + file upload ──
         query  = (request.form.get("query") or "").strip()
         branch = (request.form.get("branch") or "").strip()
+        req_model = (request.form.get("model") or "").strip()
         file   = request.files.get("screenshot")
         if file and file.filename:
             image_b64 = base64.b64encode(file.read()).decode()
@@ -2999,10 +3007,13 @@ def api_v1_query():
         data   = request.get_json(force=True) or {}
         query  = data.get("query", "").strip()
         branch = data.get("branch", "").strip()
+        req_model = data.get("model", "").strip()
         screenshot_data = data.get("screenshot")
         if screenshot_data and isinstance(screenshot_data, dict):
             image_b64 = screenshot_data.get("image_b64", "").strip()
             mime_type  = screenshot_data.get("mime_type", "image/png").strip()
+
+    _model = req_model if req_model in ALLOWED_MODELS else MODEL
 
     if not query:
         return jsonify({"error": "No query provided."}), 400
@@ -3022,7 +3033,7 @@ def api_v1_query():
     screenshot_context = ""
     if image_b64:
         try:
-            screenshot_context = _extract_screenshot_context(image_b64, mime_type)
+            screenshot_context = _extract_screenshot_context(image_b64, mime_type, model=_model)
         except Exception as e:
             return jsonify({"error": f"Screenshot extraction failed: {e}"}), 400
 
@@ -3037,8 +3048,8 @@ def api_v1_query():
     try:
         conn = get_db_conn()
         conn.cursor().execute(
-            "INSERT INTO api_jobs (id, status, query, branch, user_email) VALUES (%s, 'processing', %s, %s, %s)",
-            (job_id, query, branch, user_email),
+            "INSERT INTO api_jobs (id, status, query, branch, user_email, model) VALUES (%s, 'processing', %s, %s, %s, %s)",
+            (job_id, query, branch, user_email, _model),
         )
         conn.commit()
     except Exception as e:
@@ -3049,7 +3060,7 @@ def api_v1_query():
         if conn:
             put_db_conn(conn)
 
-    t = threading.Thread(target=_run_job_in_background, args=(job_id, final_query, branch, user_email, screenshot_context, image_b64, mime_type), daemon=True)
+    t = threading.Thread(target=_run_job_in_background, args=(job_id, final_query, branch, user_email, screenshot_context, image_b64, mime_type, _model), daemon=True)
     t.start()
 
     response = {
@@ -3057,6 +3068,7 @@ def api_v1_query():
         "status":   "processing",
         "poll_url": f"/api/query/{job_id}",
         "message":  "Query submitted. Poll poll_url for results.",
+        "model":    _model,
     }
     if screenshot_context:
         response["screenshot_context"] = screenshot_context
@@ -3104,12 +3116,15 @@ def api_v1_query_status(job_id):
 
     status = row["status"]
 
+    _row_model = row.get("model") or MODEL
+
     if status == "processing":
         resp = {
             "job_id":  job_id,
             "status":  "processing",
             "message": "Search is still running. Poll again shortly.",
             "query":   row.get("query", ""),
+            "model":   _row_model,
         }
         # If result_json already has screenshot_context (shouldn't for processing, but just in case)
         if row.get("result_json"):
@@ -3154,6 +3169,7 @@ def api_v1_query_status(job_id):
             "status":       status,
             "success":      True,
             "query":        _query,
+            "model":        _row_model,
             "section_name": section_param,
             "section":      sections.get(section_param, ""),
         }
@@ -3176,6 +3192,7 @@ def api_v1_query_status(job_id):
             "status":  status,
             "success": True,
             "query":   _query,
+            "model":   _row_model,
         }
         if _sc:
             filtered["screenshot_context"] = _sc
@@ -3189,6 +3206,7 @@ def api_v1_query_status(job_id):
     # Default: return everything
     result["job_id"]       = job_id
     result["status"]       = status
+    result["model"]        = _row_model
     result["created_at"]   = row["created_at"]
     result["completed_at"] = row["completed_at"]
     return jsonify(result)

@@ -281,6 +281,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
                 <tr><td class="param-name">screenshot</td><td class="param-type">object</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Cora PPM UI screenshot. Claude extracts page context and appends it to the query. Omit entirely to submit without a screenshot</td></tr>
                 <tr><td class="param-name">screenshot.image_b64</td><td class="param-type">string</td><td><span class="param-optional">Required if screenshot provided</span></td><td class="param-desc">Base64-encoded image data (PNG, JPEG, WEBP, or GIF)</td></tr>
                 <tr><td class="param-name">screenshot.mime_type</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Image MIME type. Default: <span class="param-default">image/png</span></td></tr>
+                <tr><td class="param-name">model</td><td class="param-type">string</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Claude model to use. One of: <code>claude-sonnet-4-6</code>, <code>claude-opus-4-6</code>, <code>claude-haiku-4-5-20251001</code>. Default: <span class="param-default">claude-sonnet-4-6</span></td></tr>
               </tbody>
             </table>
           </div>
@@ -291,6 +292,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
               <tbody>
                 <tr><td class="param-name">query</td><td class="param-type">text field</td><td><span class="param-required">Required</span></td><td class="param-desc">Natural language question</td></tr>
                 <tr><td class="param-name">branch</td><td class="param-type">text field</td><td><span class="param-optional">Optional</span></td><td class="param-desc">ADO branch to search</td></tr>
+                <tr><td class="param-name">model</td><td class="param-type">text field</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Claude model to use. Default: <span class="param-default">claude-sonnet-4-6</span></td></tr>
                 <tr><td class="param-name">screenshot</td><td class="param-type">file</td><td><span class="param-optional">Optional</span></td><td class="param-desc">Image file (PNG, JPEG, WEBP, or GIF) — uploaded directly, no base64 needed</td></tr>
               </tbody>
             </table>
@@ -308,9 +310,10 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
   <span class="json-key">"status"</span>: <span class="json-str">"processing"</span>,
   <span class="json-key">"poll_url"</span>: <span class="json-str">"/api/query/a1b2c3d4-..."</span>,
   <span class="json-key">"message"</span>: <span class="json-str">"Query submitted. Poll poll_url for results."</span>,
+  <span class="json-key">"model"</span>: <span class="json-str">"claude-sonnet-4-6"</span>,
   <span class="json-key">"screenshot_context"</span>: <span class="json-str">"Project Forecasting page — EAC Submit button visible..."</span>
 }</pre></div>
-            <p style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-muted)"><code>screenshot_context</code> is only included when a screenshot was provided. It shows the extracted UI context that was appended to your query.</p>
+            <p style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-muted)"><code>model</code> confirms which Claude model is being used. <code>screenshot_context</code> is only included when a screenshot was provided.</p>
           </div>
         </div>
         <div class="try-it">
@@ -326,7 +329,8 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
             <label>Request Body (JSON)</label>
             <textarea data-param="body">{
   "query": "How does the EAC Submit button work?",
-  "branch": ""
+  "branch": "",
+  "model": "claude-sonnet-4-6"
 }</textarea>
           </div>
           <div class="try-actions">
@@ -384,6 +388,7 @@ header { background: var(--brand); color: #fff; padding: 0 36px; height: 58px; d
   <span class="json-key">"success"</span>: <span class="json-bool">true</span>,
   <span class="json-key">"job_id"</span>: <span class="json-str">"a1b2c3d4-..."</span>,
   <span class="json-key">"status"</span>: <span class="json-str">"completed"</span>,
+  <span class="json-key">"model"</span>: <span class="json-str">"claude-sonnet-4-6"</span>,
   <span class="json-key">"answer"</span>: <span class="json-str">"## Overview\n...## User Guide\n...## Technical Reference\n..."</span>,
   <span class="json-key">"sections"</span>: {
     <span class="json-key">"overview"</span>: <span class="json-str">"..."</span>,
