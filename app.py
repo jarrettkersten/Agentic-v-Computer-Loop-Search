@@ -327,6 +327,62 @@ def init_db():
                 searches          INTEGER DEFAULT 0
             )
         """)
+        # Codebase index — learned file/feature mapping to accelerate future searches
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS codebase_index (
+                id               SERIAL PRIMARY KEY,
+                file_path        TEXT NOT NULL,
+                file_name        TEXT NOT NULL DEFAULT '',
+                file_role        TEXT NOT NULL DEFAULT '',
+                feature_area     TEXT NOT NULL DEFAULT '',
+                keywords         TEXT NOT NULL DEFAULT '',
+                related_files    TEXT NOT NULL DEFAULT '',
+                description      TEXT NOT NULL DEFAULT '',
+                branch           TEXT NOT NULL DEFAULT '',
+                discovered_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_verified    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                hit_count        INTEGER NOT NULL DEFAULT 1,
+                source_query     TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        # Create index for fast keyword lookups
+        cur.execute("SAVEPOINT idx_check")
+        try:
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_codebase_index_keywords
+                ON codebase_index USING gin (keywords gin_trgm_ops)
+            """)
+            cur.execute("RELEASE SAVEPOINT idx_check")
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT idx_check")
+        cur.execute("SAVEPOINT idx_check2")
+        try:
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_codebase_index_feature
+                ON codebase_index USING gin (feature_area gin_trgm_ops)
+            """)
+            cur.execute("RELEASE SAVEPOINT idx_check2")
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT idx_check2")
+        # Unique constraint on file_path + branch to prevent duplicates
+        cur.execute("SAVEPOINT uniq_check")
+        try:
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_codebase_index_file_branch
+                ON codebase_index (file_path, branch)
+            """)
+            cur.execute("RELEASE SAVEPOINT uniq_check")
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT uniq_check")
+
+        # One-time data fix: IDs 17-19 were run with Opus but model wasn't recorded
+        cur.execute("""
+            UPDATE search_events
+            SET model = 'claude-opus-4-6'
+            WHERE id IN (17, 18, 19)
+              AND (model IS NULL OR model = '' OR model = 'claude-sonnet-4-6')
+        """)
+
         conn.commit()
 
     except Exception as e:
@@ -348,6 +404,257 @@ def _safe_add_columns(cur, table, columns):
         except Exception:
             # Column already exists — rollback the failed statement and continue
             cur.execute("ROLLBACK TO SAVEPOINT add_col")
+
+
+# ---------------------------------------------------------------------------
+# Codebase Index — learned file/feature mappings
+# ---------------------------------------------------------------------------
+
+def _extract_file_inventory(answer_text: str, iterations_log: list, query: str) -> list:
+    """Parse Claude's answer and tool calls to build a file inventory for indexing.
+
+    Returns a list of dicts:
+      [{"file_path": "/code/...", "file_name": "Foo.cs", "file_role": "Service",
+        "feature_area": "Forecasting", "keywords": "EAC,forecast,submit",
+        "description": "Handles EAC submission validation", "related_files": "/code/Bar.cs,/code/Baz.cs"}]
+    """
+    import re
+    files = {}
+
+    # 1. Extract files from tool calls (most reliable source of actual paths)
+    for it in iterations_log:
+        for tc in it.get("tool_calls", []):
+            if tc.get("type") == "read_file" and tc.get("file_path") and not tc.get("error"):
+                fp = tc["file_path"]
+                if fp not in files:
+                    files[fp] = {
+                        "file_path": fp,
+                        "file_name": fp.rsplit("/", 1)[-1] if "/" in fp else fp,
+                        "file_role": "",
+                        "feature_area": "",
+                        "keywords": "",
+                        "description": "",
+                        "related_files": "",
+                    }
+
+    if not files:
+        return []
+
+    # 2. Try to extract roles from the Technical Reference file inventory
+    #    Look for patterns like: - `File.cs` — **Service** or | File | Role |
+    role_patterns = [
+        # "File.cs — Service" or "File.cs — **Service**"
+        re.compile(r'`?([^`\n]+\.(?:cs|vb|aspx|ascx|js|ts|sql|config))`?\s*[—\-–:]\s*\*?\*?(\w[\w\s/]*\w)\*?\*?', re.IGNORECASE),
+        # "File: /path/File.cs" followed by role context
+        re.compile(r'(?:UI|CodeBehind|Service|Repository|Helper|SQL|Controller|Model|Data Access|Base Class)', re.IGNORECASE),
+    ]
+
+    tech_ref_section = ""
+    if "## Technical Reference" in answer_text:
+        tech_ref_section = answer_text.split("## Technical Reference", 1)[1]
+
+    # Match file roles from Technical Reference
+    for fp in list(files.keys()):
+        fname = files[fp]["file_name"]
+        # Look for role annotations near this filename
+        fname_esc = re.escape(fname)
+        role_match = re.search(
+            rf'{fname_esc}[`]?\s*[—\-–:|]\s*\*?\*?(\w[\w\s/]*?)(?:\*?\*?\s*[—\-–|.\n])',
+            tech_ref_section,
+            re.IGNORECASE
+        )
+        if role_match:
+            role = role_match.group(1).strip()
+            # Normalise common role names
+            role_lower = role.lower()
+            if any(r in role_lower for r in ["ui", "page", "view", "aspx", "ascx"]):
+                role = "UI"
+            elif "codebehind" in role_lower or "code-behind" in role_lower or "code behind" in role_lower:
+                role = "CodeBehind"
+            elif "service" in role_lower:
+                role = "Service"
+            elif any(r in role_lower for r in ["repository", "repo", "data access", "da "]):
+                role = "Repository"
+            elif "helper" in role_lower or "util" in role_lower:
+                role = "Helper"
+            elif "sql" in role_lower or "stored proc" in role_lower:
+                role = "SQL"
+            elif "controller" in role_lower:
+                role = "Controller"
+            elif "model" in role_lower:
+                role = "Model"
+            files[fp]["file_role"] = role
+
+    # 3. Derive feature area from the query and common path segments
+    feature_area = ""
+    # Try to extract from the file paths (e.g., /ProjectForecasting/ → "Project Forecasting")
+    path_segments = set()
+    for fp in files:
+        parts = fp.split("/")
+        for part in parts:
+            if len(part) > 3 and part[0].isupper() and not part.endswith(('.cs', '.vb', '.aspx', '.ascx', '.js', '.ts')):
+                path_segments.add(part)
+    if path_segments:
+        # Use the most specific (longest) segment as feature area
+        feature_area = max(path_segments, key=len)
+
+    # 4. Extract keywords from the query
+    stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'what', 'how', 'does', 'do',
+                  'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'not', 'this',
+                  'that', 'it', 'from', 'with', 'by', 'as', 'be', 'has', 'have', 'had',
+                  'can', 'could', 'would', 'should', 'will', 'when', 'where', 'why', 'which',
+                  'cora', 'ppm', 'code', 'file', 'function', 'method', 'class', 'work', 'works'}
+    query_keywords = [w for w in re.findall(r'\b\w+\b', query.lower()) if w not in stop_words and len(w) > 2]
+
+    # 5. Build related_files (all other files in this result)
+    all_paths = list(files.keys())
+    for fp in files:
+        others = [p for p in all_paths if p != fp][:10]  # cap at 10
+        files[fp]["related_files"] = ",".join(others)
+        files[fp]["feature_area"] = feature_area
+        files[fp]["keywords"] = ",".join(query_keywords[:15])
+
+    return list(files.values())
+
+
+def update_codebase_index(answer_text: str, iterations_log: list, query: str, branch: str):
+    """Update the codebase index with files discovered during a search.
+
+    Uses UPSERT logic: if a file+branch already exists, update keywords and
+    bump hit_count; otherwise insert a new row.
+    """
+    if not DATABASE_URL:
+        return
+
+    inventory = _extract_file_inventory(answer_text, iterations_log, query)
+    if not inventory:
+        return
+
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        for f in inventory:
+            cur.execute("""
+                INSERT INTO codebase_index
+                    (file_path, file_name, file_role, feature_area, keywords,
+                     related_files, description, branch, source_query, hit_count)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+                ON CONFLICT (file_path, branch) DO UPDATE SET
+                    file_role     = CASE WHEN EXCLUDED.file_role != '' THEN EXCLUDED.file_role
+                                        ELSE codebase_index.file_role END,
+                    feature_area  = CASE WHEN EXCLUDED.feature_area != '' THEN EXCLUDED.feature_area
+                                        ELSE codebase_index.feature_area END,
+                    keywords      = codebase_index.keywords || ',' || EXCLUDED.keywords,
+                    related_files = EXCLUDED.related_files,
+                    hit_count     = codebase_index.hit_count + 1,
+                    last_verified = NOW(),
+                    source_query  = EXCLUDED.source_query
+            """, (
+                f["file_path"], f["file_name"], f["file_role"], f["feature_area"],
+                f["keywords"], f["related_files"], f["description"],
+                branch, (query or "")[:500],
+            ))
+        conn.commit()
+        print(f"[Index] Updated {len(inventory)} file(s) in codebase_index")
+    except Exception as e:
+        print(f"[Index] Warning: could not update codebase index: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+def lookup_codebase_index(query: str, branch: str, limit: int = 20) -> list:
+    """Search the codebase index for files relevant to a query.
+
+    Uses trigram similarity on keywords and feature_area columns.
+    Returns a list of dicts sorted by relevance (hit_count * similarity).
+    """
+    if not DATABASE_URL:
+        return []
+    import re
+    # Extract meaningful terms from the query
+    stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'what', 'how', 'does', 'do',
+                  'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'not', 'this',
+                  'that', 'it', 'from', 'with', 'by', 'as', 'be', 'has', 'have', 'had',
+                  'can', 'could', 'would', 'should', 'will', 'when', 'where', 'why', 'which',
+                  'cora', 'ppm'}
+    terms = [w for w in re.findall(r'\b\w+\b', query.lower()) if w not in stop_words and len(w) > 2]
+    if not terms:
+        return []
+
+    search_text = " ".join(terms)
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT file_path, file_name, file_role, feature_area, keywords,
+                   related_files, description, hit_count, last_verified,
+                   GREATEST(
+                       similarity(keywords, %(search)s),
+                       similarity(feature_area, %(search)s),
+                       similarity(file_name, %(search)s)
+                   ) AS sim_score
+            FROM codebase_index
+            WHERE branch = %(branch)s
+              AND (
+                  similarity(keywords, %(search)s) > 0.08
+                  OR similarity(feature_area, %(search)s) > 0.15
+                  OR similarity(file_name, %(search)s) > 0.2
+              )
+            ORDER BY (hit_count * GREATEST(
+                similarity(keywords, %(search)s),
+                similarity(feature_area, %(search)s),
+                similarity(file_name, %(search)s)
+            )) DESC
+            LIMIT %(limit)s
+        """, {"search": search_text, "branch": branch, "limit": limit})
+        return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        print(f"[Index] Warning: lookup failed: {e}")
+        return []
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+def format_index_hints(index_hits: list) -> str:
+    """Format index lookup results as a system prompt section for Claude.
+
+    Returns a string to inject into the system prompt, or empty string if no hits.
+    """
+    if not index_hits:
+        return ""
+
+    lines = [
+        "\n═══ KNOWN FILE INDEX (from past searches) ═══",
+        "The following files have been identified in previous searches as relevant to similar questions.",
+        "Use these as STARTING POINTS — read these files first before searching broadly.\n",
+    ]
+
+    # Group by feature area
+    by_feature: dict = {}
+    for h in index_hits:
+        area = h.get("feature_area") or "General"
+        if area not in by_feature:
+            by_feature[area] = []
+        by_feature[area].append(h)
+
+    for area, files in by_feature.items():
+        lines.append(f"  [{area}]")
+        for f in files:
+            role = f" ({f['file_role']})" if f.get("file_role") else ""
+            hits = f.get("hit_count", 1)
+            lines.append(f"    • {f['file_path']}{role}  [seen {hits}x]")
+        lines.append("")
+
+    lines.append("These are hints, not guarantees — files may have moved or been renamed. Verify by reading them.")
+    lines.append("STILL search broadly after checking these — there may be files not yet indexed.\n")
+
+    return "\n".join(lines)
 
 
 def _detect_response_sections(answer: str) -> str:
@@ -1404,6 +1711,20 @@ def run_agentic_loop(query, branch, job_id: str | None = None, model: str | None
         "fewer than 10 files read and the question touches business logic, keep searching."
     )
 
+    # Inject known-file hints from the codebase index (Approach 1+2)
+    try:
+        index_hits = lookup_codebase_index(query, branch, limit=15)
+        index_hints = format_index_hints(index_hits)
+        if index_hints:
+            system_prompt += index_hints
+            if job:
+                job["event_queue"].put({
+                    "type": "progress",
+                    "text": f"Found {len(index_hits)} indexed file(s) from past searches — using as starting points",
+                })
+    except Exception as e:
+        print(f"[Index] Warning: could not look up index: {e}")
+
     messages = [{"role": "user", "content": (
         f"Research and answer this question about the Cora PPM codebase.\n\n"
         f"Question: {query}\n\n"
@@ -1665,6 +1986,12 @@ def run_agentic_loop(query, branch, job_id: str | None = None, model: str | None
     if job:
         job["event_queue"].put({"type": "progress", "text": "Fetching blame-level commit history for identified code sections…"})
     recent_changes = fetch_blame_changes(final_answer, accumulated_files, branch)
+
+    # Post-processing: update the codebase index with newly discovered files
+    try:
+        update_codebase_index(final_answer, iterations_log, query, branch)
+    except Exception as e:
+        print(f"[Index] Warning: post-search index update failed: {e}")
 
     result = {
         "answer":           final_answer,
@@ -2712,6 +3039,7 @@ ADMIN_TABLES = {
         "SELECT id, branch, confidence_level, duration_sec, error_message, "
         "files_read, input_tokens, iterations, output_tokens, "
         "query, ran_at, searches, status, total_tokens, "
+        "COALESCE(model, '') AS model, "
         "COALESCE(user_email, '') AS user_email, "
         "COALESCE(response_sections, '') AS response_sections, "
         "COALESCE(job_id, '') AS job_id, "
@@ -3144,8 +3472,89 @@ def admin_delete_api_key(key_id):
 
 
 # ---------------------------------------------------------------------------
-# Admin: Backfill answer_text for historical search events
+# Admin: Codebase Index management
 # ---------------------------------------------------------------------------
+
+@app.route("/api/admin/codebase-index")
+@admin_required
+def api_admin_codebase_index():
+    """Return the full codebase index for the admin dashboard."""
+    if not DATABASE_URL:
+        return jsonify({"error": "No database configured"}), 500
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT id, file_path, file_name, file_role, feature_area,
+                   keywords, related_files, branch, hit_count,
+                   discovered_at, last_verified, source_query
+            FROM codebase_index
+            ORDER BY hit_count DESC, last_verified DESC
+        """)
+        rows = [dict(r) for r in cur.fetchall()]
+        # Summary stats
+        cur.execute("""
+            SELECT COUNT(*) AS total_files,
+                   COUNT(DISTINCT feature_area) AS feature_areas,
+                   COUNT(DISTINCT branch) AS branches,
+                   SUM(hit_count) AS total_hits,
+                   MAX(last_verified) AS last_updated
+            FROM codebase_index
+        """)
+        stats = dict(cur.fetchone())
+        return jsonify({"index": rows, "stats": stats})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+@app.route("/api/admin/codebase-index/<int:entry_id>", methods=["DELETE"])
+@admin_required
+def api_admin_delete_index_entry(entry_id):
+    """Delete a single entry from the codebase index."""
+    if not DATABASE_URL:
+        return jsonify({"error": "No database configured"}), 500
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM codebase_index WHERE id = %s", (entry_id,))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+@app.route("/api/admin/codebase-index/clear", methods=["POST"])
+@admin_required
+def api_admin_clear_index():
+    """Clear the entire codebase index (reset learning)."""
+    if not DATABASE_URL:
+        return jsonify({"error": "No database configured"}), 500
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM codebase_index")
+        deleted = cur.rowcount
+        conn.commit()
+        return jsonify({"success": True, "deleted": deleted})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
 
 # ---------------------------------------------------------------------------
 # Auth routes — Entra ID OAuth

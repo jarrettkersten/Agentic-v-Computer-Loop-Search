@@ -433,6 +433,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-empty-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
 .adm-view-btn{background:rgba(108,92,231,.15);color:var(--brand,#6c5ce7);border:1px solid rgba(108,92,231,.3);border-radius:6px;padding:3px 10px;font-size:.75rem;cursor:pointer;font-weight:600;transition:all .15s}
 .adm-view-btn:hover{background:rgba(108,92,231,.3);border-color:var(--brand,#6c5ce7)}
+.adm-idx-kw{display:inline-block;background:rgba(37,99,235,.08);color:#2563eb;font-size:.65rem;padding:1px 5px;border-radius:3px;margin:1px 2px;font-weight:500}
 .adm-loading-msg{padding:40px 20px;text-align:center;color:var(--muted);font-size:.9rem}
 
 /* ── Panel info button ── */
@@ -894,6 +895,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   <div class="adm-tabs">
     <button class="adm-tab active" onclick="admSwitchTab(event,'search_events')">Search Events</button>
     <button class="adm-tab" onclick="admSwitchTab(event,'flagged_queries')">🚩 Flagged Queries</button>
+    <button class="adm-tab" onclick="admSwitchTab(event,'codebase_index')">🧠 Codebase Index</button>
     <button class="adm-tab" onclick="admSwitchTab(event,'api_keys')">🔑 API Keys</button>
   </div>
 
@@ -972,6 +974,65 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           </thead>
           <tbody id="adm-api-keys-body">
             <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Codebase Index Panel -->
+  <div id="adm-index-panel" style="display:none">
+    <div class="adm-table-card">
+      <div class="adm-table-header">
+        <h2>🧠 Codebase Index</h2>
+        <div class="adm-table-actions">
+          <input type="text" class="adm-table-filter" id="adm-index-filter" placeholder="Filter files…" oninput="admFilterIndex()"/>
+          <button class="adm-refresh-all" onclick="admLoadIndex()" style="font-size:.85rem">🔄 Refresh</button>
+          <button class="adm-btn-export" onclick="admClearIndex()" style="background:rgba(185,28,28,.08);color:#b91c1c;border-color:rgba(185,28,28,.2)">🗑 Clear All</button>
+        </div>
+      </div>
+
+      <!-- Index stats summary -->
+      <div id="adm-index-stats" style="display:flex;gap:16px;padding:14px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+        <div class="adm-summary-card grp-search" style="flex:1;min-width:120px;padding:10px 14px">
+          <div class="label">Indexed Files</div>
+          <div class="value" id="adm-idx-total">—</div>
+        </div>
+        <div class="adm-summary-card grp-perf" style="flex:1;min-width:120px;padding:10px 14px">
+          <div class="label">Feature Areas</div>
+          <div class="value" id="adm-idx-features">—</div>
+        </div>
+        <div class="adm-summary-card grp-token" style="flex:1;min-width:120px;padding:10px 14px">
+          <div class="label">Total Hits</div>
+          <div class="value" id="adm-idx-hits">—</div>
+        </div>
+        <div class="adm-summary-card grp-cost" style="flex:1;min-width:120px;padding:10px 14px">
+          <div class="label">Branches</div>
+          <div class="value" id="adm-idx-branches">—</div>
+        </div>
+        <div class="adm-summary-card" style="flex:1;min-width:120px;padding:10px 14px;border-top:3px solid #059669">
+          <div class="label">Last Updated</div>
+          <div class="value" id="adm-idx-updated" style="font-size:.9rem">—</div>
+        </div>
+      </div>
+
+      <!-- Index table -->
+      <div class="adm-table-wrap">
+        <table class="adm-table">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Role</th>
+              <th>Feature Area</th>
+              <th>Branch</th>
+              <th>Hits</th>
+              <th>Keywords</th>
+              <th>Last Verified</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="adm-index-body">
+            <tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted)">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -2585,7 +2646,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       container.innerHTML = '<div class="adm-empty-msg" style="font-size:.82rem;padding:12px 0">No data yet</div>';
       return;
     }
-    let html = '<div class="adm-model-rank-header"><span>Branch</span><span>Searches</span><span>Success</span><span>Tokens</span><span>Cost</span></div>';
+    let html = '<div class="adm-model-rank-header" style="grid-template-columns:2fr repeat(4,1fr)"><span>Branch</span><span>Searches</span><span>Success</span><span>Tokens</span><span>Cost</span></div>';
     html += '<div class="adm-model-rank-list">';
     for (const b of branches) {
       const d = byBranch[b];
@@ -2593,8 +2654,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       const fmtTok = d.tokens >= 1000000 ? (d.tokens / 1000000).toFixed(2) + 'M'
                    : d.tokens >= 1000 ? (d.tokens / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
                    : String(d.tokens);
-      html += `<div class="adm-model-rank-item">
-        <span class="ur-email" style="color:#059669;font-weight:600" title="${b}">🌿 ${admEsc(b.length > 28 ? b.slice(0, 25) + '…' : b)}</span>
+      html += `<div class="adm-model-rank-item" style="grid-template-columns:2fr repeat(4,1fr)">
+        <span style="color:#059669;font-weight:600;font-size:.78rem" title="${b}">🌿 ${admEsc(b)}</span>
         <span class="ur-val">${d.count}</span>
         <span class="ur-val">${successPct}%</span>
         <span class="ur-val">${fmtTok}</span>
@@ -2614,13 +2675,21 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     const tableCard = document.querySelector('.adm-table-card');
     const apiKeysPanel = document.getElementById('adm-api-keys-panel');
+    const indexPanel = document.getElementById('adm-index-panel');
 
     if (table === 'api_keys') {
       tableCard.style.display = 'none';
+      indexPanel.style.display = 'none';
       apiKeysPanel.style.display = 'block';
       admLoadApiKeys();
+    } else if (table === 'codebase_index') {
+      tableCard.style.display = 'none';
+      apiKeysPanel.style.display = 'none';
+      indexPanel.style.display = 'block';
+      admLoadIndex();
     } else {
       apiKeysPanel.style.display = 'none';
+      indexPanel.style.display = 'none';
       tableCard.style.display = 'block';
       document.getElementById('adm-table-title').textContent = ADM_TABLE_LABELS[table];
       document.getElementById('adm-table-filter').value = '';
@@ -2799,6 +2868,83 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   function admEsc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Codebase Index Management ────────────────────────────────────────────────
+  let admIndexData = [];
+  async function admLoadIndex() {
+    try {
+      const res = await fetch('/api/admin/codebase-index');
+      const data = await res.json();
+      admIndexData = data.index || [];
+      const stats = data.stats || {};
+      document.getElementById('adm-idx-total').textContent = stats.total_files || 0;
+      document.getElementById('adm-idx-features').textContent = stats.feature_areas || 0;
+      document.getElementById('adm-idx-hits').textContent = (stats.total_hits || 0).toLocaleString();
+      document.getElementById('adm-idx-branches').textContent = stats.branches || 0;
+      document.getElementById('adm-idx-updated').textContent = stats.last_updated
+        ? new Date(stats.last_updated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : '—';
+      admRenderIndex(admIndexData);
+    } catch (e) {
+      console.warn('Failed to load codebase index:', e);
+      document.getElementById('adm-index-body').innerHTML =
+        '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted)">Failed to load index</td></tr>';
+    }
+  }
+
+  function admRenderIndex(rows) {
+    const tbody = document.getElementById('adm-index-body');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted)">No indexed files yet — run some searches to build the index</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const roleColor = {'UI':'#2563eb','CodeBehind':'#0891b2','Service':'#7c3aed','Repository':'#059669','Helper':'#d97706','SQL':'#dc2626','Controller':'#6366f1','Model':'#0d9488'}[r.file_role] || 'var(--text)';
+      const kwds = (r.keywords || '').split(',').filter(k => k.trim()).slice(0, 6);
+      const kwHtml = kwds.map(k => `<span class="adm-idx-kw">${admEsc(k.trim())}</span>`).join(' ');
+      const verified = r.last_verified ? new Date(r.last_verified).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+      return `<tr>
+        <td class="rc-file" title="${admEsc(r.file_path)}" style="max-width:220px">${admEsc(r.file_name)}</td>
+        <td style="font-weight:600;color:${roleColor};font-size:.78rem">${admEsc(r.file_role || '—')}</td>
+        <td style="font-size:.78rem">${admEsc(r.feature_area || '—')}</td>
+        <td style="font-size:.78rem;color:var(--muted)">${admEsc(r.branch)}</td>
+        <td style="text-align:center;font-weight:700">${r.hit_count}</td>
+        <td style="font-size:.72rem">${kwHtml || '—'}</td>
+        <td style="font-size:.78rem;color:var(--muted)">${verified}</td>
+        <td style="text-align:center"><button onclick="admDeleteIndexEntry(${r.id})" class="adm-view-btn" style="color:#b91c1c;font-size:.72rem" title="Remove from index">🗑</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function admFilterIndex() {
+    const q = (document.getElementById('adm-index-filter').value || '').toLowerCase();
+    if (!q) { admRenderIndex(admIndexData); return; }
+    const filtered = admIndexData.filter(r =>
+      (r.file_path || '').toLowerCase().includes(q) ||
+      (r.file_role || '').toLowerCase().includes(q) ||
+      (r.feature_area || '').toLowerCase().includes(q) ||
+      (r.keywords || '').toLowerCase().includes(q) ||
+      (r.branch || '').toLowerCase().includes(q)
+    );
+    admRenderIndex(filtered);
+  }
+
+  async function admDeleteIndexEntry(id) {
+    if (!confirm('Remove this file from the codebase index?')) return;
+    try {
+      await fetch('/api/admin/codebase-index/' + id, { method: 'DELETE' });
+      admLoadIndex();
+    } catch (e) { console.warn('Failed to delete index entry:', e); }
+  }
+
+  async function admClearIndex() {
+    if (!confirm('Clear the entire codebase index? This will reset all learned file mappings. The index will rebuild as new searches are performed.')) return;
+    try {
+      const res = await fetch('/api/admin/codebase-index/clear', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) admLoadIndex();
+    } catch (e) { console.warn('Failed to clear index:', e); }
   }
 
   // ── API Keys Management ────────────────────────────────────────────────────
