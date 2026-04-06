@@ -375,7 +375,14 @@ def init_db():
         except Exception:
             cur.execute("ROLLBACK TO SAVEPOINT uniq_check")
 
-        # One-time data fix: IDs 17-19 were run with Opus but model wasn't recorded
+        # One-time data fix: backfill model for historical records
+        # IDs 1-16 were Sonnet, IDs 17-19 were Opus
+        cur.execute("""
+            UPDATE search_events
+            SET model = 'claude-sonnet-4-6'
+            WHERE id BETWEEN 1 AND 16
+              AND (model IS NULL OR model = '')
+        """)
         cur.execute("""
             UPDATE search_events
             SET model = 'claude-opus-4-6'

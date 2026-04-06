@@ -868,6 +868,44 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     </div>
   </div>
 
+  <!-- Model Pricing Reference -->
+  <div class="adm-breakdown-row" style="grid-template-columns:1fr;margin-bottom:10px">
+    <div class="adm-breakdown-card" style="border-color:#d97706;padding:14px 22px">
+      <div class="bc-label" style="margin-bottom:8px">💰 Model Pricing Reference <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem;color:var(--muted)">(USD per 1M tokens)</span></div>
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead>
+          <tr style="border-bottom:1.5px solid var(--border)">
+            <th style="text-align:left;padding:6px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700">Model</th>
+            <th style="text-align:right;padding:6px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700">Input Cost</th>
+            <th style="text-align:right;padding:6px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700">Output Cost</th>
+            <th style="text-align:right;padding:6px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700">Est. Cost / Avg Search</th>
+          </tr>
+        </thead>
+        <tbody id="adm-pricing-table-body">
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:6px 10px;font-weight:700;color:#2563eb">Sonnet 4.6</td>
+            <td style="padding:6px 10px;text-align:right">$3.00</td>
+            <td style="padding:6px 10px;text-align:right">$15.00</td>
+            <td style="padding:6px 10px;text-align:right;color:var(--muted)" id="adm-price-est-sonnet">—</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:6px 10px;font-weight:700;color:#7c3aed">Opus 4.6</td>
+            <td style="padding:6px 10px;text-align:right">$5.00</td>
+            <td style="padding:6px 10px;text-align:right">$25.00</td>
+            <td style="padding:6px 10px;text-align:right;color:var(--muted)" id="adm-price-est-opus">—</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 10px;font-weight:700;color:#16a34a">Haiku 4.5</td>
+            <td style="padding:6px 10px;text-align:right">$1.00</td>
+            <td style="padding:6px 10px;text-align:right">$5.00</td>
+            <td style="padding:6px 10px;text-align:right;color:var(--muted)" id="adm-price-est-haiku">—</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:6px;padding-left:10px">Cost formula: (input tokens ÷ 1M × input rate) + (output tokens ÷ 1M × output rate). "Est. Cost / Avg Search" uses the average token split from actual searches with each model.</div>
+    </div>
+  </div>
+
   <!-- Row 3: Breakdown cards -->
   <div class="adm-row-label"><span class="dot" style="background:#2563eb"></span> Breakdown &amp; Rankings</div>
   <div class="adm-breakdown-row" style="grid-template-columns:1fr 1fr 1fr">
@@ -1435,7 +1473,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     _clearResultParam();
   }
 
-  function copyResultLink(eventId) {
+  function copyResultLink(eventId, btn) {
     const url = new URL(window.location);
     url.searchParams.set('result', eventId);
     // Remove any other params that aren't relevant
@@ -1443,6 +1481,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     navigator.clipboard.writeText(link).then(() => {
       setStatus('Link copied to clipboard!');
       setTimeout(() => setStatus(''), 2500);
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = '✓';
+        btn.disabled = true;
+        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+      }
     }).catch(() => {
       // Fallback: show the link in a prompt
       prompt('Copy this link:', link);
@@ -1623,7 +1667,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           <td>${dur}</td>
           <td>${user}</td>
           <td style="text-align:center">${ss}</td>
-          <td style="text-align:center"><button class="browse-view-btn" onclick="browseViewResult(${r.id})">👁 View</button> <button class="browse-view-btn" onclick="event.stopPropagation();copyResultLink(${r.id})" title="Copy shareable link">🔗</button></td>
+          <td style="text-align:center"><button class="browse-view-btn" onclick="browseViewResult(${r.id})">👁 View</button> <button class="browse-view-btn" onclick="event.stopPropagation();copyResultLink(${r.id}, this)" title="Copy shareable link">🔗</button></td>
         </tr>`;
       }
 
@@ -1994,7 +2038,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
             ${_sqMatches.length ? '<button class="sq-btn-alt" onclick="openBrowseWithMatches(_sqMatches)">← Browse similar queries</button>' : ''}
             <button class="sq-btn-new" onclick="browseStartNewSearch()" title="Clear these results and start fresh — you can edit your question and search again">🔄 Start New Search</button>
             <button class="sq-btn-new" style="background:#d97706;" onclick="browseSearchOverride()" title="Ignore similar results and run your current question as a new search">⚡ Search Override</button>
-            <button class="sq-btn-new" style="background:#059669;" onclick="copyResultLink(${result._original_event_id})" title="Copy a shareable link to this result">🔗 Copy Link</button>
+            <button class="sq-btn-new" style="background:#059669;" onclick="copyResultLink(${result._original_event_id}, this)" title="Copy a shareable link to this result">🔗 Copy Link</button>
           </div>
         </div>
       `;
@@ -2580,6 +2624,29 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     // ── Branch breakdown card ──
     admRenderBranchBreakdown(searches);
 
+    // ── Pricing reference: fill "Est. Cost / Avg Search" column ──
+    admUpdatePricingEstimates(searches);
+
+  }
+
+  function admUpdatePricingEstimates(searches) {
+    const modelMap = {
+      'claude-sonnet-4-6': 'adm-price-est-sonnet',
+      'claude-opus-4-6': 'adm-price-est-opus',
+      'claude-haiku-4-5-20251001': 'adm-price-est-haiku',
+    };
+    for (const [model, elId] of Object.entries(modelMap)) {
+      const el = document.getElementById(elId);
+      if (!el) continue;
+      const rows = searches.filter(r => (r.model || 'claude-sonnet-4-6') === model && r.total_tokens > 0);
+      if (!rows.length) { el.textContent = '—'; continue; }
+      const avgIn = rows.reduce((s, r) => s + (r.input_tokens || 0), 0) / rows.length;
+      const avgOut = rows.reduce((s, r) => s + (r.output_tokens || 0), 0) / rows.length;
+      const avgCost = calcCost(avgIn, avgOut, model);
+      el.textContent = avgCost < 0.01 ? '<$0.01' : '$' + avgCost.toFixed(2);
+      el.style.fontWeight = '700';
+      el.style.color = 'var(--text)';
+    }
   }
 
   const MODEL_SHORT_NAMES = {'claude-sonnet-4-6':'Sonnet 4.6','claude-opus-4-6':'Opus 4.6','claude-haiku-4-5-20251001':'Haiku 4.5'};
@@ -2760,7 +2827,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         // Actions column — View button for search events with answers
         if (c === '_actions') {
           if (row.has_answer && row.status === 'success') {
-            return `<td style="text-align:center"><button class="adm-view-btn" onclick="admViewResult(${row.id})" title="View full answer">👁 View</button></td>`;
+            return `<td style="text-align:center;white-space:nowrap"><button class="adm-view-btn" onclick="admViewResult(${row.id})" title="View full answer">👁 View</button> <button class="adm-view-btn" onclick="event.stopPropagation();copyResultLink(${row.id}, this)" title="Copy shareable link" style="background:rgba(5,150,105,.15);color:#059669;border-color:rgba(5,150,105,.3)">🔗</button></td>`;
           }
           return '<td style="text-align:center;color:var(--text-muted,#666)">—</td>';
         }
