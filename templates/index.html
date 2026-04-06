@@ -360,8 +360,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-breakdown-row{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px}
 @media(max-width:700px){.adm-breakdown-row{grid-template-columns:1fr}}
 .adm-breakdown-card{background:var(--card);border-radius:var(--radius);padding:18px 22px;box-shadow:var(--shadow);border-top:3px solid var(--border)}
-.adm-breakdown-card.agentic{border-color:#2563eb}
-.adm-breakdown-card.sharepoint{border-color:#0078d4}
 .adm-breakdown-card .bc-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:7px}
 .adm-breakdown-card .bc-stat{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;padding:5px 0;border-bottom:1px solid var(--border)}
 .adm-breakdown-card .bc-stat:last-child{border-bottom:none}
@@ -386,6 +384,13 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .adm-user-rank-item .ur-val{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
 .adm-user-rank-header{display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:6px;padding:4px 0 8px;border-bottom:1.5px solid var(--border);font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .adm-user-rank-header span:not(:first-child){text-align:right}
+.adm-model-rank-header{display:grid;grid-template-columns:1.2fr repeat(4,1fr);gap:6px;padding:4px 0 8px;border-bottom:1.5px solid var(--border);font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.adm-model-rank-header span:not(:first-child){text-align:right}
+.adm-model-rank-list{max-height:220px;overflow-y:auto;font-size:.82rem}
+.adm-model-rank-item{display:grid;grid-template-columns:1.2fr repeat(4,1fr);gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+.adm-model-rank-item:last-child{border-bottom:none}
+.adm-model-rank-item .ur-email{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-model-rank-item .ur-val{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
 .adm-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--card);padding:4px;border-radius:10px;box-shadow:var(--shadow);width:fit-content}
 .adm-tab{padding:10px 22px;border-radius:8px;border:none;background:transparent;font-size:.88rem;font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s;font-family:inherit}
 .adm-tab.active{background:var(--brand);color:#fff}
@@ -864,16 +869,18 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   <!-- Row 3: Breakdown cards -->
   <div class="adm-row-label"><span class="dot" style="background:#2563eb"></span> Breakdown &amp; Rankings</div>
-  <div class="adm-breakdown-row">
-    <div class="adm-breakdown-card agentic">
-      <div class="bc-label">⚡ Agentic Loop</div>
-      <div class="bc-stat"><span class="bc-key">Runs</span><span class="bc-val" id="adm-ag-runs">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Files Read</span><span class="bc-val" id="adm-ag-files">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Iterations</span><span class="bc-val" id="adm-ag-iters">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Time</span><span class="bc-val" id="adm-ag-time">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Tokens</span><span class="bc-val" id="adm-ag-tokens">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Avg Cost</span><span class="bc-val" id="adm-ag-cost" style="color:#7c3aed">—</span></div>
-      <div class="bc-stat"><span class="bc-key">Errors</span><span class="bc-val" id="adm-ag-errors">—</span></div>
+  <div class="adm-breakdown-row" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="adm-breakdown-card" style="border-color:#2563eb">
+      <div class="bc-label">🤖 Usage by Model</div>
+      <div id="adm-model-breakdown-content">
+        <div class="adm-loading-msg" style="font-size:.82rem;padding:12px 0">Loading…</div>
+      </div>
+    </div>
+    <div class="adm-breakdown-card" style="border-color:#059669">
+      <div class="bc-label">🌿 Usage by Branch</div>
+      <div id="adm-branch-breakdown-content">
+        <div class="adm-loading-msg" style="font-size:.82rem;padding:12px 0">Loading…</div>
+      </div>
     </div>
     <div class="adm-breakdown-card user-rankings">
       <div class="bc-label">👤 User Rankings</div>
@@ -2337,6 +2344,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     answer: 'Answer', explanation: 'Explanation', flagged_by: 'Flagged By',
     flagged_at: 'Flagged At', reviewed_by: 'Reviewed By', reviewed_at: 'Reviewed At',
     admin_notes: 'Admin Notes', flag_type: 'Flag Type', container: 'Container',
+    model: 'Model',
     request_article: 'Article Req', branch: 'Branch', confidence_level: 'Confidence',
     duration_sec: 'Time (s)', files_read: 'Files', iterations: 'Iterations',
     searches: 'Searches', has_answer: 'Answer', has_screenshot: 'Screenshot',
@@ -2375,7 +2383,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         const rows = data.rows || [];
         // Inject estimated cost column
         rows.forEach(r => {
-          r.est_cost = calcCost(r.input_tokens, r.output_tokens);
+          r.est_cost = calcCost(r.input_tokens, r.output_tokens, r.model);
         });
         admTableData[t] = rows;
       } catch (e) { admTableData[t] = []; }
@@ -2496,8 +2504,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       document.getElementById('adm-stat-tok-max').textContent = maxRow.total_tokens.toLocaleString();
       document.getElementById('adm-stat-tok-max-sub').textContent = (maxRow.loop_type || '') + ' — ' + (maxRow.query || '').slice(0, 40);
 
-      // Total cost across all searches + syntheses
-      const totalSearchCost = tokRows.reduce((s, r) => s + calcCost(r.input_tokens, r.output_tokens), 0);
+      // Total cost across all searches + syntheses (using per-model pricing)
+      const totalSearchCost = tokRows.reduce((s, r) => s + calcCost(r.input_tokens, r.output_tokens, r.model), 0);
       const totalCost = totalSearchCost;
       document.getElementById('adm-stat-cost-total').textContent = totalCost < 0.01 ? '<$0.01' : '$' + totalCost.toFixed(2);
       const avgCostPerSearch = tokRows.length ? totalSearchCost / tokRows.length : 0;
@@ -2505,24 +2513,96 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         `avg ${avgCostPerSearch < 0.01 ? '<$0.01' : '$' + avgCostPerSearch.toFixed(2)} / search`;
     }
 
-    function loopStats(type, runsEl, filesEl, thirdEl, thirdKey, timeEl, tokEl, costEl, errorsEl) {
-      const rows = searches.filter(r => r.loop_type === type);
-      document.getElementById(runsEl).textContent = rows.length || '0';
-      const fAvg = admAvg(rows.filter(r => r.files_read).map(r => r.files_read));
-      document.getElementById(filesEl).textContent = fAvg != null ? fAvg.toFixed(1) : '—';
-      const tAvg = admAvg(rows.filter(r => r[thirdKey]).map(r => r[thirdKey]));
-      document.getElementById(thirdEl).textContent = tAvg != null ? tAvg.toFixed(1) : '—';
-      const dAvg = admAvg(rows.filter(r => r.duration_sec).map(r => r.duration_sec));
-      document.getElementById(timeEl).textContent = dAvg != null ? dAvg.toFixed(1) + 's' : '—';
-      const tokAvg = admAvg(rows.filter(r => r.total_tokens > 0).map(r => r.total_tokens));
-      document.getElementById(tokEl).textContent = tokAvg != null ? Math.round(tokAvg).toLocaleString() : '—';
-      const costRows = rows.filter(r => r.total_tokens > 0);
-      const avgCost = costRows.length ? costRows.reduce((s, r) => s + calcCost(r.input_tokens, r.output_tokens), 0) / costRows.length : 0;
-      document.getElementById(costEl).textContent = avgCost > 0 ? formatCost(avgCost) : '—';
-      document.getElementById(errorsEl).textContent = rows.filter(r => r.status === 'error').length;
-    }
-    loopStats('agentic',    'adm-ag-runs', 'adm-ag-files', 'adm-ag-iters', 'iterations', 'adm-ag-time', 'adm-ag-tokens', 'adm-ag-cost', 'adm-ag-errors');
+    // ── Model breakdown card ──
+    admRenderModelBreakdown(searches);
 
+    // ── Branch breakdown card ──
+    admRenderBranchBreakdown(searches);
+
+  }
+
+  const MODEL_SHORT_NAMES = {'claude-sonnet-4-6':'Sonnet 4.6','claude-opus-4-6':'Opus 4.6','claude-haiku-4-5-20251001':'Haiku 4.5'};
+  const MODEL_COLORS = {'claude-sonnet-4-6':'#2563eb','claude-opus-4-6':'#7c3aed','claude-haiku-4-5-20251001':'#16a34a'};
+
+  function admRenderModelBreakdown(searches) {
+    const container = document.getElementById('adm-model-breakdown-content');
+    const byModel = {};
+    for (const r of searches) {
+      const m = r.model || 'claude-sonnet-4-6';
+      if (!byModel[m]) byModel[m] = { count: 0, tokens: 0, cost: 0, errors: 0, time: [] };
+      byModel[m].count++;
+      byModel[m].tokens += (r.total_tokens || 0);
+      byModel[m].cost += calcCost(r.input_tokens, r.output_tokens, m);
+      if (r.status === 'error') byModel[m].errors++;
+      if (r.duration_sec) byModel[m].time.push(r.duration_sec);
+    }
+    const models = Object.keys(byModel).sort((a, b) => byModel[b].count - byModel[a].count);
+    if (!models.length) {
+      container.innerHTML = '<div class="adm-empty-msg" style="font-size:.82rem;padding:12px 0">No data yet</div>';
+      return;
+    }
+    let html = '<div class="adm-model-rank-header"><span>Model</span><span>Searches</span><span>Tokens</span><span>Avg Time</span><span>Cost</span></div>';
+    html += '<div class="adm-model-rank-list">';
+    for (const m of models) {
+      const d = byModel[m];
+      const shortName = MODEL_SHORT_NAMES[m] || m;
+      const color = MODEL_COLORS[m] || 'var(--text)';
+      const avgTime = d.time.length ? (d.time.reduce((a, b) => a + b, 0) / d.time.length).toFixed(1) + 's' : '—';
+      const fmtTok = d.tokens >= 1000000 ? (d.tokens / 1000000).toFixed(2) + 'M'
+                   : d.tokens >= 1000 ? (d.tokens / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+                   : String(d.tokens);
+      html += `<div class="adm-model-rank-item">
+        <span class="ur-email" style="color:${color};font-weight:700" title="${m}">${shortName}</span>
+        <span class="ur-val">${d.count}${d.errors ? ' <span style="color:#b91c1c;font-size:.72rem">(${d.errors} err)</span>' : ''}</span>
+        <span class="ur-val">${fmtTok}</span>
+        <span class="ur-val">${avgTime}</span>
+        <span class="ur-val">${formatCost(d.cost)}</span>
+      </div>`;
+    }
+    html += '</div>';
+    // Total row
+    const totalCost = models.reduce((s, m) => s + byModel[m].cost, 0);
+    html += `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-size:.78rem">
+      <span style="font-weight:700">Total</span>
+      <span style="font-weight:700;color:#7c3aed">${formatCost(totalCost)}</span>
+    </div>`;
+    container.innerHTML = html;
+  }
+
+  function admRenderBranchBreakdown(searches) {
+    const container = document.getElementById('adm-branch-breakdown-content');
+    const byBranch = {};
+    for (const r of searches) {
+      const b = r.branch || 'unknown';
+      if (!byBranch[b]) byBranch[b] = { count: 0, tokens: 0, cost: 0, success: 0 };
+      byBranch[b].count++;
+      byBranch[b].tokens += (r.total_tokens || 0);
+      byBranch[b].cost += calcCost(r.input_tokens, r.output_tokens, r.model);
+      if (r.status === 'success') byBranch[b].success++;
+    }
+    const branches = Object.keys(byBranch).sort((a, b) => byBranch[b].count - byBranch[a].count);
+    if (!branches.length) {
+      container.innerHTML = '<div class="adm-empty-msg" style="font-size:.82rem;padding:12px 0">No data yet</div>';
+      return;
+    }
+    let html = '<div class="adm-model-rank-header"><span>Branch</span><span>Searches</span><span>Success</span><span>Tokens</span><span>Cost</span></div>';
+    html += '<div class="adm-model-rank-list">';
+    for (const b of branches) {
+      const d = byBranch[b];
+      const successPct = d.count ? Math.round(d.success / d.count * 100) : 0;
+      const fmtTok = d.tokens >= 1000000 ? (d.tokens / 1000000).toFixed(2) + 'M'
+                   : d.tokens >= 1000 ? (d.tokens / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+                   : String(d.tokens);
+      html += `<div class="adm-model-rank-item">
+        <span class="ur-email" style="color:#059669;font-weight:600" title="${b}">🌿 ${admEsc(b.length > 28 ? b.slice(0, 25) + '…' : b)}</span>
+        <span class="ur-val">${d.count}</span>
+        <span class="ur-val">${successPct}%</span>
+        <span class="ur-val">${fmtTok}</span>
+        <span class="ur-val">${formatCost(d.cost)}</span>
+      </div>`;
+    }
+    html += '</div>';
+    container.innerHTML = html;
   }
 
   function admSwitchTab(event, table) {
@@ -2632,6 +2712,11 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           const cls = { agentic: 'adm-loop-agentic', hybrid: 'adm-loop-hybrid', sharepoint: 'adm-loop-sharepoint' }[val] || '';
           const icon = { agentic: '⚡', hybrid: '🔀', sharepoint: '🔷' }[val] || '';
           return `<td class="${cls}">${icon} ${admEsc(val)}</td>`;
+        }
+        if (c === 'model' && val) {
+          const shortName = {'claude-sonnet-4-6':'Sonnet 4.6','claude-opus-4-6':'Opus 4.6','claude-haiku-4-5-20251001':'Haiku 4.5'}[val] || val;
+          const mColor = {'claude-sonnet-4-6':'#2563eb','claude-opus-4-6':'#7c3aed','claude-haiku-4-5-20251001':'#16a34a'}[val] || 'var(--text)';
+          return `<td style="font-weight:600;color:${mColor};font-size:.78rem" title="${admEsc(val)}">${admEsc(shortName)}</td>`;
         }
         if (c === 'confidence_level' && val) {
           const cls = { high: 'adm-conf-high', medium: 'adm-conf-medium', low: 'adm-conf-low' }[val.toLowerCase()] || '';
