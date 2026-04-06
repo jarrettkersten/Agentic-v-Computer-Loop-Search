@@ -268,6 +268,8 @@ def init_db():
             ("files_read",        "INTEGER DEFAULT 0"),
             ("iterations",        "INTEGER DEFAULT 0"),
             ("searches",          "INTEGER DEFAULT 0"),
+            ("search_event_id",   "INTEGER"),
+            ("section_ratings",   "JSONB DEFAULT '{}'::jsonb"),
         ])
         # API jobs table — async query processing
         cur.execute("""
@@ -826,7 +828,8 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
                 input_tokens, output_tokens, total_tokens, error_message,
                 user_email, response_sections, job_id, screenshot_context,
                 answer_text, screenshot_b64, screenshot_mime, model)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               RETURNING id""",
             (loop_type, (query or "")[:2000], branch or "", status,
              round(duration_sec, 2), files_read, iterations, searches,
              confidence_level or "",
@@ -835,11 +838,14 @@ def track_search_event(loop_type: str, query: str, branch: str, status: str,
              job_id or "", screenshot_context or "", answer or "",
              screenshot_b64 or "", screenshot_mime or "", model or MODEL),
         )
+        row = cur.fetchone()
         conn.commit()
+        return row[0] if row else None
     except Exception as e:
         print(f"[DB] Warning: could not track search event: {e}")
         if conn:
             conn.rollback()
+        return None
     finally:
         if conn:
             put_db_conn(conn)
@@ -2191,7 +2197,7 @@ def api_agentic_stream():
     def _run():
         try:
             result = run_agentic_loop(query, branch, job_id=job_id, model=_model)
-            track_search_event(
+            event_id = track_search_event(
                 "agentic", query, branch, "success",
                 time.time() - t0,
                 result.get("total_files_read", 0),
@@ -2208,6 +2214,8 @@ def api_agentic_stream():
                 screenshot_mime=_ss_mime,
                 model=_model,
             )
+            if event_id:
+                result["_event_id"] = event_id
             _complete_api_job(job_id, result)
         except Exception as e:
             track_search_event("agentic", query, branch, "error", time.time() - t0,
@@ -2278,7 +2286,7 @@ def api_agentic_start():
     def _run():
         try:
             result = run_agentic_loop(query, branch, job_id=job_id, model=_model)
-            track_search_event(
+            event_id = track_search_event(
                 "agentic", query, branch, "success",
                 time.time() - t0,
                 result.get("total_files_read", 0),
@@ -2295,6 +2303,8 @@ def api_agentic_start():
                 screenshot_mime=_ss_mime,
                 model=_model,
             )
+            if event_id:
+                result["_event_id"] = event_id
             _complete_api_job(job_id, result)
         except Exception as e:
             track_search_event("agentic", query, branch, "error",
@@ -2375,7 +2385,7 @@ def api_agentic():
     _persist_api_job(job_id, query, branch, _user_email)
     try:
         result = run_agentic_loop(query, branch, model=_model)
-        track_search_event(
+        event_id = track_search_event(
             "agentic", query, branch, "success",
             time.time() - t0,
             result.get("total_files_read", 0),
@@ -2392,6 +2402,8 @@ def api_agentic():
             screenshot_mime=_ss_mime,
             model=_model,
         )
+        if event_id:
+            result["_event_id"] = event_id
         _complete_api_job(job_id, result)
         return jsonify({"success": True, "result": result})
     except Exception as e:
@@ -2518,6 +2530,7 @@ def api_browse_queries():
             SELECT id, query, branch, ran_at, confidence_level,
                    duration_sec, files_read, iterations, searches,
                    COALESCE(user_email, '') AS user_email,
+                   COALESCE(model, '') AS model,
                    (COALESCE(screenshot_b64, '') != '') AS has_screenshot
             FROM   search_events {where}
             ORDER BY ran_at DESC
@@ -2976,55 +2989,92 @@ def api_export():
 @app.route("/api/flag", methods=["POST"])
 @login_required
 def api_flag():
-    """Log a flag (accurate or inaccurate) for a search result container.
+    """Submit a unified rating for a search result (one per user per search_event_id).
 
     JSON body:
-        query, loop_type, answer, flag_type ('accurate'|'inaccurate'),
-        container ('overview'|'user_guide'|'tech_ref'),
-        explanation (required if inaccurate), request_article (bool, if accurate),
-        branch, confidence_level, duration_sec, input_tokens, output_tokens,
-        total_tokens, files_read, iterations, searches
+        search_event_id (int) — the search event being rated
+        section_ratings (dict) — e.g. {"overview":"accurate","user_guide":"accurate","tech_ref":"inaccurate"}
+        explanation (str) — required if any section is marked inaccurate
+        request_article (bool) — whether to request a Confluence article
+        query, loop_type, answer, branch, confidence_level, duration_sec,
+        input_tokens, output_tokens, total_tokens, files_read, iterations, searches
+    Also supports legacy per-container format (flag_type + container).
     """
     data = request.get_json() or {}
     query       = data.get("query", "").strip()
-    loop_type   = data.get("loop_type", "").strip()
+    loop_type   = data.get("loop_type", "agentic").strip()
     answer      = data.get("answer", "").strip()
-    flag_type   = data.get("flag_type", "inaccurate").strip()
-    container   = data.get("container", "").strip()
     explanation = data.get("explanation", "").strip()
     request_article = 1 if data.get("request_article") else 0
+    search_event_id = data.get("search_event_id")
 
-    if not query or not loop_type:
-        return jsonify({"error": "query and loop_type are required"}), 400
+    # New unified format: section_ratings dict
+    section_ratings = data.get("section_ratings", {})
+    if section_ratings:
+        has_inaccurate = any(v == "inaccurate" for v in section_ratings.values())
+        if has_inaccurate and not explanation:
+            return jsonify({"error": "Please explain what was inaccurate or incomplete."}), 400
+        # Derive overall flag_type: inaccurate if ANY section is inaccurate
+        flag_type = "inaccurate" if has_inaccurate else "accurate"
+        container = ",".join(sorted(section_ratings.keys()))
+    else:
+        # Legacy per-container format
+        flag_type   = data.get("flag_type", "inaccurate").strip()
+        container   = data.get("container", "").strip()
+
+    if not query and not search_event_id:
+        return jsonify({"error": "query or search_event_id is required"}), 400
     if flag_type not in ("accurate", "inaccurate"):
         return jsonify({"error": "flag_type must be 'accurate' or 'inaccurate'"}), 400
     if flag_type == "inaccurate" and not explanation:
         return jsonify({"error": "explanation is required for inaccurate flags"}), 400
 
-    # Default status based on flag type
+    user_email = _current_user_email()
     status = "positive" if flag_type == "accurate" else "pending"
 
-    flag_id = str(uuid.uuid4())
     conn = None
     try:
         conn = get_db_conn()
         cur  = conn.cursor()
+
+        # Enforce one rating per user per search_event_id
+        if search_event_id:
+            cur.execute(
+                "SELECT id FROM flagged_queries WHERE search_event_id = %s AND flagged_by = %s LIMIT 1",
+                (search_event_id, user_email),
+            )
+            existing = cur.fetchone()
+            if existing:
+                # Update the existing rating instead of inserting a duplicate
+                cur.execute(
+                    "UPDATE flagged_queries SET flag_type=%s, container=%s, explanation=%s, "
+                    "request_article=%s, section_ratings=%s, status=%s, flagged_at=NOW() "
+                    "WHERE id=%s",
+                    (flag_type, container, explanation, request_article,
+                     json.dumps(section_ratings), status, existing[0]),
+                )
+                conn.commit()
+                return jsonify({"success": True, "flag_id": existing[0], "updated": True})
+
+        flag_id = str(uuid.uuid4())
         cur.execute(
             "INSERT INTO flagged_queries "
             "(id, query, loop_type, answer, explanation, flagged_by, status, "
             " flag_type, container, request_article, "
             " branch, confidence_level, duration_sec, "
             " input_tokens, output_tokens, total_tokens, "
-            " files_read, iterations, searches) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (flag_id, query, loop_type, answer, explanation, _current_user_email(), status,
+            " files_read, iterations, searches, "
+            " search_event_id, section_ratings) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (flag_id, query, loop_type, answer, explanation, user_email, status,
              flag_type, container, request_article,
              data.get("branch", ""), data.get("confidence_level", ""),
              data.get("duration_sec", 0),
              data.get("input_tokens", 0), data.get("output_tokens", 0),
              data.get("total_tokens", 0),
              data.get("files_read", 0), data.get("iterations", 0),
-             data.get("searches", 0)),
+             data.get("searches", 0),
+             search_event_id, json.dumps(section_ratings)),
         )
         conn.commit()
         return jsonify({"success": True, "flag_id": flag_id})
@@ -3032,6 +3082,31 @@ def api_flag():
         if conn:
             conn.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+@app.route("/api/flag/check/<int:event_id>", methods=["GET"])
+@login_required
+def api_flag_check(event_id):
+    """Check if the current user has already rated a specific search event."""
+    user_email = _current_user_email()
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, flag_type, section_ratings, explanation, request_article "
+            "FROM flagged_queries WHERE search_event_id = %s AND flagged_by = %s LIMIT 1",
+            (event_id, user_email),
+        )
+        row = cur.fetchone()
+        if row:
+            return jsonify({"rated": True, "rating": dict(row)})
+        return jsonify({"rated": False})
+    except Exception as e:
+        return jsonify({"rated": False, "error": str(e)})
     finally:
         if conn:
             put_db_conn(conn)

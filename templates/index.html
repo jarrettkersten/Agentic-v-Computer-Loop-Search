@@ -321,6 +321,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .browse-conf-med{color:var(--warn);font-weight:600}
 .browse-conf-low{color:var(--error);font-weight:600}
 .browse-empty{padding:30px 20px;text-align:center;color:var(--muted);font-size:.85rem}
+.browse-ss-thumb{width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;background:var(--bg);transition:opacity .2s,transform .15s,box-shadow .15s}
+.browse-ss-thumb:hover{transform:scale(1.15);box-shadow:0 2px 8px rgba(0,0,0,.18);border-color:var(--brand-light)}
 .browse-sort-badge{font-size:.6rem;color:var(--brand-light);margin-left:2px;vertical-align:super}
 .browse-new-search-btn{background:var(--brand-light);color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s}
 .browse-new-search-btn:hover{background:#1557a0}
@@ -487,6 +489,33 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 .flag-success.accurate{color:var(--success)}
 .flag-success.inaccurate{color:var(--error)}
 .flag-checkbox-row{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.84rem;color:var(--text)}
+/* ── Unified rating bar ── */
+.rating-bar{margin:0 0 14px 0}
+.rating-bar-inner{background:linear-gradient(135deg,rgba(30,111,212,.06),rgba(30,111,212,.02));border:1.5px solid var(--border);border-radius:12px;padding:14px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.rating-bar-label{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.rating-checks{display:flex;gap:6px;flex-wrap:wrap}
+.rating-check{display:flex;align-items:center;gap:5px;background:#fff;border:1.5px solid var(--success);border-radius:8px;padding:5px 12px;font-size:.8rem;font-weight:600;cursor:pointer;transition:all .15s;color:var(--success);user-select:none}
+.rating-check:has(input:not(:checked)),.rating-check.unchecked{border-color:var(--error);color:var(--error);background:var(--error-bg)}
+.rating-check input{display:none}
+.rating-check-name{pointer-events:none}
+.rating-check-mark{font-size:.7rem;pointer-events:none}
+.rating-check:has(input:not(:checked)) .rating-check-mark::after,.rating-check.unchecked .rating-check-mark::after{content:'✗'}
+.rating-check:has(input:not(:checked)) .rating-check-mark,.rating-check.unchecked .rating-check-mark{color:var(--error)}
+.rating-check:has(input:checked) .rating-check-mark::after,.rating-check:not(.unchecked) input:checked ~ .rating-check-mark::after{content:''}
+.rating-hint{font-size:.7rem;color:var(--muted);flex-basis:100%}
+.rating-expl-wrap{flex-basis:100%}
+.rating-expl-wrap textarea{width:100%;border:1.5px solid var(--error);border-radius:8px;padding:8px 10px;font-size:.84rem;resize:vertical;font-family:inherit;background:var(--error-bg)}
+.rating-check-row{flex-basis:100%;display:flex;align-items:center}
+.rating-article-check{display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--text);cursor:pointer}
+.rating-article-check input{accent-color:var(--brand)}
+.rating-actions{display:flex;gap:8px}
+.rating-submit{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:7px 20px;font-size:.84rem;cursor:pointer;font-weight:600;transition:all .15s}
+.rating-submit:hover{background:var(--brand-light)}
+.rating-submit:disabled{opacity:.5;cursor:default}
+.rating-success{flex-basis:100%;font-size:.84rem;font-weight:600;padding:8px 12px;border-radius:8px}
+.rating-success.positive{color:var(--success);background:var(--success-bg)}
+.rating-success.mixed{color:var(--warn);background:rgba(245,158,11,.08)}
+.rating-success.negative{color:var(--error);background:var(--error-bg)}
 .flag-checkbox-row input[type="checkbox"]{width:16px;height:16px;accent-color:var(--success);cursor:pointer}
 </style>
 </head>
@@ -704,6 +733,29 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
   <!-- ── Original submission info (shown when loading historical data) ── -->
   <div id="originalSubmissionContainer" style="display:none;"></div>
+
+  <!-- ── Unified rating bar (hidden until results load) ── -->
+  <div id="ratingBar" class="rating-bar" style="display:none">
+    <div class="rating-bar-inner">
+      <span class="rating-bar-label">Rate this response:</span>
+      <div class="rating-checks">
+        <label class="rating-check"><input type="checkbox" id="rateOverview" value="overview" checked /><span class="rating-check-name">Overview</span><span class="rating-check-mark accurate">✓</span></label>
+        <label class="rating-check"><input type="checkbox" id="rateUserGuide" value="user_guide" checked /><span class="rating-check-name">User Guide</span><span class="rating-check-mark accurate">✓</span></label>
+        <label class="rating-check"><input type="checkbox" id="rateTechRef" value="tech_ref" checked /><span class="rating-check-name">Technical Ref</span><span class="rating-check-mark accurate">✓</span></label>
+      </div>
+      <div class="rating-hint">Uncheck any section that was inaccurate or incomplete</div>
+      <div id="ratingExplWrap" class="rating-expl-wrap" style="display:none">
+        <textarea id="ratingExpl" placeholder="What was inaccurate or incomplete? (required)" rows="2"></textarea>
+      </div>
+      <div class="rating-check-row">
+        <label class="rating-article-check"><input type="checkbox" id="rateArticle" /><span>Request a Confluence article on this topic</span></label>
+      </div>
+      <div class="rating-actions">
+        <button class="rating-submit" id="ratingSubmitBtn" onclick="submitUnifiedRating()">Submit Rating</button>
+      </div>
+      <div id="ratingSuccess" class="rating-success" style="display:none"></div>
+    </div>
+  </div>
 
   <!-- ── Three-column result panels ── -->
   <div class="results-grid">
@@ -1190,28 +1242,99 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   // Wrap /code/... and /inetpub/... file paths in clickable ADO links
   const ADO_BROWSE = 'https://dev.azure.com/CoraSystems/PPM/_git/PPM';
   function linkifyFilePaths(html, branch) {
-    // Pattern 1: File paths with line references like "/code/Foo.cs (line 87)" or ", lines 120–145"
+    const ext = '(?:cs|vb|aspx|ascx|js|sql|ts|html|config|xml|json|cshtml|vbhtml|master)';
+    // Helper: build ADO browse URL with optional line params
+    function _adoUrl(fp, startL, endL) {
+      let u = `${ADO_BROWSE}?path=${encodeURIComponent(fp)}&version=GB${encodeURIComponent(branch)}`;
+      if (startL) {
+        u += `&line=${startL}&lineEnd=${endL || startL}&lineStartColumn=1&lineEndColumn=25&lineStyle=plain`;
+      }
+      return u + '&_a=contents';
+    }
+    function _link(fp, startL, endL, labelHtml) {
+      const url = _adoUrl(fp, startL, endL);
+      let badge = '';
+      if (startL && endL && startL !== endL) badge = ` <span class="rc-lines">L${startL}–${endL}</span>`;
+      else if (startL) badge = ` <span class="rc-lines">L${startL}</span>`;
+      const display = labelHtml || fp;
+      return `<a href="${url}" target="_blank" class="code-file-link" title="Open in Azure DevOps">${display}${badge}<span class="ado-link-icon">↗</span></a>`;
+    }
+
+    // ─── Pattern 1: "File: path/to/File.ext, lines N–M" (before code blocks) ───
+    // After markdown, "File:" may be bold (<strong>), and backtick paths become <code>
     html = html.replace(
-      /(\/(?:code|inetpub|CODE|INETPUB)[\/\w.\-]+\.(?:cs|vb|aspx|ascx|js|sql|ts|html|config|xml|json)(?:\.(?:vb|cs))?)(\s*\(line\s+(\d+)\)|\s*,?\s*lines?\s+(\d+)\s*[–\-—to]+\s*(\d+))?/gi,
-      (match, filePath, lineRef, singleLine, rangeStart, rangeEnd) => {
-        let url, label;
-        if (rangeStart && rangeEnd) {
-          // Line range: build URL with line params
-          url = `${ADO_BROWSE}?path=${encodeURIComponent(filePath)}&version=GB${encodeURIComponent(branch)}&line=${rangeStart}&lineEnd=${rangeEnd}&lineStartColumn=1&lineEndColumn=25&lineStyle=plain&_a=contents`;
-          label = `${filePath} <span class="rc-lines">L${rangeStart}–${rangeEnd}</span>`;
-        } else if (singleLine) {
-          // Single line reference
-          const ln = parseInt(singleLine);
-          url = `${ADO_BROWSE}?path=${encodeURIComponent(filePath)}&version=GB${encodeURIComponent(branch)}&line=${ln}&lineEnd=${ln}&lineStartColumn=1&lineEndColumn=25&lineStyle=plain&_a=contents`;
-          label = `${filePath} <span class="rc-lines">L${ln}</span>`;
-        } else {
-          // No line info — plain file link
-          url = `${ADO_BROWSE}?path=${encodeURIComponent(filePath)}&version=GB${encodeURIComponent(branch)}&_a=contents`;
-          label = filePath;
-        }
-        return `<a href="${url}" target="_blank" class="code-file-link" title="Open in Azure DevOps">${label}<span class="ado-link-icon">↗</span></a>`;
+      new RegExp(
+        '(?:<strong>)?[Ff]ile:?(?:</strong>)?\\s*'                     // "File:" with optional bold
+        + '(?:<code>)?([^<\\n,]+\\.' + ext + ')(?:</code>)?'           // file path (with optional <code>)
+        + '(?:\\s*,?\\s*[Ll]ines?\\s+(\\d+)\\s*[–\\-—]+\\s*(\\d+))?'  // optional ", lines N–M"
+        , 'gi'),
+      (match, fp, rangeStart, rangeEnd) => {
+        fp = fp.trim();
+        return _link(fp, rangeStart ? parseInt(rangeStart) : null, rangeEnd ? parseInt(rangeEnd) : null);
       }
     );
+
+    // ─── Pattern 2: `MethodName()` in `File.ext` (line N) ───
+    // After markdown: <code>Method</code> in <code>File.ext</code> (line 87)
+    html = html.replace(
+      new RegExp(
+        '<code>([^<]+)</code>\\s+in\\s+<code>([^<]+\\.' + ext + ')</code>'
+        + '\\s*\\(line\\s+(\\d+)\\)',
+        'gi'),
+      (match, method, fp, lineNum) => {
+        fp = fp.trim();
+        const ln = parseInt(lineNum);
+        return `<code>${method}</code> in ${_link(fp, ln, ln)}`;
+      }
+    );
+
+    // ─── Pattern 3: Standalone `File.ext` (line N) — backtick-wrapped file with line ref ───
+    html = html.replace(
+      new RegExp(
+        '<code>([^<]+\\.' + ext + ')</code>'
+        + '\\s*\\(lines?\\s+(\\d+)(?:\\s*[–\\-—]+\\s*(\\d+))?\\)',
+        'gi'),
+      (match, fp, start, end) => {
+        fp = fp.trim();
+        return _link(fp, parseInt(start), end ? parseInt(end) : parseInt(start));
+      }
+    );
+
+    // ─── Patterns 4 & 5: Process only text OUTSIDE existing <a> tags ───
+    function _linkifyOutsideAnchors(h, pat, replacer) {
+      const parts = h.split(/(<a\s[^>]*>[\s\S]*?<\/a>)/gi);
+      for (let i = 0; i < parts.length; i++) {
+        if (i % 2 === 0) parts[i] = parts[i].replace(pat, replacer);
+      }
+      return parts.join('');
+    }
+
+    // Pattern 4: Full absolute paths like /code/inetpub/... with optional line refs
+    html = _linkifyOutsideAnchors(html,
+      new RegExp(
+        '(?:<code>)?(\\/(?:code|inetpub)[\\w.\\/\\-]+\\.' + ext + ')(?:<\\/code>)?'
+        + '(?:\\s*\\(line\\s+(\\d+)\\)|\\s*,?\\s*lines?\\s+(\\d+)\\s*[–\\-—]+\\s*(\\d+))?',
+        'gi'),
+      (match, fp, singleLine, rangeStart, rangeEnd) => {
+        fp = fp.trim();
+        if (rangeStart && rangeEnd) return _link(fp, parseInt(rangeStart), parseInt(rangeEnd));
+        if (singleLine) return _link(fp, parseInt(singleLine), parseInt(singleLine));
+        return _link(fp, null, null);
+      }
+    );
+
+    // Pattern 5: Relative paths in <code> tags like <code>Helpers/SomeHelper.vb</code>
+    html = _linkifyOutsideAnchors(html,
+      new RegExp(
+        '<code>((?:[A-Z][\\w]*\\/)+[\\w.]+\\.' + ext + ')</code>'
+        + '(?:\\s*\\(lines?\\s+(\\d+)(?:\\s*[–\\-—]+\\s*(\\d+))?\\))?',
+        'gi'),
+      (match, fp, start, end) => {
+        fp = fp.trim();
+        return _link(fp, start ? parseInt(start) : null, end ? parseInt(end) : null);
+      }
+    );
+
     return html;
   }
 
@@ -1485,6 +1608,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     // Clear the original-submission container if present
     const origContainer = document.getElementById('originalSubmissionContainer');
     if (origContainer) origContainer.innerHTML = '';
+    // Hide the rating bar
+    const ratingBar = document.getElementById('ratingBar');
+    if (ratingBar) ratingBar.style.display = 'none';
     // Clear status
     setStatus('');
   }
@@ -1622,6 +1748,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     const cols = [
       { key: 'query',            label: 'Query',      cls: 'browse-query-cell' },
       { key: 'branch',           label: 'Branch' },
+      { key: 'model',            label: 'Model' },
       { key: 'ran_at',           label: 'Date' },
       { key: 'confidence_level', label: 'Confidence' },
       { key: 'duration_sec',     label: 'Time' },
@@ -1668,21 +1795,34 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
       // Helper to render a single row
       function _browseRow(r, extraCls, badge) {
-        const q    = esc(r.query || '');
+        // Strip screenshot context from query display
+        let rawQ = (r.query || '');
+        const scIdx = rawQ.indexOf('[Screenshot context');
+        if (scIdx > 0) rawQ = rawQ.substring(0, scIdx).trim();
+        const q    = esc(rawQ);
         const date = r.ran_at ? new Date(r.ran_at).toLocaleString('en-US', {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
         const conf = r.confidence_level || '';
         const confCls = {high:'browse-conf-high',medium:'browse-conf-med',low:'browse-conf-low'}[conf.toLowerCase()] || '';
         const dur  = r.duration_sec ? r.duration_sec.toFixed(1) + 's' : '—';
         const user = esc((r.user_email || '').replace('external_api','API').split('@')[0]);
-        const ss   = r.has_screenshot ? '📸' : '';
+        // Model column
+        const modelVal = r.model || '';
+        const modelShort = {'claude-sonnet-4-6':'Sonnet','claude-opus-4-6':'Opus','claude-haiku-4-5-20251001':'Haiku'}[modelVal] || '';
+        const modelColor = {'claude-sonnet-4-6':'#2563eb','claude-opus-4-6':'#7c3aed','claude-haiku-4-5-20251001':'#16a34a'}[modelVal] || 'var(--muted)';
+        // Screenshot: clickable thumbnail that loads lazily
+        let ssHtml = '';
+        if (r.has_screenshot) {
+          ssHtml = `<img class="browse-ss-thumb" data-event-id="${r.id}" src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" alt="📸" title="Click to view screenshot" onclick="browseShowScreenshot(${r.id}, this)" />`;
+        }
         return `<tr class="${extraCls}">
-          <td class="browse-query-cell" title="${esc(r.query || '')}">${badge}${q}</td>
+          <td class="browse-query-cell" title="${esc(rawQ)}">${badge}${q}</td>
           <td>${esc(r.branch || '')}</td>
+          <td style="font-weight:600;color:${modelColor};font-size:.76rem;white-space:nowrap" title="${esc(modelVal)}">${esc(modelShort)}</td>
           <td style="white-space:nowrap">${date}</td>
           <td class="${confCls}">${esc(conf)}</td>
           <td>${dur}</td>
           <td>${user}</td>
-          <td style="text-align:center">${ss}</td>
+          <td style="text-align:center">${ssHtml}</td>
           <td style="text-align:center"><button class="browse-view-btn" onclick="browseViewResult(${r.id})">👁 View</button> <button class="browse-view-btn" onclick="event.stopPropagation();copyResultLink(${r.id}, this)" title="Copy shareable link">🔗</button></td>
         </tr>`;
       }
@@ -1712,6 +1852,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       }
 
       tbody.innerHTML = html;
+      // Lazy-load screenshot thumbnails after DOM update
+      requestAnimationFrame(_lazyLoadScreenshots);
     }
 
     // Row count
@@ -1776,6 +1918,68 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     // Close browse panel and load the result into main UI
     closeBrowsePanel();
     loadPastResult(eventId);
+  }
+
+  /* ── Screenshot thumbnail viewer ─────────────────────────── */
+  const _ssCache = {};                       // id → data-URI
+  async function browseShowScreenshot(eventId, imgEl) {
+    // If already loaded, open full-size overlay
+    if (_ssCache[eventId]) {
+      _openScreenshotOverlay(_ssCache[eventId]);
+      return;
+    }
+    // Show loading state
+    if (imgEl) { imgEl.style.opacity = '0.4'; imgEl.title = 'Loading…'; }
+    try {
+      const resp = await fetch(`/api/search-events/${eventId}/screenshot`);
+      if (!resp.ok) throw new Error('No screenshot');
+      const data = await resp.json();
+      const uri = `data:${data.screenshot_mime};base64,${data.screenshot_b64}`;
+      _ssCache[eventId] = uri;
+      // Update thumbnail src
+      if (imgEl) { imgEl.src = uri; imgEl.style.opacity = '1'; imgEl.title = 'Click to enlarge'; }
+      _openScreenshotOverlay(uri);
+    } catch (e) {
+      if (imgEl) { imgEl.style.opacity = '1'; imgEl.title = 'Screenshot unavailable'; }
+    }
+  }
+
+  function _openScreenshotOverlay(dataUri) {
+    // Remove existing overlay if any
+    const old = document.getElementById('ssOverlay');
+    if (old) old.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'ssOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;cursor:zoom-out;animation:fadeIn .15s ease';
+    overlay.onclick = () => overlay.remove();
+    const img = document.createElement('img');
+    img.src = dataUri;
+    img.style.cssText = 'max-width:90vw;max-height:88vh;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.5)';
+    overlay.appendChild(img);
+    document.body.appendChild(overlay);
+    // Close on Escape
+    const handler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', handler); } };
+    document.addEventListener('keydown', handler);
+  }
+
+  /* Lazy-load visible screenshot thumbnails on browse render */
+  function _lazyLoadScreenshots() {
+    document.querySelectorAll('img.browse-ss-thumb[data-event-id]').forEach(img => {
+      if (img.dataset.loaded) return;
+      const eid = parseInt(img.dataset.eventId, 10);
+      if (!eid) return;
+      // Mark as loading to avoid duplicate fetches
+      img.dataset.loaded = '1';
+      if (_ssCache[eid]) { img.src = _ssCache[eid]; return; }
+      fetch(`/api/search-events/${eid}/screenshot`)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => {
+          const uri = `data:${d.screenshot_mime};base64,${d.screenshot_b64}`;
+          _ssCache[eid] = uri;
+          img.src = uri;
+        })
+        .catch(() => { img.alt = '—'; img.title = 'Screenshot unavailable'; });
+    });
   }
 
   async function loadPastResult(eventId) {
@@ -2097,8 +2301,6 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <div class="branch-tag">🌿 ${esc(branch)}</div>
       </div>
       ${renderConfidence(result.confidence)}
-      ${buildFlagBar('overview')}
-      <div id="flagArea_overview"></div>
       <div class="answer-body">${linkifyFilePaths(md(sections.overview), branch)}</div>
       <div class="export-row">
         <button class="btn-export-md" onclick="exportResult('docx')">📄 Word</button>
@@ -2110,13 +2312,13 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     // ── User Guide panel ──
     document.getElementById('userGuideBody').innerHTML = sections.userGuide
-      ? `${buildFlagBar('user_guide')}<div id="flagArea_user_guide"></div><div class="answer-body">${linkifyFilePaths(md(sections.userGuide), branch)}</div>`
+      ? `<div class="answer-body">${linkifyFilePaths(md(sections.userGuide), branch)}</div>`
       : `<div class="state-idle"><span class="icon">📘</span><span>No user guide section in this response.</span></div>`;
 
     // ── Technical Reference panel ──
     const recentChangesHtml = renderRecentChanges(result.recent_changes, branch);
     document.getElementById('techRefBody').innerHTML = sections.techRef
-      ? `${buildFlagBar('tech_ref')}<div id="flagArea_tech_ref"></div><div class="answer-body">${linkifyFilePaths(md(sections.techRef), branch)}</div>${recentChangesHtml}`
+      ? `<div class="answer-body">${linkifyFilePaths(md(sections.techRef), branch)}</div>${recentChangesHtml}`
       : `<div class="state-idle"><span class="icon">🔧</span><span>No technical reference in this response.</span></div>`;
 
     // ── Load screenshot async if available ──
@@ -2142,6 +2344,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           if (container) container.innerHTML = '<div style="font-size:.75rem;color:var(--text-muted,#666);">Could not load screenshot</div>';
         });
     }
+
+    // ── Show unified rating bar ──
+    showRatingBar(result, sections);
   }
 
   // ── Pause-prompt dialog (shown when agentic loop hits a time threshold) ────
@@ -3294,8 +3499,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     }
   })();
 
-  // ── Flag functions ──────────────────────────────────────────────────────
-  // Store last result metadata so flags can include all response details
+  // ── Unified Rating System ───────────────────────────────────────────────
   let _lastResult   = null;
   let _lastQuery    = '';
   let _lastBranch   = '';
@@ -3308,109 +3512,126 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     _lastSections = sections || {};
   }
 
-  // Container labels for admin display
-  const CONTAINER_LABELS = {
-    overview:  'Overview',
-    user_guide: 'User Guide',
-    tech_ref:  'Tech Reference'
-  };
+  function showRatingBar(result, sections) {
+    const bar = document.getElementById('ratingBar');
+    if (!bar) return;
+    const successEl = document.getElementById('ratingSuccess');
+    if (successEl) { successEl.style.display = 'none'; successEl.textContent = ''; }
+    const btn = document.getElementById('ratingSubmitBtn');
+    if (btn) { btn.disabled = false; btn.textContent = 'Submit Rating'; }
+    const explWrap = document.getElementById('ratingExplWrap');
+    if (explWrap) explWrap.style.display = 'none';
+    const explField = document.getElementById('ratingExpl');
+    if (explField) explField.value = '';
 
-  function buildFlagBar(container) {
-    return `<div class="flag-bar" id="flagBar_${container}">
-      <span class="flag-label">Rate this response:</span>
-      <button class="btn-flag-accurate" onclick="showAccurateForm('${container}')">✅ Accurate / Helpful</button>
-      <button class="btn-flag-inaccurate" onclick="showInaccurateForm('${container}')">❌ Inaccurate / Incomplete</button>
-    </div>`;
-  }
+    // Reset checkboxes to checked
+    ['rateOverview','rateUserGuide','rateTechRef'].forEach(id => {
+      const cb = document.getElementById(id);
+      if (cb) cb.checked = true;
+    });
+    // Disable checkboxes for sections that don't exist
+    document.getElementById('rateUserGuide').disabled = !sections.userGuide;
+    document.getElementById('rateTechRef').disabled = !sections.techRef;
+    if (!sections.userGuide) document.getElementById('rateUserGuide').checked = false;
+    if (!sections.techRef) document.getElementById('rateTechRef').checked = false;
 
-  function showAccurateForm(container) {
-    const area = document.getElementById('flagArea_' + container);
-    if (!area) return;
-    // Highlight button
-    const bar = document.getElementById('flagBar_' + container);
-    bar.querySelectorAll('.btn-flag-accurate').forEach(b => b.classList.add('selected'));
-    bar.querySelectorAll('.btn-flag-inaccurate').forEach(b => b.classList.remove('selected'));
+    bar.style.display = '';
 
-    area.innerHTML = `<div class="flag-form accurate">
-      <div class="flag-checkbox-row">
-        <input type="checkbox" id="flagArticle_${container}"/>
-        <label for="flagArticle_${container}">Request a Confluence article be created on this topic</label>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <button class="flag-submit accurate" onclick="submitFlagNew('accurate','${container}')">Submit</button>
-        <button class="flag-cancel" onclick="cancelFlag('${container}')">Cancel</button>
-      </div>
-      <div class="flag-success accurate" id="flagSuccess_${container}" style="display:none"></div>
-    </div>`;
-  }
+    // Wire checkbox change to show/hide explanation field + toggle visual classes
+    bar.querySelectorAll('.rating-check input').forEach(cb => {
+      cb.onchange = function() {
+        // Toggle class on parent label for browsers without :has() support
+        this.closest('.rating-check').classList.toggle('unchecked', !this.checked);
+        const anyUnchecked = ['rateOverview','rateUserGuide','rateTechRef'].some(id => {
+          const el = document.getElementById(id);
+          return el && !el.disabled && !el.checked;
+        });
+        const explWrap = document.getElementById('ratingExplWrap');
+        if (explWrap) explWrap.style.display = anyUnchecked ? '' : 'none';
+      };
+    });
 
-  function showInaccurateForm(container) {
-    const area = document.getElementById('flagArea_' + container);
-    if (!area) return;
-    // Highlight button
-    const bar = document.getElementById('flagBar_' + container);
-    bar.querySelectorAll('.btn-flag-inaccurate').forEach(b => b.classList.add('selected'));
-    bar.querySelectorAll('.btn-flag-accurate').forEach(b => b.classList.remove('selected'));
-
-    area.innerHTML = `<div class="flag-form inaccurate">
-      <textarea id="flagExpl_${container}" placeholder="What was incorrect or missing? (required)" rows="3"></textarea>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="flag-submit inaccurate" onclick="submitFlagNew('inaccurate','${container}')">Submit</button>
-        <button class="flag-cancel" onclick="cancelFlag('${container}')">Cancel</button>
-      </div>
-      <div class="flag-success inaccurate" id="flagSuccess_${container}" style="display:none"></div>
-    </div>`;
-  }
-
-  function cancelFlag(container) {
-    const area = document.getElementById('flagArea_' + container);
-    if (area) area.innerHTML = '';
-    const bar = document.getElementById('flagBar_' + container);
-    if (bar) {
-      bar.querySelectorAll('.btn-flag-accurate, .btn-flag-inaccurate').forEach(b => b.classList.remove('selected'));
+    // Check if user already rated this search event
+    const eventId = result._original_event_id || result._event_id;
+    if (eventId) {
+      fetch('/api/flag/check/' + eventId)
+        .then(r => r.ok ? r.json() : {rated:false})
+        .then(data => {
+          if (data.rated) {
+            _showExistingRating(data.rating);
+          }
+        }).catch(() => {});
     }
   }
 
-  function submitFlagNew(flagType, container) {
-    const queryEl = document.getElementById('queryInput') || document.getElementById('q');
-    const query = queryEl ? queryEl.value : _lastQuery;
-    const answerEl = document.getElementById('agAnswer');
-    const answer = answerEl ? answerEl.textContent : '';
+  function _showExistingRating(rating) {
+    const bar = document.getElementById('ratingBar');
+    if (!bar) return;
+    const sr = rating.section_ratings || {};
+    // Set checkboxes to match previous rating
+    if (sr.overview !== undefined) document.getElementById('rateOverview').checked = sr.overview === 'accurate';
+    if (sr.user_guide !== undefined) document.getElementById('rateUserGuide').checked = sr.user_guide === 'accurate';
+    if (sr.tech_ref !== undefined) document.getElementById('rateTechRef').checked = sr.tech_ref === 'accurate';
+    // Show explanation if any
+    if (rating.explanation) {
+      document.getElementById('ratingExplWrap').style.display = '';
+      document.getElementById('ratingExpl').value = rating.explanation;
+    }
+    if (rating.request_article) document.getElementById('rateArticle').checked = true;
+    // Fire change events to update UI
+    bar.querySelectorAll('.rating-check input').forEach(cb => { if (cb.onchange) cb.onchange(); });
+    // Show "already rated" message with option to update
+    const successEl = document.getElementById('ratingSuccess');
+    successEl.className = 'rating-success positive';
+    successEl.textContent = 'You previously rated this response. You can update your rating above.';
+    successEl.style.display = '';
+    const btn = document.getElementById('ratingSubmitBtn');
+    btn.textContent = 'Update Rating';
+  }
 
-    let explanation = '';
-    let requestArticle = false;
-
-    if (flagType === 'inaccurate') {
-      const explEl = document.getElementById('flagExpl_' + container);
-      explanation = explEl ? explEl.value.trim() : '';
-      if (!explanation) {
-        alert('Please provide a rationale for why this response is inaccurate or incomplete.');
-        return;
+  function submitUnifiedRating() {
+    const sections = {};
+    ['rateOverview','rateUserGuide','rateTechRef'].forEach(id => {
+      const cb = document.getElementById(id);
+      if (cb && !cb.disabled) {
+        const key = cb.value;
+        sections[key] = cb.checked ? 'accurate' : 'inaccurate';
       }
-    } else {
-      const articleEl = document.getElementById('flagArticle_' + container);
-      requestArticle = articleEl ? articleEl.checked : false;
+    });
+
+    const hasInaccurate = Object.values(sections).includes('inaccurate');
+    const explanation = (document.getElementById('ratingExpl')?.value || '').trim();
+    if (hasInaccurate && !explanation) {
+      alert('Please explain what was inaccurate or incomplete.');
+      document.getElementById('ratingExpl')?.focus();
+      return;
     }
 
-    // Build payload with all response metadata
+    const requestArticle = document.getElementById('rateArticle')?.checked || false;
+    const eventId = _lastResult?._original_event_id || _lastResult?._event_id || null;
+
     const payload = {
-      query,
+      search_event_id: eventId,
+      query: _lastQuery,
       loop_type: 'agentic',
-      answer,
-      flag_type: flagType,
-      container,
+      answer: document.getElementById('agAnswer')?.textContent || '',
+      section_ratings: sections,
       explanation,
       request_article: requestArticle,
       branch: _lastBranch,
-      confidence_level: _lastResult ? (_lastResult.confidence?.level || '') : '',
-      duration_sec: _lastResult ? (_lastResult.elapsed_seconds || 0) : 0,
-      input_tokens: _lastResult ? (_lastResult.input_tokens || 0) : 0,
-      output_tokens: _lastResult ? (_lastResult.output_tokens || 0) : 0,
-      total_tokens: _lastResult ? ((_lastResult.input_tokens || 0) + (_lastResult.output_tokens || 0)) : 0,
-      files_read: _lastResult ? (_lastResult.total_files_read || 0) : 0,
-      iterations: _lastResult ? (_lastResult.total_iterations || 0) : 0,
-      searches: _lastResult ? (_lastResult.total_searches || 0) : 0,
+      confidence_level: _lastResult?.confidence?.level || '',
+      duration_sec: _lastResult?.elapsed_seconds || 0,
+      input_tokens: _lastResult?.input_tokens || 0,
+      output_tokens: _lastResult?.output_tokens || 0,
+      total_tokens: (_lastResult?.input_tokens || 0) + (_lastResult?.output_tokens || 0),
+      files_read: _lastResult?.total_files_read || 0,
+      iterations: _lastResult?.total_iterations || 0,
+      searches: _lastResult?.total_searches || 0,
     };
+
+    const btn = document.getElementById('ratingSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
 
     fetch('/api/flag', {
       method: 'POST',
@@ -3418,22 +3639,27 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       body: JSON.stringify(payload)
     }).then(r => r.json()).then(data => {
       if (data.success) {
-        const successEl = document.getElementById('flagSuccess_' + container);
-        if (successEl) {
-          successEl.textContent = flagType === 'accurate'
-            ? '✅ Marked as accurate' + (requestArticle ? ' — article requested' : '')
-            : '🚩 Flagged for admin review';
-          successEl.style.display = 'block';
+        const successEl = document.getElementById('ratingSuccess');
+        const allAccurate = !hasInaccurate;
+        if (allAccurate) {
+          successEl.className = 'rating-success positive';
+          successEl.textContent = 'Thanks for your feedback! All sections marked accurate.' + (requestArticle ? ' Confluence article requested.' : '');
+        } else {
+          successEl.className = 'rating-success mixed';
+          successEl.textContent = 'Thanks — flagged for review.' + (requestArticle ? ' Confluence article requested.' : '');
         }
-        // Disable the flag bar buttons
-        const bar = document.getElementById('flagBar_' + container);
-        if (bar) {
-          bar.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '.5'; b.style.cursor = 'default'; });
-        }
+        successEl.style.display = '';
+        btn.textContent = data.updated ? 'Rating Updated' : 'Rating Submitted';
       } else {
         alert('Error: ' + (data.error || 'Unknown'));
+        btn.disabled = false;
+        btn.textContent = 'Submit Rating';
       }
-    }).catch(e => alert('Failed to submit flag: ' + e.message));
+    }).catch(e => {
+      alert('Failed to submit: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = 'Submit Rating';
+    });
   }
 </script>
 </body>
