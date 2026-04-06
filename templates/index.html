@@ -1322,6 +1322,30 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     _sqBypassNext = false;
     // Re-enable the search button so the user can search normally
     document.getElementById('btnSearch').disabled = false;
+    // Clear deep-link param from URL
+    _clearResultParam();
+  }
+
+  function copyResultLink(eventId) {
+    const url = new URL(window.location);
+    url.searchParams.set('result', eventId);
+    // Remove any other params that aren't relevant
+    const link = url.origin + url.pathname + '?result=' + eventId;
+    navigator.clipboard.writeText(link).then(() => {
+      setStatus('Link copied to clipboard!');
+      setTimeout(() => setStatus(''), 2500);
+    }).catch(() => {
+      // Fallback: show the link in a prompt
+      prompt('Copy this link:', link);
+    });
+  }
+
+  function _clearResultParam() {
+    const url = new URL(window.location);
+    if (url.searchParams.has('result')) {
+      url.searchParams.delete('result');
+      history.replaceState(null, '', url.pathname + (url.search || ''));
+    }
   }
 
   function browseSearchOverride() {
@@ -1490,7 +1514,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           <td>${dur}</td>
           <td>${user}</td>
           <td style="text-align:center">${ss}</td>
-          <td style="text-align:center"><button class="browse-view-btn" onclick="browseViewResult(${r.id})">👁 View</button></td>
+          <td style="text-align:center"><button class="browse-view-btn" onclick="browseViewResult(${r.id})">👁 View</button> <button class="browse-view-btn" onclick="event.stopPropagation();copyResultLink(${r.id})" title="Copy shareable link">🔗</button></td>
         </tr>`;
       }
 
@@ -1618,6 +1642,10 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       renderAgentic(result);
       document.getElementById('btnSearch').disabled = false;
       setStatus('');
+      // Update URL so the address bar is a shareable deep link
+      const url = new URL(window.location);
+      url.searchParams.set('result', eventId);
+      history.replaceState(null, '', url);
     } catch (e) {
       setStatus('Could not load past result — try another or run a new search.');
       document.getElementById('btnSearch').disabled = false;
@@ -1770,6 +1798,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
             ${_sqMatches.length ? '<button class="sq-btn-alt" onclick="openBrowseWithMatches(_sqMatches)">← Browse similar queries</button>' : ''}
             <button class="sq-btn-new" onclick="browseStartNewSearch()" title="Clear these results and start fresh — you can edit your question and search again">🔄 Start New Search</button>
             <button class="sq-btn-new" style="background:#d97706;" onclick="browseSearchOverride()" title="Ignore similar results and run your current question as a new search">⚡ Search Override</button>
+            <button class="sq-btn-new" style="background:#059669;" onclick="copyResultLink(${result._original_event_id})" title="Copy a shareable link to this result">🔗 Copy Link</button>
           </div>
         </div>
       `;
@@ -1883,7 +1912,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     if (!query)  { setStatus('Please enter a question first.'); return; }
     if (!branch) { setStatus('Please select a branch first.'); return; }
 
-    // Hide original submission container from any previous historical view
+    // Clear deep-link param and hide original submission container from any previous historical view
+    _clearResultParam();
     const _osc = document.getElementById('originalSubmissionContainer');
     _osc.innerHTML = ''; _osc.style.display = 'none';
 
@@ -2810,6 +2840,16 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
   }
 
   initPanelResize();
+
+  // ── Deep-link: auto-load a result from ?result=<eventId> ───────────────
+  (function checkDeepLink() {
+    const params = new URLSearchParams(window.location.search);
+    const resultId = params.get('result');
+    if (resultId && /^\d+$/.test(resultId)) {
+      // Small delay to let branches finish loading
+      setTimeout(() => loadPastResult(parseInt(resultId, 10)), 400);
+    }
+  })();
 
   // ── Flag functions ──────────────────────────────────────────────────────
   // Store last result metadata so flags can include all response details
