@@ -1471,6 +1471,22 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     document.getElementById('btnSearch').disabled = false;
     // Clear deep-link param from URL
     _clearResultParam();
+    // Clear the user's question
+    document.getElementById('queryInput').value = '';
+    // Clear any attached screenshot
+    szRemove();
+    // Reset result panels to idle state
+    document.getElementById('overviewBody').innerHTML =
+      '<div class="state-idle"><span class="icon">📋</span><span>Your answer will appear here after a search.</span></div>';
+    document.getElementById('userGuideBody').innerHTML =
+      '<div class="state-idle"><span class="icon">📘</span><span>Step-by-step guidance will appear here.</span></div>';
+    document.getElementById('techRefBody').innerHTML =
+      '<div class="state-idle"><span class="icon">🔧</span><span>Technical details for developers will appear here.</span></div>';
+    // Clear the original-submission container if present
+    const origContainer = document.getElementById('originalSubmissionContainer');
+    if (origContainer) origContainer.innerHTML = '';
+    // Clear status
+    setStatus('');
   }
 
   function copyResultLink(eventId, btn) {
@@ -2036,8 +2052,8 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
           </div>
           <div style="display:flex; gap:8px; flex-shrink:0;">
             ${_sqMatches.length ? '<button class="sq-btn-alt" onclick="openBrowseWithMatches(_sqMatches)">← Browse similar queries</button>' : ''}
-            <button class="sq-btn-new" onclick="browseStartNewSearch()" title="Clear these results and start fresh — you can edit your question and search again">🔄 Start New Search</button>
-            <button class="sq-btn-new" style="background:#d97706;" onclick="browseSearchOverride()" title="Ignore similar results and run your current question as a new search">⚡ Search Override</button>
+            ${_sqMatches.length ? '<button class="sq-btn-new" onclick="browseStartNewSearch()" title="Clear these results and start fresh — you can edit your question and search again">🔄 Start New Search</button>' : ''}
+            ${_sqMatches.length ? '<button class="sq-btn-new" style="background:#d97706;" onclick="browseSearchOverride()" title="Ignore similar results and run your current question as a new search">⚡ Search Override</button>' : ''}
             <button class="sq-btn-new" style="background:#059669;" onclick="copyResultLink(${result._original_event_id}, this)" title="Copy a shareable link to this result">🔗 Copy Link</button>
           </div>
         </div>
