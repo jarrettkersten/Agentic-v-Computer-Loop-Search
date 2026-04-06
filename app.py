@@ -422,10 +422,16 @@ def _safe_add_columns(cur, table, columns):
 def _extract_file_inventory(answer_text: str, iterations_log: list, query: str) -> list:
     """Parse Claude's answer and tool calls to build a file inventory for indexing.
 
-    Returns a list of dicts:
-      [{"file_path": "/code/...", "file_name": "Foo.cs", "file_role": "Service",
-        "feature_area": "Forecasting", "keywords": "EAC,forecast,submit",
-        "description": "Handles EAC submission validation", "related_files": "/code/Bar.cs,/code/Baz.cs"}]
+    Strategy: instead of storing disconnected keywords, we store:
+      - keywords:    The original query that led to this file (natural-language phrase)
+      - description: A brief Claude-derived summary of the file's purpose extracted
+                     from the Technical Reference section
+      - file_role:   Normalized architectural role (UI, Service, Repository, etc.)
+      - feature_area: The feature/module this file belongs to
+
+    This gives Claude much richer context when the index is injected into future
+    system prompts — it can see "this file was relevant when someone asked about X
+    because it handles Y."
     """
     import re
     files = {}
@@ -449,32 +455,58 @@ def _extract_file_inventory(answer_text: str, iterations_log: list, query: str) 
     if not files:
         return []
 
-    # 2. Try to extract roles from the Technical Reference file inventory
-    #    Look for patterns like: - `File.cs` — **Service** or | File | Role |
-    role_patterns = [
-        # "File.cs — Service" or "File.cs — **Service**"
-        re.compile(r'`?([^`\n]+\.(?:cs|vb|aspx|ascx|js|ts|sql|config))`?\s*[—\-–:]\s*\*?\*?(\w[\w\s/]*\w)\*?\*?', re.IGNORECASE),
-        # "File: /path/File.cs" followed by role context
-        re.compile(r'(?:UI|CodeBehind|Service|Repository|Helper|SQL|Controller|Model|Data Access|Base Class)', re.IGNORECASE),
-    ]
-
+    # 2. Extract file descriptions + roles from the Technical Reference section
     tech_ref_section = ""
     if "## Technical Reference" in answer_text:
         tech_ref_section = answer_text.split("## Technical Reference", 1)[1]
 
-    # Match file roles from Technical Reference
     for fp in list(files.keys()):
         fname = files[fp]["file_name"]
-        # Look for role annotations near this filename
         fname_esc = re.escape(fname)
+
+        # 2a. Extract description: look for text near this filename
+        #     Pattern: "File.cs — **Role** — Description text..."
+        #     We need to skip past the role annotation to capture the actual description
+        desc_match = re.search(
+            rf'`?{fname_esc}`?\s*[—\-–:|]\s*'      # filename + first separator
+            rf'\*?\*?\w[\w\s/]*?\*?\*?\s*'            # role (e.g. **CodeBehind**)
+            rf'[—\-–:|]\s*'                            # second separator after role
+            rf'([^\n]{{10,250}})',                      # description text
+            tech_ref_section, re.IGNORECASE
+        )
+        if not desc_match:
+            # Fallback: filename — description (no separate role annotation)
+            desc_match = re.search(
+                rf'`?{fname_esc}`?\s*[—\-–:|]\s*([^\n]{{10,250}})',
+                tech_ref_section, re.IGNORECASE
+            )
+        if desc_match:
+            desc = desc_match.group(1).strip().rstrip('|').strip()
+            # Clean up markdown artifacts
+            desc = re.sub(r'\*+', '', desc).strip()
+            if len(desc) > 10:
+                files[fp]["description"] = desc[:250]
+
+        # If no description from pattern, look for nearby context sentences
+        if not files[fp]["description"]:
+            # Find sentences mentioning this filename
+            ctx_match = re.search(
+                rf'[^.\n]*{fname_esc}[^.\n]*[.]',
+                answer_text, re.IGNORECASE
+            )
+            if ctx_match:
+                ctx = ctx_match.group(0).strip()
+                ctx = re.sub(r'`', '', ctx).strip()
+                if 15 < len(ctx) < 250:
+                    files[fp]["description"] = ctx
+
+        # 2b. Extract role from annotations near this filename
         role_match = re.search(
             rf'{fname_esc}[`]?\s*[—\-–:|]\s*\*?\*?(\w[\w\s/]*?)(?:\*?\*?\s*[—\-–|.\n])',
-            tech_ref_section,
-            re.IGNORECASE
+            tech_ref_section, re.IGNORECASE
         )
         if role_match:
             role = role_match.group(1).strip()
-            # Normalise common role names
             role_lower = role.lower()
             if any(r in role_lower for r in ["ui", "page", "view", "aspx", "ascx"]):
                 role = "UI"
@@ -494,9 +526,8 @@ def _extract_file_inventory(answer_text: str, iterations_log: list, query: str) 
                 role = "Model"
             files[fp]["file_role"] = role
 
-    # 3. Derive feature area from the query and common path segments
+    # 3. Derive feature area from path segments
     feature_area = ""
-    # Try to extract from the file paths (e.g., /ProjectForecasting/ → "Project Forecasting")
     path_segments = set()
     for fp in files:
         parts = fp.split("/")
@@ -504,24 +535,19 @@ def _extract_file_inventory(answer_text: str, iterations_log: list, query: str) 
             if len(part) > 3 and part[0].isupper() and not part.endswith(('.cs', '.vb', '.aspx', '.ascx', '.js', '.ts')):
                 path_segments.add(part)
     if path_segments:
-        # Use the most specific (longest) segment as feature area
         feature_area = max(path_segments, key=len)
 
-    # 4. Extract keywords from the query
-    stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'what', 'how', 'does', 'do',
-                  'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but', 'not', 'this',
-                  'that', 'it', 'from', 'with', 'by', 'as', 'be', 'has', 'have', 'had',
-                  'can', 'could', 'would', 'should', 'will', 'when', 'where', 'why', 'which',
-                  'cora', 'ppm', 'code', 'file', 'function', 'method', 'class', 'work', 'works'}
-    query_keywords = [w for w in re.findall(r'\b\w+\b', query.lower()) if w not in stop_words and len(w) > 2]
+    # 4. Store the original query as-is (natural-language phrase, not individual words)
+    #    This lets trigram similarity match future questions to past questions directly.
+    clean_query = query.strip()[:300]
 
-    # 5. Build related_files (all other files in this result)
+    # 5. Build related_files and assign feature_area + query
     all_paths = list(files.keys())
     for fp in files:
-        others = [p for p in all_paths if p != fp][:10]  # cap at 10
+        others = [p for p in all_paths if p != fp][:10]
         files[fp]["related_files"] = ",".join(others)
         files[fp]["feature_area"] = feature_area
-        files[fp]["keywords"] = ",".join(query_keywords[:15])
+        files[fp]["keywords"] = clean_query  # Store full query phrase, not word fragments
 
     return list(files.values())
 
@@ -529,8 +555,9 @@ def _extract_file_inventory(answer_text: str, iterations_log: list, query: str) 
 def update_codebase_index(answer_text: str, iterations_log: list, query: str, branch: str):
     """Update the codebase index with files discovered during a search.
 
-    Uses UPSERT logic: if a file+branch already exists, update keywords and
-    bump hit_count; otherwise insert a new row.
+    Uses UPSERT logic: if a file+branch already exists, append the new query
+    to the keywords list (pipe-delimited, deduplicated), update description
+    if a better one was extracted, and bump hit_count.
     """
     if not DATABASE_URL:
         return
@@ -544,26 +571,57 @@ def update_codebase_index(answer_text: str, iterations_log: list, query: str, br
         conn = get_db_conn()
         cur = conn.cursor()
         for f in inventory:
-            cur.execute("""
-                INSERT INTO codebase_index
-                    (file_path, file_name, file_role, feature_area, keywords,
-                     related_files, description, branch, source_query, hit_count)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
-                ON CONFLICT (file_path, branch) DO UPDATE SET
-                    file_role     = CASE WHEN EXCLUDED.file_role != '' THEN EXCLUDED.file_role
-                                        ELSE codebase_index.file_role END,
-                    feature_area  = CASE WHEN EXCLUDED.feature_area != '' THEN EXCLUDED.feature_area
-                                        ELSE codebase_index.feature_area END,
-                    keywords      = codebase_index.keywords || ',' || EXCLUDED.keywords,
-                    related_files = EXCLUDED.related_files,
-                    hit_count     = codebase_index.hit_count + 1,
-                    last_verified = NOW(),
-                    source_query  = EXCLUDED.source_query
-            """, (
-                f["file_path"], f["file_name"], f["file_role"], f["feature_area"],
-                f["keywords"], f["related_files"], f["description"],
-                branch, (query or "")[:500],
-            ))
+            # First, check if the file already exists so we can merge keywords
+            cur.execute(
+                "SELECT keywords, description FROM codebase_index WHERE file_path = %s AND branch = %s",
+                (f["file_path"], branch),
+            )
+            existing = cur.fetchone()
+
+            if existing:
+                # Merge: add new query to pipe-delimited list (deduplicated)
+                old_queries = [q.strip() for q in (existing[0] or "").split("|") if q.strip()]
+                new_query = f["keywords"].strip()
+                if new_query and new_query not in old_queries:
+                    old_queries.append(new_query)
+                # Cap at 10 most recent queries to prevent unbounded growth
+                merged_keywords = " | ".join(old_queries[-10:])
+
+                # Keep the longer/better description
+                old_desc = (existing[1] or "").strip()
+                new_desc = (f["description"] or "").strip()
+                best_desc = new_desc if len(new_desc) > len(old_desc) else old_desc
+
+                cur.execute("""
+                    UPDATE codebase_index SET
+                        file_role     = CASE WHEN %s != '' THEN %s ELSE file_role END,
+                        feature_area  = CASE WHEN %s != '' THEN %s ELSE feature_area END,
+                        keywords      = %s,
+                        description   = %s,
+                        related_files = %s,
+                        hit_count     = hit_count + 1,
+                        last_verified = NOW(),
+                        source_query  = %s
+                    WHERE file_path = %s AND branch = %s
+                """, (
+                    f["file_role"], f["file_role"],
+                    f["feature_area"], f["feature_area"],
+                    merged_keywords, best_desc,
+                    f["related_files"], (query or "")[:500],
+                    f["file_path"], branch,
+                ))
+            else:
+                # Insert new entry
+                cur.execute("""
+                    INSERT INTO codebase_index
+                        (file_path, file_name, file_role, feature_area, keywords,
+                         related_files, description, branch, source_query, hit_count)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+                """, (
+                    f["file_path"], f["file_name"], f["file_role"], f["feature_area"],
+                    f["keywords"], f["related_files"], f["description"],
+                    branch, (query or "")[:500],
+                ))
         conn.commit()
         print(f"[Index] Updated {len(inventory)} file(s) in codebase_index")
     except Exception as e:
@@ -634,13 +692,15 @@ def format_index_hints(index_hits: list) -> str:
     """Format index lookup results as a system prompt section for Claude.
 
     Returns a string to inject into the system prompt, or empty string if no hits.
+    Each entry now includes the file's description and the past queries that
+    led to it, giving Claude real context about *why* each file matters.
     """
     if not index_hits:
         return ""
 
     lines = [
         "\n═══ KNOWN FILE INDEX (from past searches) ═══",
-        "The following files have been identified in previous searches as relevant to similar questions.",
+        "The following files were relevant in previous searches for similar questions.",
         "Use these as STARTING POINTS — read these files first before searching broadly.\n",
     ]
 
@@ -658,6 +718,14 @@ def format_index_hints(index_hits: list) -> str:
             role = f" ({f['file_role']})" if f.get("file_role") else ""
             hits = f.get("hit_count", 1)
             lines.append(f"    • {f['file_path']}{role}  [seen {hits}x]")
+            # Add description if available
+            desc = (f.get("description") or "").strip()
+            if desc:
+                lines.append(f"      Purpose: {desc}")
+            # Show past queries that led to this file (pipe-delimited in keywords)
+            past_queries = [q.strip() for q in (f.get("keywords") or "").split("|") if q.strip()]
+            if past_queries:
+                lines.append(f"      Past queries: {'; '.join(past_queries[-5:])}")
         lines.append("")
 
     lines.append("These are hints, not guarantees — files may have moved or been renamed. Verify by reading them.")
