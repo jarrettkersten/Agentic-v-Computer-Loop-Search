@@ -2653,6 +2653,10 @@ def api_similar_queries():
     data  = request.get_json() or {}
     query = data.get("query", "").strip()
     branch = data.get("branch", "").strip()
+    # Strip screenshot context from the incoming query too — compare only user text
+    sc_idx = query.find("[Screenshot context")
+    if sc_idx > 0:
+        query = query[:sc_idx].strip()
     if not query or not DATABASE_URL:
         return jsonify({"matches": []})
 
@@ -2664,15 +2668,25 @@ def api_similar_queries():
         # Similarity threshold — only return reasonably close matches
         threshold = 0.25
 
-        sql = """
+        # Strip screenshot context from stored queries before comparing.
+        # The query column may contain appended "[Screenshot context ...]" blobs
+        # which dilute trigram similarity when comparing against the user's text.
+        clean_q = """
+            CASE WHEN query LIKE '%%[Screenshot context%%'
+                 THEN TRIM(LEFT(query, POSITION('[Screenshot context' IN query) - 1))
+                 ELSE query
+            END
+        """
+
+        sql = f"""
             SELECT id, query, branch, ran_at, confidence_level,
                    LEFT(answer_text, 500) AS answer_preview,
-                   similarity(query, %s) AS sim,
+                   similarity({clean_q}, %s) AS sim,
                    (COALESCE(screenshot_b64, '') != '') AS has_screenshot
             FROM   search_events
             WHERE  status = 'success'
               AND  answer_text IS NOT NULL AND answer_text != ''
-              AND  similarity(query, %s) > %s
+              AND  similarity({clean_q}, %s) > %s
         """
         params = [query, query, threshold]
 
