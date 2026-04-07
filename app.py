@@ -3746,6 +3746,268 @@ def api_admin_bulk_import_index():
 
 
 # ---------------------------------------------------------------------------
+# Admin: auto-index a branch from ADO file tree
+# ---------------------------------------------------------------------------
+
+def _categorize_ado_files(file_paths: list, branch: str) -> list:
+    """Categorize a list of ADO file paths into codebase index entries.
+
+    Returns only key architectural files: Controllers, Services, Repositories,
+    Models, Helpers, Handlers, Middleware, key UI pages + CodeBehind,
+    TypeScript, Telerik Reports, Stored Procedures, SQL Views/Functions,
+    and build/deployment scripts.
+    """
+    ado_url_base = f"https://dev.azure.com/{ADO_ORG}/{ADO_PROJECT}/_git/{ADO_REPO}"
+    key_pages = {'default','main','dashboard','list','detail','edit','manage','admin',
+                 'settings','report','forecast','resource','project','task','schedule',
+                 'budget','cost','risk','timesheet','document','import','export','login','search'}
+
+    def _detect_area(p):
+        pl = p.lower()
+        checks = [('forecast','Financial Management'),('resource','Resource Management'),
+                   ('risk','Risk Management'),('budget','Financial Management'),
+                   ('cost','Financial Management'),('financ','Financial Management'),
+                   ('schedule','Task Management'),('gantt','Task Management'),
+                   ('report','Reporting'),('admin','Administration'),
+                   ('configuration','Administration'),('settings','Administration'),
+                   ('import','Data Import/Export'),('export','Data Import/Export'),
+                   ('dashboard','Reporting'),('task','Task Management'),
+                   ('activity','Task Management'),('deliverable','Task Management'),
+                   ('project','Project Management'),('login','Administration'),
+                   ('auth','Administration'),('account','Administration'),
+                   ('calendar','Calendar'),('document','Content Management'),
+                   ('attachment','Content Management'),('notification','Communication'),
+                   ('email','Communication'),('audit','Audit'),('history','Audit'),
+                   ('custom','Extensibility'),('smartform','Extensibility'),
+                   ('udf','Extensibility'),('timesheet','Time Tracking'),
+                   ('timeentry','Time Tracking'),('material','Materials'),
+                   ('integration','Integration'),('webservice','Integration')]
+        for k, v in checks:
+            if k in pl:
+                return v
+        return 'Project Management'
+
+    def _detect_module(p):
+        checks = [('PVPortal','PVPortal (Aurelia SPA)'),('ProjectVisionLib','ProjectVisionLib'),
+                   ('CORA.Common','CORA.Common'),('AccountLibrary','AccountLibrary'),
+                   ('CoraCustomControls','CoraCustomControls'),('ImportExport','ImportExport'),
+                   ('JobsScheduler','Jobs/Scheduler'),('BizScheduler','Jobs/Scheduler'),
+                   ('HPMS','HPMS'),('EACAutomation','EACAutomation'),
+                   ('LicenseKey','LicenseKey'),('SyncfusionHelper','SyncfusionHelper'),
+                   ('/scripts/','DevOps Scripts'),('/reports/','Telerik Reports'),
+                   ('coraportal','Cora Portal'),('coraapi','Cora API'),
+                   ('projectvision','ProjectVision Web')]
+        for k, v in checks:
+            if k in p:
+                return v
+        return ''
+
+    skip_dirs = {'/binaries/', '/node_modules/', '/packages/', '/obj/', '/bin/'}
+    entries = []
+
+    for fp in file_paths:
+        name = fp.rsplit('/', 1)[-1] if '/' in fp else fp
+        nl = name.lower()
+        ext_pos = nl.rfind('.')
+        ext = nl[ext_pos:] if ext_pos >= 0 else ''
+        pl = fp.lower()
+
+        if any(d in pl for d in skip_dirs):
+            continue
+
+        role = layer = tech = ''
+
+        if ext == '.cs':
+            if 'controller' in nl:          role, layer, tech = 'Controller', 'API', 'C#/.NET'
+            elif 'service' in nl and '.designer.' not in nl:
+                                            role, layer, tech = 'Service', 'Business Logic', 'C#/.NET'
+            elif 'repository' in nl:        role, layer, tech = 'Repository', 'Data Access', 'C#/.NET'
+            elif 'dto' in nl or nl.endswith('model.cs') or 'viewmodel' in nl:
+                                            role, layer, tech = 'Model', 'Application', 'C#/.NET'
+            elif any(k in nl for k in ('helper','util','extension')):
+                                            role, layer, tech = 'Helper', 'Application', 'C#/.NET'
+            elif 'handler' in nl:           role, layer, tech = 'Handler', 'Application', 'C#/.NET'
+            elif 'middleware' in nl:         role, layer, tech = 'Middleware', 'Application', 'C#/.NET'
+
+        elif ext == '.vb':
+            if (nl.endswith('.aspx.vb') or nl.endswith('.ascx.vb')) and any(k in nl for k in key_pages):
+                                            role, layer, tech = 'CodeBehind', 'Presentation', 'VB.NET'
+            elif 'service' in nl:           role, layer, tech = 'Service', 'Business Logic', 'VB.NET'
+            elif 'repository' in nl or 'dataaccess' in nl:
+                                            role, layer, tech = 'Repository', 'Data Access', 'VB.NET'
+            elif 'helper' in nl or 'util' in nl:
+                                            role, layer, tech = 'Helper', 'Application', 'VB.NET'
+
+        elif ext == '.aspx' and any(k in nl for k in key_pages):
+            role, layer, tech = 'UI', 'Presentation', 'ASP.NET WebForms'
+
+        elif ext == '.ts' and not nl.endswith('.d.ts'):
+            role, layer, tech = 'TypeScript', 'Frontend', 'TypeScript/Aurelia'
+
+        elif ext == '.trdx':
+            role, layer, tech = 'Telerik Report', 'Reporting', 'Telerik TRDX'
+
+        elif ext == '.sql':
+            if any(nl.startswith(p) for p in ('sp_','usp_')) or 'proc' in nl:
+                role, layer, tech = 'Stored Procedure', 'Database', 'SQL Server'
+            elif nl.startswith('vw_') or 'view' in nl:
+                role, layer, tech = 'SQL View', 'Database', 'SQL Server'
+            elif any(nl.startswith(p) for p in ('fn_','uf_')) or 'function' in nl:
+                role, layer, tech = 'SQL Function', 'Database', 'SQL Server'
+
+        elif fp.startswith('/scripts/') and ext in ('.ps1','.bat','.yaml','.yml'):
+            role = 'Deployment Script' if 'deployment' in fp else ('Build Script' if 'builds' in fp else 'Script')
+            layer, tech = 'Infrastructure', ('PowerShell' if ext == '.ps1' else ('YAML/Azure Pipelines' if ext in ('.yaml','.yml') else 'Batch'))
+
+        elif fp == '/BuildAndBuildValidation.yaml':
+            role, layer, tech = 'CI/CD Pipeline', 'Infrastructure', 'YAML/Azure Pipelines'
+
+        if not role:
+            continue
+
+        from urllib.parse import quote
+        ado_url = f"{ado_url_base}?path={quote(fp)}&version=GB{branch}"
+        desc = ''
+        kw = ''
+        if ext == '.trdx':
+            parts = fp.split('/')
+            desc = (parts[2] if len(parts) > 2 else '') + ' report'
+            kw = 'report,telerik,dashboard,analytics,metrics'
+
+        entries.append({
+            "file_path": fp, "file_name": name, "file_role": role,
+            "feature_area": _detect_area(fp), "module": _detect_module(fp),
+            "layer": layer, "technology": tech, "description": desc,
+            "keywords": kw, "branch": branch,
+            "ado_url": ado_url, "hit_count": 0,
+        })
+
+    return entries
+
+
+@app.route("/api/admin/codebase-index/auto-index", methods=["POST"])
+@admin_required
+def api_admin_auto_index_branch():
+    """Discover files on a branch via the ADO Items API and index key architectural files.
+
+    POST JSON: {"branch": "supported_release-1.25.1"}
+    Optional:  {"branch": "...", "clear_existing": true}  to wipe existing entries for that branch first.
+    """
+    import requests as _requests
+    from urllib.parse import quote as _quote
+
+    data = request.get_json(force=True)
+    branch = data.get("branch", "").strip()
+    if not branch:
+        return jsonify({"error": "branch is required"}), 400
+
+    clear_existing = data.get("clear_existing", False)
+    pat = os.environ.get("AZURE_DEVOPS_PAT", "")
+    if not pat:
+        return jsonify({"error": "AZURE_DEVOPS_PAT not configured"}), 500
+
+    ado_token = base64.b64encode(f":{pat}".encode()).decode()
+    headers = {"Authorization": f"Basic {ado_token}", "Content-Type": "application/json"}
+
+    # Fetch file tree from key directories
+    items_base = f"https://dev.azure.com/{ADO_ORG}/{ADO_PROJECT}/_apis/git/repositories/{ADO_REPO}/items"
+    v_param = f"&versionDescriptor.version={_quote(branch)}&versionDescriptor.versionType=branch&$format=json&api-version=7.0"
+    scope_dirs = [
+        "/code/ProjectvisionSolution_2008", "/code/PVPortal",
+        "/code/inetpub", "/code/PPM.SyncfusionHelper",
+        "/scripts", "/reports",
+    ]
+
+    all_paths = []
+    fetch_errors = []
+    for scope in scope_dirs:
+        url = f"{items_base}?scopePath={_quote(scope)}&recursionLevel=Full&includeContentMetadata=true{v_param}"
+        try:
+            resp = _requests.get(url, headers=headers, timeout=120)
+            if resp.ok:
+                items = resp.json().get("value", [])
+                all_paths.extend(item["path"] for item in items if not item.get("isFolder"))
+            else:
+                fetch_errors.append(f"{scope}: HTTP {resp.status_code}")
+        except Exception as e:
+            fetch_errors.append(f"{scope}: {e}")
+
+    # Root-level files
+    url = f"{items_base}?scopePath=/&recursionLevel=OneLevel&includeContentMetadata=true{v_param}"
+    try:
+        resp = _requests.get(url, headers=headers, timeout=30)
+        if resp.ok:
+            items = resp.json().get("value", [])
+            all_paths.extend(item["path"] for item in items if not item.get("isFolder"))
+    except Exception as e:
+        fetch_errors.append(f"/: {e}")
+
+    if not all_paths:
+        return jsonify({"error": "No files found", "fetch_errors": fetch_errors}), 404
+
+    # Categorize
+    entries = _categorize_ado_files(all_paths, branch)
+
+    if not entries:
+        return jsonify({"error": "No key architectural files found", "total_files": len(all_paths)}), 404
+
+    # Import into database
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+
+        if clear_existing:
+            cur.execute("DELETE FROM codebase_index WHERE branch = %s", (branch,))
+            cleared = cur.rowcount
+        else:
+            cleared = 0
+
+        inserted = 0
+        skipped = 0
+        for e in entries:
+            cur.execute(
+                "SELECT id FROM codebase_index WHERE file_path = %s AND branch = %s",
+                (e["file_path"], branch),
+            )
+            if cur.fetchone():
+                skipped += 1
+                continue
+            cur.execute("""
+                INSERT INTO codebase_index
+                    (file_name, file_path, file_role, feature_area, branch,
+                     keywords, description, related_files, source_query, hit_count,
+                     module, layer, technology, ado_url)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                e["file_name"], e["file_path"], e["file_role"], e["feature_area"],
+                branch, e["keywords"], e["description"], "", "auto-indexed", e["hit_count"],
+                e["module"], e["layer"], e["technology"], e["ado_url"],
+            ))
+            inserted += 1
+
+        conn.commit()
+        return jsonify({
+            "success": True,
+            "branch": branch,
+            "total_files_scanned": len(all_paths),
+            "entries_categorized": len(entries),
+            "inserted": inserted,
+            "skipped_existing": skipped,
+            "cleared_existing": cleared,
+            "fetch_errors": fetch_errors,
+        })
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+# ---------------------------------------------------------------------------
 # Auth routes — Entra ID OAuth
 # ---------------------------------------------------------------------------
 
