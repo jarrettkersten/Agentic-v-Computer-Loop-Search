@@ -4085,15 +4085,21 @@ def api_admin_enrich_index():
                 f"{items_base}?path={_quote(fp)}"
                 f"&versionDescriptor.version={_quote(branch)}"
                 f"&versionDescriptor.versionType=branch"
-                f"&includeContent=true&api-version=7.0"
+                f"&includeContent=true&$format=json&api-version=7.0"
             )
             try:
-                resp = _requests.get(url, headers=headers, timeout=15)
+                resp = _requests.get(url, headers=headers, timeout=30)
                 if not resp.ok:
+                    print(f"[Enrich] HTTP {resp.status_code} for {fp}")
                     fetch_errors += 1
                     continue
 
-                content = resp.json().get("content", "")
+                # ADO Items API with $format=json returns GitItem with content field
+                try:
+                    content = resp.json().get("content", "")
+                except Exception:
+                    # Fallback: response may be raw text
+                    content = resp.text
                 if not content:
                     fetch_errors += 1
                     continue
