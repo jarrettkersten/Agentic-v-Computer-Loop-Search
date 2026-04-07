@@ -1114,15 +1114,19 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
               <th>File</th>
               <th>Role</th>
               <th>Feature Area</th>
+              <th>Module</th>
+              <th>Layer</th>
+              <th>Technology</th>
               <th>Branch</th>
               <th>Hits</th>
               <th>Past Queries</th>
+              <th>ADO Link</th>
               <th>Last Verified</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="adm-index-body">
-            <tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted)">Loading…</td></tr>
+            <tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text-muted)">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -3177,14 +3181,14 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
     } catch (e) {
       console.warn('Failed to load codebase index:', e);
       document.getElementById('adm-index-body').innerHTML =
-        '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted)">Failed to load index</td></tr>';
+        '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text-muted)">Failed to load index</td></tr>';
     }
   }
 
   function admRenderIndex(rows) {
     const tbody = document.getElementById('adm-index-body');
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted)">No indexed files yet — run some searches to build the index</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text-muted)">No indexed files yet — run some searches to build the index</td></tr>';
       return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -3194,13 +3198,18 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       const kwHtml = queries.map(k => `<span class="adm-idx-kw">${admEsc(k.trim())}</span>`).join(' ');
       const desc = r.description ? `<div style="font-size:.68rem;color:var(--muted);margin-top:2px;line-height:1.3">${admEsc(r.description).slice(0, 120)}</div>` : '';
       const verified = r.last_verified ? new Date(r.last_verified).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+      const adoLink = r.ado_url ? `<a href="${admEsc(r.ado_url)}" target="_blank" rel="noopener" style="color:#2563eb;font-size:.72rem" title="${admEsc(r.ado_url)}">View</a>` : '—';
       return `<tr>
         <td class="rc-file" title="${admEsc(r.file_path)}" style="max-width:220px">${admEsc(r.file_name)}${desc}</td>
         <td style="font-weight:600;color:${roleColor};font-size:.78rem">${admEsc(r.file_role || '—')}</td>
         <td style="font-size:.78rem">${admEsc(r.feature_area || '—')}</td>
+        <td style="font-size:.78rem">${admEsc(r.module || '—')}</td>
+        <td style="font-size:.78rem">${admEsc(r.layer || '—')}</td>
+        <td style="font-size:.78rem">${admEsc(r.technology || '—')}</td>
         <td style="font-size:.78rem;color:var(--muted)">${admEsc(r.branch)}</td>
         <td style="text-align:center;font-weight:700">${r.hit_count}</td>
         <td style="font-size:.72rem;max-width:300px;white-space:normal;line-height:1.4">${kwHtml || '—'}</td>
+        <td style="text-align:center">${adoLink}</td>
         <td style="font-size:.78rem;color:var(--muted)">${verified}</td>
         <td style="text-align:center"><button onclick="admDeleteIndexEntry(${r.id})" class="adm-view-btn" style="color:#b91c1c;font-size:.72rem" title="Remove from index">🗑</button></td>
       </tr>`;
@@ -3216,6 +3225,9 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
       (r.feature_area || '').toLowerCase().includes(q) ||
       (r.keywords || '').toLowerCase().includes(q) ||
       (r.description || '').toLowerCase().includes(q) ||
+      (r.module || '').toLowerCase().includes(q) ||
+      (r.layer || '').toLowerCase().includes(q) ||
+      (r.technology || '').toLowerCase().includes(q) ||
       (r.branch || '').toLowerCase().includes(q)
     );
     admRenderIndex(filtered);
