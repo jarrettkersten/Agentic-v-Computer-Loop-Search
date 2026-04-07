@@ -3720,6 +3720,109 @@ def api_admin_clear_index():
             put_db_conn(conn)
 
 
+@app.route("/api/admin/codebase-index/bulk", methods=["POST"])
+@admin_required
+def api_admin_bulk_import_index():
+    """Bulk import codebase index entries.
+
+    Expects JSON body:
+    {
+        "entries": [
+            {
+                "file_name": "FinancialMgmt",
+                "file_path": "/code/.../FinancialMgmt",
+                "file_role": "Financial Calculations",
+                "feature_area": "Financial Management",
+                "branch": "supported_release-1.25.2",
+                "keywords": "EAC, ETC, budget...",
+                "description": "Core financial management...",
+                "related_files": "",
+                "source_query": "pre-indexed"
+            }, ...
+        ],
+        "skip_duplicates": true
+    }
+    """
+    if not DATABASE_URL:
+        return jsonify({"error": "No database configured"}), 500
+
+    data = request.get_json()
+    if not data or "entries" not in data:
+        return jsonify({"error": "Missing 'entries' array in request body"}), 400
+
+    entries = data["entries"]
+    skip_dupes = data.get("skip_duplicates", True)
+
+    if not isinstance(entries, list):
+        return jsonify({"error": "'entries' must be an array"}), 400
+    if len(entries) > 1000:
+        return jsonify({"error": "Maximum 1000 entries per request"}), 400
+
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        inserted = 0
+        skipped = 0
+        errors = 0
+
+        for entry in entries:
+            try:
+                fp = entry.get("file_path", "")
+                fn = entry.get("file_name", "")
+                br = entry.get("branch", "supported_release-1.25.2")
+                if not fn and not fp:
+                    errors += 1
+                    continue
+
+                if skip_dupes:
+                    cur.execute(
+                        "SELECT id FROM codebase_index WHERE file_path = %s AND branch = %s",
+                        (fp, br),
+                    )
+                    if cur.fetchone():
+                        skipped += 1
+                        continue
+
+                cur.execute("""
+                    INSERT INTO codebase_index
+                        (file_name, file_path, file_role, feature_area, branch,
+                         keywords, description, related_files, source_query, hit_count)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    fn, fp,
+                    entry.get("file_role", ""),
+                    entry.get("feature_area", ""),
+                    br,
+                    entry.get("keywords", ""),
+                    entry.get("description", ""),
+                    entry.get("related_files", ""),
+                    entry.get("source_query", "pre-indexed"),
+                    entry.get("hit_count", 0),
+                ))
+                inserted += 1
+            except Exception as row_err:
+                print(f"[BulkImport] Row error for {entry.get('file_name', '?')}: {row_err}")
+                errors += 1
+                continue
+
+        conn.commit()
+        return jsonify({
+            "success": True,
+            "inserted": inserted,
+            "skipped": skipped,
+            "errors": errors,
+            "message": f"Bulk import complete. {inserted} inserted, {skipped} skipped, {errors} errors.",
+        }), 201
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
 # ---------------------------------------------------------------------------
 # Auth routes — Entra ID OAuth
 # ---------------------------------------------------------------------------
