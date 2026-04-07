@@ -377,6 +377,41 @@ def init_db():
         except Exception:
             cur.execute("ROLLBACK TO SAVEPOINT uniq_check")
 
+        # ── Add enriched context columns to codebase_index (migration) ──
+        for col_name, col_def in [
+            ("module",     "TEXT NOT NULL DEFAULT ''"),
+            ("layer",      "TEXT NOT NULL DEFAULT ''"),
+            ("technology", "TEXT NOT NULL DEFAULT ''"),
+            ("ado_url",    "TEXT NOT NULL DEFAULT ''"),
+        ]:
+            cur.execute("SAVEPOINT col_add")
+            try:
+                cur.execute(f"ALTER TABLE codebase_index ADD COLUMN {col_name} {col_def}")
+                cur.execute("RELEASE SAVEPOINT col_add")
+                print(f"[init_db] Added column codebase_index.{col_name}")
+            except Exception:
+                cur.execute("ROLLBACK TO SAVEPOINT col_add")
+        # Add trigram index on description for similarity search
+        cur.execute("SAVEPOINT idx_desc")
+        try:
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_codebase_index_description
+                ON codebase_index USING gin (description gin_trgm_ops)
+            """)
+            cur.execute("RELEASE SAVEPOINT idx_desc")
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT idx_desc")
+        # Add trigram index on module for similarity search
+        cur.execute("SAVEPOINT idx_mod")
+        try:
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_codebase_index_module
+                ON codebase_index USING gin (module gin_trgm_ops)
+            """)
+            cur.execute("RELEASE SAVEPOINT idx_mod")
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT idx_mod")
+
         # One-time data fix: backfill model for historical records
         # IDs 1-16 were Sonnet, IDs 17-19 were Opus
         cur.execute("""
@@ -660,10 +695,13 @@ def lookup_codebase_index(query: str, branch: str, limit: int = 20) -> list:
         cur.execute("""
             SELECT file_path, file_name, file_role, feature_area, keywords,
                    related_files, description, hit_count, last_verified,
+                   module, layer, technology, ado_url,
                    GREATEST(
                        similarity(keywords, %(search)s),
                        similarity(feature_area, %(search)s),
-                       similarity(file_name, %(search)s)
+                       similarity(file_name, %(search)s),
+                       similarity(description, %(search)s) * 0.8,
+                       similarity(module, %(search)s)
                    ) AS sim_score
             FROM codebase_index
             WHERE branch = %(branch)s
@@ -671,11 +709,15 @@ def lookup_codebase_index(query: str, branch: str, limit: int = 20) -> list:
                   similarity(keywords, %(search)s) > 0.08
                   OR similarity(feature_area, %(search)s) > 0.15
                   OR similarity(file_name, %(search)s) > 0.2
+                  OR similarity(description, %(search)s) > 0.12
+                  OR similarity(module, %(search)s) > 0.15
               )
-            ORDER BY (hit_count * GREATEST(
+            ORDER BY (GREATEST(hit_count, 1) * GREATEST(
                 similarity(keywords, %(search)s),
                 similarity(feature_area, %(search)s),
-                similarity(file_name, %(search)s)
+                similarity(file_name, %(search)s),
+                similarity(description, %(search)s) * 0.8,
+                similarity(module, %(search)s)
             )) DESC
             LIMIT %(limit)s
         """, {"search": search_text, "branch": branch, "limit": limit})
@@ -722,10 +764,31 @@ def format_index_hints(index_hits: list) -> str:
             desc = (f.get("description") or "").strip()
             if desc:
                 lines.append(f"      Purpose: {desc}")
+            # Show module, layer, and technology context
+            module = (f.get("module") or "").strip()
+            layer = (f.get("layer") or "").strip()
+            tech = (f.get("technology") or "").strip()
+            context_parts = []
+            if module:
+                context_parts.append(f"Module: {module}")
+            if layer:
+                context_parts.append(f"Layer: {layer}")
+            if tech:
+                context_parts.append(f"Tech: {tech}")
+            if context_parts:
+                lines.append(f"      {' | '.join(context_parts)}")
+            # Show ADO link if available
+            ado_url = (f.get("ado_url") or "").strip()
+            if ado_url:
+                lines.append(f"      ADO: {ado_url}")
             # Show past queries that led to this file (pipe-delimited in keywords)
-            past_queries = [q.strip() for q in (f.get("keywords") or "").split("|") if q.strip()]
-            if past_queries:
-                lines.append(f"      Past queries: {'; '.join(past_queries[-5:])}")
+            kw = (f.get("keywords") or "").strip()
+            if "|" in kw:
+                past_queries = [q.strip() for q in kw.split("|") if q.strip()]
+                if past_queries:
+                    lines.append(f"      Past queries: {'; '.join(past_queries[-5:])}")
+            elif kw:
+                lines.append(f"      Keywords: {kw}")
         lines.append("")
 
     lines.append("These are hints, not guarantees — files may have moved or been renamed. Verify by reading them.")
@@ -3651,8 +3714,9 @@ def api_admin_codebase_index():
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT id, file_path, file_name, file_role, feature_area,
-                   keywords, related_files, branch, hit_count,
-                   discovered_at, last_verified, source_query
+                   keywords, related_files, description, branch, hit_count,
+                   discovered_at, last_verified, source_query,
+                   module, layer, technology, ado_url
             FROM codebase_index
             ORDER BY hit_count DESC, last_verified DESC
         """)
@@ -3752,6 +3816,7 @@ def api_admin_bulk_import_index():
 
     entries = data["entries"]
     skip_dupes = data.get("skip_duplicates", True)
+    upsert_mode = data.get("upsert", False)  # If true, update existing entries with new data
 
     if not isinstance(entries, list):
         return jsonify({"error": "'entries' must be an array"}), 400
@@ -3763,6 +3828,7 @@ def api_admin_bulk_import_index():
         conn = get_db_conn()
         cur = conn.cursor()
         inserted = 0
+        updated = 0
         skipped = 0
         errors = 0
 
@@ -3775,20 +3841,52 @@ def api_admin_bulk_import_index():
                     errors += 1
                     continue
 
-                if skip_dupes:
-                    cur.execute(
-                        "SELECT id FROM codebase_index WHERE file_path = %s AND branch = %s",
-                        (fp, br),
-                    )
-                    if cur.fetchone():
+                # Check if entry already exists
+                cur.execute(
+                    "SELECT id FROM codebase_index WHERE file_path = %s AND branch = %s",
+                    (fp, br),
+                )
+                existing = cur.fetchone()
+
+                if existing:
+                    if upsert_mode:
+                        # Update existing entry with enriched data (only non-empty fields)
+                        cur.execute("""
+                            UPDATE codebase_index SET
+                                file_role    = CASE WHEN %(file_role)s != '' THEN %(file_role)s ELSE file_role END,
+                                feature_area = CASE WHEN %(feature_area)s != '' THEN %(feature_area)s ELSE feature_area END,
+                                keywords     = CASE WHEN %(keywords)s != '' THEN %(keywords)s ELSE keywords END,
+                                description  = CASE WHEN %(description)s != '' THEN %(description)s ELSE description END,
+                                related_files = CASE WHEN %(related_files)s != '' THEN %(related_files)s ELSE related_files END,
+                                module       = CASE WHEN %(module)s != '' THEN %(module)s ELSE module END,
+                                layer        = CASE WHEN %(layer)s != '' THEN %(layer)s ELSE layer END,
+                                technology   = CASE WHEN %(technology)s != '' THEN %(technology)s ELSE technology END,
+                                ado_url      = CASE WHEN %(ado_url)s != '' THEN %(ado_url)s ELSE ado_url END,
+                                last_verified = NOW()
+                            WHERE file_path = %(fp)s AND branch = %(br)s
+                        """, {
+                            "file_role": entry.get("file_role", ""),
+                            "feature_area": entry.get("feature_area", ""),
+                            "keywords": entry.get("keywords", ""),
+                            "description": entry.get("description", ""),
+                            "related_files": entry.get("related_files", ""),
+                            "module": entry.get("module", ""),
+                            "layer": entry.get("layer", ""),
+                            "technology": entry.get("technology", ""),
+                            "ado_url": entry.get("ado_url", ""),
+                            "fp": fp, "br": br,
+                        })
+                        updated += 1
+                    elif skip_dupes:
                         skipped += 1
-                        continue
+                    continue
 
                 cur.execute("""
                     INSERT INTO codebase_index
                         (file_name, file_path, file_role, feature_area, branch,
-                         keywords, description, related_files, source_query, hit_count)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         keywords, description, related_files, source_query, hit_count,
+                         module, layer, technology, ado_url)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     fn, fp,
                     entry.get("file_role", ""),
@@ -3799,6 +3897,10 @@ def api_admin_bulk_import_index():
                     entry.get("related_files", ""),
                     entry.get("source_query", "pre-indexed"),
                     entry.get("hit_count", 0),
+                    entry.get("module", ""),
+                    entry.get("layer", ""),
+                    entry.get("technology", ""),
+                    entry.get("ado_url", ""),
                 ))
                 inserted += 1
             except Exception as row_err:
@@ -3810,9 +3912,10 @@ def api_admin_bulk_import_index():
         return jsonify({
             "success": True,
             "inserted": inserted,
+            "updated": updated,
             "skipped": skipped,
             "errors": errors,
-            "message": f"Bulk import complete. {inserted} inserted, {skipped} skipped, {errors} errors.",
+            "message": f"Bulk import complete. {inserted} inserted, {updated} updated, {skipped} skipped, {errors} errors.",
         }), 201
     except Exception as e:
         if conn:
