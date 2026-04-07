@@ -1125,7 +1125,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
               <th>Technology</th>
               <th>Branch</th>
               <th>Hits</th>
-              <th>Past Queries</th>
+              <th>Description</th>
               <th>ADO Link</th>
               <th>Last Verified</th>
               <th>Actions</th>
@@ -3218,13 +3218,12 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
 
     tbody.innerHTML = pageRows.map(r => {
       const roleColor = {'UI':'#2563eb','CodeBehind':'#0891b2','Service':'#7c3aed','Repository':'#059669','Helper':'#d97706','SQL':'#dc2626','Controller':'#6366f1','Model':'#0d9488'}[r.file_role] || 'var(--text)';
-      const queries = (r.keywords || '').split('|').filter(k => k.trim()).slice(0, 5);
-      const kwHtml = queries.map(k => `<span class="adm-idx-kw">${admEsc(k.trim())}</span>`).join(' ');
-      const desc = r.description ? `<div style="font-size:.68rem;color:var(--muted);margin-top:2px;line-height:1.3">${admEsc(r.description).slice(0, 120)}</div>` : '';
       const verified = r.last_verified ? new Date(r.last_verified).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
       const adoLink = r.ado_url ? `<a href="${admEsc(r.ado_url)}" target="_blank" rel="noopener" style="color:#2563eb;font-size:.72rem" title="${admEsc(r.ado_url)}">View</a>` : '—';
+      const descText = (r.description || '').trim();
+      const descHtml = descText ? `<span title="${admEsc(descText)}">${admEsc(descText.length > 80 ? descText.slice(0, 80) + '…' : descText)}</span>` : '<span style="color:var(--muted)">—</span>';
       return `<tr>
-        <td class="rc-file" title="${admEsc(r.file_path)}" style="max-width:220px">${admEsc(r.file_name)}${desc}</td>
+        <td class="rc-file" title="${admEsc(r.file_path)}" style="max-width:220px">${admEsc(r.file_name)}</td>
         <td style="font-weight:600;color:${roleColor};font-size:.78rem">${admEsc(r.file_role || '—')}</td>
         <td style="font-size:.78rem">${admEsc(r.feature_area || '—')}</td>
         <td style="font-size:.78rem">${admEsc(r.module || '—')}</td>
@@ -3232,7 +3231,7 @@ footer{text-align:center;padding:28px 0 40px;color:var(--muted);font-size:.74rem
         <td style="font-size:.78rem">${admEsc(r.technology || '—')}</td>
         <td style="font-size:.78rem;color:var(--muted)">${admEsc(r.branch)}</td>
         <td style="text-align:center;font-weight:700">${r.hit_count}</td>
-        <td style="font-size:.72rem;max-width:300px;white-space:normal;line-height:1.4">${kwHtml || '—'}</td>
+        <td style="font-size:.72rem;max-width:300px;white-space:normal;line-height:1.3">${descHtml}</td>
         <td style="text-align:center">${adoLink}</td>
         <td style="font-size:.78rem;color:var(--muted)">${verified}</td>
         <td style="text-align:center"><button onclick="admDeleteIndexEntry(${r.id})" class="adm-view-btn" style="color:#b91c1c;font-size:.72rem" title="Remove from index">🗑</button></td>

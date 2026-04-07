@@ -4007,6 +4007,290 @@ def api_admin_auto_index_branch():
             put_db_conn(conn)
 
 
+@app.route("/api/admin/codebase-index/enrich", methods=["POST"])
+@admin_required
+def api_admin_enrich_index():
+    """Enrich codebase index entries with descriptions and keywords.
+
+    Reads the first ~50 lines of each file from ADO to extract:
+      - Namespace / class declaration
+      - XML doc comments (/// <summary>)
+      - Base class / interfaces
+    Then generates a description and keywords from those without needing an LLM.
+
+    POST JSON: {"branch": "supported_release-1.25.2"}
+    Optional:  {"branch": "...", "roles": ["Service","Controller"], "limit": 500}
+    """
+    import requests as _requests
+    from urllib.parse import quote as _quote
+
+    data = request.get_json(force=True)
+    branch = data.get("branch", "").strip()
+    if not branch:
+        return jsonify({"error": "branch is required"}), 400
+
+    role_filter = data.get("roles", [])
+    batch_limit = min(data.get("limit", 200), 500)
+
+    pat = os.environ.get("AZURE_DEVOPS_PAT", "")
+    if not pat:
+        return jsonify({"error": "AZURE_DEVOPS_PAT not configured"}), 500
+
+    ado_token = base64.b64encode(f":{pat}".encode()).decode()
+    headers = {"Authorization": f"Basic {ado_token}"}
+
+    # Get entries needing enrichment (empty description)
+    conn = None
+    try:
+        conn = get_db_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        role_clause = ""
+        params = {"branch": branch, "limit": batch_limit}
+        if role_filter:
+            role_clause = "AND file_role = ANY(%(roles)s)"
+            params["roles"] = role_filter
+
+        cur.execute(f"""
+            SELECT id, file_path, file_name, file_role, feature_area
+            FROM codebase_index
+            WHERE branch = %(branch)s
+              AND (description IS NULL OR description = '')
+              {role_clause}
+            ORDER BY
+                CASE file_role
+                    WHEN 'Controller' THEN 1
+                    WHEN 'Service' THEN 2
+                    WHEN 'Repository' THEN 3
+                    WHEN 'Model' THEN 4
+                    WHEN 'Helper' THEN 5
+                    ELSE 10
+                END,
+                file_name
+            LIMIT %(limit)s
+        """, params)
+        entries = [dict(r) for r in cur.fetchall()]
+
+        if not entries:
+            return jsonify({"success": True, "message": "No entries need enrichment", "enriched": 0})
+
+        # Fetch file headers from ADO and parse
+        items_base = f"https://dev.azure.com/{ADO_ORG}/{ADO_PROJECT}/_apis/git/repositories/{ADO_REPO}/items"
+        enriched = 0
+        fetch_errors = 0
+
+        for entry in entries:
+            fp = entry["file_path"]
+            url = (
+                f"{items_base}?path={_quote(fp)}"
+                f"&versionDescriptor.version={_quote(branch)}"
+                f"&versionDescriptor.versionType=branch"
+                f"&includeContent=true&api-version=7.0"
+            )
+            try:
+                resp = _requests.get(url, headers=headers, timeout=15)
+                if not resp.ok:
+                    fetch_errors += 1
+                    continue
+
+                content = resp.json().get("content", "")
+                if not content:
+                    fetch_errors += 1
+                    continue
+
+                # Take first 60 lines for analysis
+                lines = content.split("\n")[:60]
+                header_text = "\n".join(lines)
+
+                desc, keywords = _parse_file_header(
+                    header_text, entry["file_name"], entry["file_role"]
+                )
+
+                if desc or keywords:
+                    update_parts = []
+                    update_params = {"id": entry["id"]}
+                    if desc:
+                        update_parts.append("description = %(desc)s")
+                        update_params["desc"] = desc[:500]
+                    if keywords:
+                        update_parts.append("keywords = %(kw)s")
+                        update_params["kw"] = keywords[:500]
+                    update_parts.append("last_verified = NOW()")
+
+                    cur.execute(
+                        f"UPDATE codebase_index SET {', '.join(update_parts)} WHERE id = %(id)s",
+                        update_params,
+                    )
+                    enriched += 1
+
+            except Exception as e:
+                print(f"[Enrich] Error for {fp}: {e}")
+                fetch_errors += 1
+                continue
+
+        conn.commit()
+        return jsonify({
+            "success": True,
+            "branch": branch,
+            "candidates": len(entries),
+            "enriched": enriched,
+            "fetch_errors": fetch_errors,
+        })
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            put_db_conn(conn)
+
+
+def _parse_file_header(header_text: str, file_name: str, file_role: str) -> tuple:
+    """Extract description and keywords from the first ~60 lines of a source file.
+
+    Parses:
+      - C#/VB XML doc comments (/// <summary> or ''' <summary>)
+      - Namespace declarations
+      - Class/interface declarations with base types
+      - ASPX page directives
+      - SQL object headers
+      - TypeScript module exports
+
+    Returns: (description: str, keywords: str)
+    """
+    import re
+
+    desc_parts = []
+    kw_parts = []
+
+    # --- C# / VB.NET ---
+    # XML doc summary: /// <summary>...</summary> or multi-line
+    summary_match = re.search(
+        r'<summary>\s*(.*?)\s*</summary>',
+        header_text, re.DOTALL | re.IGNORECASE
+    )
+    if summary_match:
+        summary = re.sub(r'\s*///\s*', ' ', summary_match.group(1))
+        summary = re.sub(r"\s*'''\s*", ' ', summary)
+        summary = re.sub(r'\s+', ' ', summary).strip()
+        if len(summary) > 10:
+            desc_parts.append(summary)
+
+    # Namespace
+    ns_match = re.search(r'(?:namespace|Namespace)\s+([\w.]+)', header_text)
+    namespace = ns_match.group(1) if ns_match else ''
+    if namespace:
+        # Extract meaningful segments from namespace
+        ns_segments = [s for s in namespace.split('.') if s.lower() not in
+                       ('cora', 'ppm', 'projectvision', 'lib', 'common', 'web', 'api', 'data')]
+        kw_parts.extend(ns_segments)
+
+    # Class/interface declaration with base types
+    class_match = re.search(
+        r'(?:public|internal|Private|Public|Friend)?\s*(?:abstract|partial|static|MustInherit|NotInheritable)?\s*'
+        r'(?:class|interface|Class|Interface|Module)\s+'
+        r'(\w+)\s*'
+        r'(?::\s*([\w\s,.<>]+?))?'
+        r'(?:\{|$)',
+        header_text, re.MULTILINE
+    )
+    if class_match:
+        class_name = class_match.group(1)
+        base_types = class_match.group(2) or ''
+        # Split class name into words: ForecastService -> Forecast, Service
+        class_words = re.findall(r'[A-Z][a-z]+|[A-Z]+(?=[A-Z]|$)', class_name)
+        # Remove generic role suffixes from keywords
+        role_words = {'service','controller','repository','helper','util','model','dto',
+                      'handler','middleware','base','abstract','interface','manager'}
+        meaningful_words = [w for w in class_words if w.lower() not in role_words]
+        kw_parts.extend(meaningful_words)
+
+        # Base types can reveal purpose
+        if base_types:
+            base_types_clean = re.sub(r'[<>]', '', base_types).strip()
+            base_list = [b.strip() for b in base_types_clean.split(',')]
+            for b in base_list:
+                b_words = re.findall(r'[A-Z][a-z]+', b)
+                b_meaningful = [w for w in b_words if w.lower() not in role_words and len(w) > 2]
+                kw_parts.extend(b_meaningful)
+
+        # If no XML summary, build description from class name
+        if not desc_parts:
+            # Convert PascalCase to readable: ForecastService -> "Forecast service"
+            readable = ' '.join(class_words).lower()
+            if file_role:
+                desc_parts.append(f"{class_name} — {file_role.lower()} for {' '.join(meaningful_words).lower() if meaningful_words else readable}")
+
+    # Inherits / Implements (VB.NET)
+    inherits_match = re.search(r'Inherits\s+([\w.]+)', header_text)
+    if inherits_match:
+        base = inherits_match.group(1).split('.')[-1]
+        base_words = re.findall(r'[A-Z][a-z]+', base)
+        kw_parts.extend(w for w in base_words if len(w) > 2)
+
+    # --- ASPX ---
+    page_dir = re.search(r'<%@\s*(?:Page|Control)\s+.*?%>', header_text, re.DOTALL | re.IGNORECASE)
+    if page_dir:
+        title_match = re.search(r'Title="([^"]+)"', page_dir.group(0))
+        if title_match:
+            desc_parts.append(title_match.group(1))
+        codefile_match = re.search(r'CodeFile="([^"]+)"', page_dir.group(0))
+        if codefile_match:
+            kw_parts.append(codefile_match.group(1).replace('.aspx.vb', '').replace('.ascx.vb', ''))
+
+    # --- SQL ---
+    sql_create = re.search(
+        r'CREATE\s+(?:PROCEDURE|FUNCTION|VIEW|TRIGGER)\s+\[?(?:dbo)?\]?\.\[?(\w+)',
+        header_text, re.IGNORECASE
+    )
+    if sql_create:
+        obj_name = sql_create.group(1)
+        obj_words = re.split(r'[_]', obj_name)
+        meaningful = [w for w in obj_words if w.lower() not in ('sp','usp','fn','uf','vw','get','set','dbo','proc')]
+        kw_parts.extend(meaningful)
+        if not desc_parts:
+            desc_parts.append(f"SQL {file_role.lower()} — {' '.join(meaningful).lower()}")
+
+    # SQL header comment
+    sql_comment = re.search(r'/\*\s*(.*?)\s*\*/', header_text[:500], re.DOTALL)
+    if sql_comment and not desc_parts:
+        comment = re.sub(r'\s+', ' ', sql_comment.group(1)).strip()
+        if 10 < len(comment) < 300:
+            desc_parts.append(comment)
+
+    # --- TypeScript ---
+    ts_export = re.search(r'export\s+(?:default\s+)?(?:class|function|const)\s+(\w+)', header_text)
+    if ts_export:
+        ts_name = ts_export.group(1)
+        ts_words = re.findall(r'[A-Z][a-z]+|[a-z]+', ts_name)
+        kw_parts.extend(w for w in ts_words if len(w) > 2)
+        if not desc_parts:
+            desc_parts.append(f"TypeScript module — {' '.join(ts_words).lower()}")
+
+    # --- PowerShell ---
+    ps_comment = re.search(r'\.SYNOPSIS\s*\n\s*(.*?)(?:\n\s*\.|\n\s*#)', header_text, re.DOTALL)
+    if ps_comment:
+        synopsis = re.sub(r'\s+', ' ', ps_comment.group(1)).strip()
+        if len(synopsis) > 5:
+            desc_parts.append(synopsis)
+
+    # Build final description
+    description = '. '.join(desc_parts)[:500] if desc_parts else ''
+
+    # Deduplicate and clean keywords
+    seen = set()
+    clean_kw = []
+    for w in kw_parts:
+        wl = w.lower().strip()
+        if wl and len(wl) > 2 and wl not in seen:
+            seen.add(wl)
+            clean_kw.append(w.strip())
+    keywords = ', '.join(clean_kw[:15])
+
+    return description, keywords
+
+
 # ---------------------------------------------------------------------------
 # Auth routes — Entra ID OAuth
 # ---------------------------------------------------------------------------
